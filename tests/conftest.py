@@ -22,6 +22,7 @@ def seeded(conn):
     INSERT INTO class_groups(school_year_id,level_id,subject_id,name,price,capacity,start_date)
       VALUES(1,1,1,'G1',3000,10,'2026-09-01');
     INSERT INTO enrollments(student_id,group_id,registration_id,enrolled_on) VALUES(1,1,1,'2026-09-01');
+    INSERT INTO group_teachers(group_id,teacher_id,valid_from) VALUES(1,1,'2026-08-01');
     INSERT INTO subscriptions(enrollment_id,price,start_date,end_date)
       VALUES(1,3000,'2026-09-01','2026-10-01');
     INSERT INTO charges(subscription_id,description,amount,due_date,accrual_date)

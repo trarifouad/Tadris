@@ -1,11 +1,19 @@
+BADGE_KINDS = ("success", "warning", "danger", "info", "neutral")
+
+
 def rgba(hex_color: str, alpha: float) -> str:
     r, g, b = (int(hex_color[i:i + 2], 16) for i in (1, 3, 5))
     return f"rgba({r}, {g}, {b}, {alpha})"
 
 
-def build_qss(t: dict, chevron: str = "") -> str:
-    """chevron: absolute path (forward slashes) of the combo-box arrow for this theme."""
+def build_qss(t: dict, chevron: str = "", check: str = "") -> str:
+    """chevron, check: absolute paths (forward slashes) of the combo-box arrow and the
+    check-box tick for this theme."""
     chalk_dim = rgba(t["chalk"], 0.74)
+    badges = "\n".join(
+        f'    QLabel#badge[kind="{kind}"] {{ background: {t[kind + "_bg"]}; color: {t[kind]}; }}'
+        for kind in BADGE_KINDS
+    )
     return f"""
     * {{ font-family: "Readex Pro", "Segoe UI", sans-serif; font-size: 14px; color: {t['text']}; }}
     QMainWindow, QWidget#page {{ background: {t['bg']}; }}
@@ -28,6 +36,28 @@ def build_qss(t: dict, chevron: str = "") -> str:
         border-radius: 6px; border: 1px solid {t['border_strong']}; background: {t['surface']}; }}
     QLineEdit:focus, QComboBox:focus, QDateEdit:focus, QSpinBox:focus {{
         border: 2px solid {t['focus']}; padding: 0 9px; }}
+    QPlainTextEdit {{ padding: 6px 8px; border-radius: 6px; border: 1px solid {t['border_strong']};
+        background: {t['surface']}; }}
+    QPlainTextEdit:focus {{ border: 2px solid {t['focus']}; padding: 5px 7px; }}
+    QCheckBox {{ spacing: 8px; }}
+    QCheckBox::indicator {{ width: 16px; height: 16px; border-radius: 4px;
+        border: 1px solid {t['border_strong']}; background: {t['surface']}; }}
+    QCheckBox::indicator:focus {{ border: 2px solid {t['focus']}; }}
+    QCheckBox::indicator:checked {{ background: {t['primary']}; border-color: {t['primary']};
+        image: url("{check}"); }}
+    QCheckBox::indicator:disabled {{ background: {t['surface_alt']}; }}
+    QCheckBox::indicator:checked:disabled {{ background: {t['faint']};
+        border-color: {t['faint']}; }}
+    QCheckBox:disabled {{ color: {t['muted']}; }}
+    QScrollBar:vertical {{ background: transparent; width: 10px; margin: 2px; }}
+    QScrollBar::handle:vertical {{ background: {t['border_strong']}; border-radius: 3px;
+        min-height: 32px; }}
+    QScrollBar::handle:vertical:hover {{ background: {t['faint']}; }}
+    QScrollBar:horizontal {{ background: transparent; height: 10px; margin: 2px; }}
+    QScrollBar::handle:horizontal {{ background: {t['border_strong']}; border-radius: 3px;
+        min-width: 32px; }}
+    QScrollBar::add-line, QScrollBar::sub-line {{ width: 0; height: 0; }}
+    QScrollBar::add-page, QScrollBar::sub-page {{ background: transparent; }}
     QComboBox::drop-down {{ border: none; width: 28px; }}
     QComboBox::down-arrow {{ image: url("{chevron}"); width: 14px; height: 14px; }}
     QComboBox QAbstractItemView {{ background: {t['surface']}; border: 1px solid {t['border']};
@@ -37,10 +67,10 @@ def build_qss(t: dict, chevron: str = "") -> str:
     QLabel#fieldLabel {{ font-size: 13px; font-weight: 500; }}
 
     QTableView {{ background: {t['surface']}; border: 1px solid {t['border']}; border-radius: 10px;
-        gridline-color: transparent; font-size: 13px; show-decoration-selected: 1;
+        gridline-color: transparent; font-size: 13px; show-decoration-selected: 1; outline: 0;
         selection-background-color: {t['primary_soft']}; selection-color: {t['text']}; }}
+    /* Row hover and selection are painted by RuledDelegate, so they span the whole row. */
     QTableView::item {{ padding: 0 12px; }}
-    QTableView::item:hover {{ background: {t['surface_alt']}; }}
     QHeaderView::section {{ background: {t['surface_alt']}; border: none;
         border-bottom: 1px solid {t['rule_strong']}; padding: 9px 12px;
         font-size: 11.5px; font-weight: 500; color: {t['muted']}; }}
@@ -73,6 +103,44 @@ def build_qss(t: dict, chevron: str = "") -> str:
     QLabel#money {{ font-family: "IBM Plex Mono"; font-size: 13px; font-weight: 500; }}
     QLabel#errorBanner {{ background: {t['danger_bg']}; color: {t['danger']};
         border: 1px solid {t['danger']}; border-radius: 6px; padding: 10px 14px; }}
+    QLabel#warningBanner {{ background: {t['warning_bg']}; color: {t['warning']};
+        border: 1px solid {t['warning']}; border-radius: 6px; padding: 10px 14px; }}
+    QLabel#mono {{ font-family: "IBM Plex Mono"; font-size: 13px; font-weight: 500;
+                   color: {t['muted']}; }}
+    QLabel#emptyState {{ background: {t['surface']}; border: 1px solid {t['border']};
+        border-radius: 10px; padding: 48px 24px; color: {t['muted']}; font-size: 13px; }}
+    QLabel#badge {{ border-radius: 4px; padding: 2px 8px; font-size: 11.5px; font-weight: 500; }}
+{badges}
+    QFrame#datePopup {{ background: {t['surface']}; border: 1px solid {t['border']};
+        border-radius: 10px; }}
+    QToolButton#calendarNav {{ border: none; border-radius: 6px; padding: 6px; }}
+    QToolButton#calendarNav:hover {{ background: {t['surface_alt']}; }}
+    QToolButton#calendarNav:disabled {{ background: transparent; }}
+    QPushButton#calendarTitle {{ border: none; background: transparent; min-height: 32px;
+        padding: 0 8px; font-size: 15px; font-weight: 600; }}
+    QPushButton#calendarTitle:hover {{ background: {t['primary_soft']}; color: {t['primary']}; }}
+    QLabel#calendarRange {{ font-size: 15px; font-weight: 600; padding: 0 8px; }}
+    QPushButton#calendarCell {{ border: none; background: transparent; min-height: 44px;
+        padding: 0; font-weight: 400; }}
+    QPushButton#calendarCell:hover {{ background: {t['primary_soft']}; }}
+    QPushButton#calendarCell:checked {{ background: {t['primary']}; color: {t['on_primary']};
+        font-weight: 500; }}
+    QPushButton#calendarCell:disabled {{ background: transparent; color: {t['faint']}; }}
+    QCalendarWidget QTableView {{ border: none; border-radius: 0; font-size: 13px;
+        background: {t['surface']}; selection-background-color: {t['primary']};
+        selection-color: {t['on_primary']}; outline: 0; }}
+    QCalendarWidget QTableView::item {{ padding: 0; border-radius: 6px; }}
+    QCalendarWidget QTableView::item:hover {{ background: {t['primary_soft']}; }}
+    QCalendarWidget QTableView::item:selected {{ background: {t['primary']};
+        color: {t['on_primary']}; }}
+    QCalendarWidget QTableView:disabled {{ color: {t['faint']}; }}
+    QTabWidget::pane {{ border: none; border-top: 1px solid {t['border']}; top: -1px; }}
+    QTabBar {{ qproperty-drawBase: 0; }}
+    QTabBar::tab {{ background: transparent; color: {t['muted']}; padding: 8px 16px;
+        border: none; border-bottom: 2px solid transparent; }}
+    QTabBar::tab:hover {{ color: {t['text']}; }}
+    QTabBar::tab:selected {{ color: {t['text']}; font-weight: 500;
+        border-bottom: 2px solid {t['primary']}; }}
 
     QStatusBar {{ background: {t['surface']}; border-top: 1px solid {t['border']}; }}
     QStatusBar QLabel {{ color: {t['muted']}; font-size: 12px; padding: 0 8px; }}

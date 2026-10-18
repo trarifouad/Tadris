@@ -4,9 +4,17 @@ import pytest
 
 from tadris.core import permissions, security
 from tadris.core.context import UserContext
-from tadris.core.dates import add_one_month, display_date, iso, weekday_1_to_7
+from tadris.core.dates import (
+    add_one_month,
+    display_date,
+    iso,
+    parse_display_date,
+    weekday_1_to_7,
+)
 from tadris.core.errors import PermissionDenied, ValidationError
 from tadris.core.money import format_dzd, parse_dzd
+from tadris.core.phones import format_phone, normalize_phone
+from tadris.core.text import clean, fold
 from tadris.i18n.fr import t
 
 DIRECTOR = UserContext(user_id=1, username="dir", role="director")
@@ -114,6 +122,7 @@ def test_verify_password_rejects_malformed_hash(stored):
 
 RECEPTIONIST_DENIED = {
     "student.deactivate",
+    "student.reactivate",
     "enrollment.override",
     "payment.void",
     "refund.approve",
@@ -172,3 +181,76 @@ def test_nav_items_reference_known_actions_and_labels():
     for _, label_key, action in permissions.NAV_ITEMS:
         assert action in permissions.ACTIONS
         assert label_key in t
+
+
+# ----- phones -----
+
+@pytest.mark.parametrize("text, normalized", [
+    ("0661902547", "0661902547"),
+    ("0661 90 25 47", "0661902547"),
+    ("0661.90.25.47", "0661902547"),
+    ("0661-90-25-47", "0661902547"),
+    ("+213 661 90 25 47", "0661902547"),
+    ("00213661902547", "0661902547"),
+    ("٠٦٦١٩٠٢٥٤٧", "0661902547"),
+    ("048 55 12 30", "048551230"),
+    ("(048) 55 12 30", "048551230"),
+    ("", None),
+    ("   ", None),
+    (None, None),
+])
+def test_normalize_phone(text, normalized):
+    assert normalize_phone(text) == normalized
+
+
+@pytest.mark.parametrize("text", ["12345", "0661 90 25", "06619025471", "0861902547", "abc",
+                                  "048 55 12 3", "0161902547"])
+def test_normalize_phone_rejects_invalid(text):
+    with pytest.raises(ValidationError) as exc:
+        normalize_phone(text)
+    assert exc.value.message == t["phone.invalid"]
+
+
+@pytest.mark.parametrize("phone, text", [
+    ("0661902547", "0661 90 25 47"),
+    ("048551230", "048 55 12 30"),
+    (None, ""),
+])
+def test_format_phone(phone, text):
+    assert format_phone(phone) == text
+
+
+# ----- text and display dates -----
+
+@pytest.mark.parametrize("text, folded", [
+    ("Hélène", "helene"), ("ÇA", "ca"), ("Benali", "benali"), ("Œuf", "œuf"), (None, None),
+])
+def test_fold(text, folded):
+    assert fold(text) == folded
+
+
+def test_clean_collapses_spaces():
+    assert clean("  Ben   Ali ") == "Ben Ali"
+    assert clean(None) == ""
+
+
+@pytest.mark.parametrize("text, value", [
+    ("18/10/2026", date(2026, 10, 18)),
+    ("1/2/2012", date(2012, 2, 1)),
+    ("18.10.2026", date(2026, 10, 18)),
+    (" 18-10-2026 ", date(2026, 10, 18)),
+    ("", None),
+])
+def test_parse_display_date(text, value):
+    assert parse_display_date(text) == value
+
+
+@pytest.mark.parametrize("text", ["31/02/2026", "2026-10-18", "18/10/26", "hier", "00/01/2020"])
+def test_parse_display_date_rejects_invalid(text):
+    with pytest.raises(ValidationError) as exc:
+        parse_display_date(text)
+    assert exc.value.message == t["date.invalid"]
+
+
+def test_sql_fold_function(conn):
+    assert conn.execute("SELECT fold('Hélène')").fetchone()[0] == "helene"

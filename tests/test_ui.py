@@ -1,6 +1,7 @@
 import pytest
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QLabel
+from PySide6.QtCore import QEvent, QPointF, Qt
+from PySide6.QtGui import QMouseEvent
+from PySide6.QtWidgets import QApplication, QLabel
 
 from tadris.core.permissions import NAV_ITEMS
 from tadris.i18n.fr import t
@@ -9,8 +10,9 @@ from tadris.ui.first_run import FirstRunDialog
 from tadris.ui.login_dialog import LoginDialog
 from tadris.ui.main_window import MainWindow
 from tadris.ui.pages.settings import SettingsPage
-from tadris.ui.theme import ICONS_DIR, apply_theme, load_fonts
+from tadris.ui.theme import ICONS_DIR, apply_theme, load_fonts, tokens
 from tadris.ui.user_dialog import UserDialog
+from tadris.ui.widgets.tables import fill, item, ruled_table
 
 
 @pytest.fixture(autouse=True)
@@ -41,6 +43,7 @@ def test_bundled_fonts_load():
 @pytest.mark.parametrize("mode", ["light", "dark"])
 def test_theme_icons_ship_for_each_mode(mode):
     assert (ICONS_DIR / f"chevron-down-{mode}.svg").is_file()
+    assert (ICONS_DIR / f"check-{mode}.svg").is_file()
 
 
 # ----- first run -----
@@ -216,3 +219,47 @@ def test_sidebar_switches_pages(qtbot, conn, director):
     assert not window.nav_buttons["dashboard"].isChecked()
     title = window.pages.currentWidget().findChild(QLabel, "pageTitle")
     assert title.text() == t["nav.students"]
+
+
+# ----- table rows (hover and selection span the row) -----
+
+def make_table(qtbot):
+    table = ruled_table(["A", "B", "C"])
+    fill(table, [[item(f"{r}{c}") for c in "abc"] for r in range(4)])
+    table.resize(600, 260)
+    qtbot.addWidget(table)
+    table.show()
+    return table
+
+
+def pixel(table, row, column, dx=None):
+    image = table.viewport().grab().toImage()
+    x = table.columnViewportPosition(column) + (table.columnWidth(column) - 4 if dx is None else dx)
+    y = table.rowViewportPosition(row) + 4
+    return image.pixelColor(x, y).name().upper()
+
+
+def test_hover_highlights_the_whole_row(qtbot):
+    from tadris.ui.theme.delegates import blend
+    table = make_table(qtbot)
+    delegate = table.itemDelegate()
+    pos = QPointF(table.columnViewportPosition(1) + 10, table.rowViewportPosition(2) + 10)
+    event = QMouseEvent(QEvent.Type.MouseMove, pos, pos, Qt.MouseButton.NoButton,
+                        Qt.MouseButton.NoButton, Qt.KeyboardModifier.NoModifier)
+    QApplication.sendEvent(table.viewport(), event)
+    assert delegate.hover_row == 2
+    hover = blend(tokens()["surface"], tokens()["surface_alt"], 0.55).name().upper()
+    assert {pixel(table, 2, c) for c in range(3)} == {hover}
+    assert pixel(table, 1, 1) == tokens()["surface"]
+    QApplication.sendEvent(table.viewport(), QEvent(QEvent.Type.Leave))
+    assert delegate.hover_row == -1
+
+
+def test_selection_fills_the_row_with_a_leading_edge(qtbot):
+    table = make_table(qtbot)
+    table.setFocus()
+    table.setCurrentCell(1, 1)  # current cell: must not get a focus box
+    assert {pixel(table, 1, c) for c in range(3)} == {tokens()["primary_soft"]}
+    assert pixel(table, 1, 1, dx=1) == tokens()["primary_soft"]  # no frame on the left edge
+    assert pixel(table, 1, 0, dx=1) == tokens()["primary"]  # 3 px ink edge
+    assert pixel(table, 1, 1, dx=1) != tokens()["primary"]

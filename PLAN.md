@@ -140,7 +140,16 @@ ui/first_run.py        create the director account and school name on first star
 
 ## Phase 2: Students and contacts
 
-**Goal:** the front desk can register and find students.
+**Status:** built on `feat/students`, not yet committed or tagged. Repository layer started (`repositories/students.py`, `repositories/contacts.py`); migration 0005 adds search indexes. Students list (search, status filter, sortable columns), student dialog with optional main contact, detail page with a working Contacts tab and placeholder tabs, seed script `scripts/seed_demo.py PATH.db`. 338 tests green.
+
+**Decisions taken in this phase**
+
+- Deactivate and reactivate are director-only (`student.deactivate`, `student.reactivate`). Deactivation is refused while the student has a `trial` or `active` enrollment.
+- Phones are stored normalized (`0661902547`; `+213`/`00213` and Arabic-Indic digits accepted) and shown as `0661 90 25 47`. Mobiles are 10 digits (05/06/07), landlines 9 (02/03/04). A contact needs a name and a phone.
+- Search is accent and case insensitive through the SQL function `fold()` registered in `connect()`. Every word must match a first name, last name, number or phone; a query made of digits is matched whole against numbers and phones.
+- Duplicate warning: same folded name with equal birth dates (or either unknown), or a shared contact phone (often a sibling). Shown as an amber banner; submitting again creates the student.
+- Contacts are shared between siblings: a new contact whose phone is on file is offered for linking instead of being duplicated. Editing a shared contact changes it for every linked student, and the dialog says so.
+- The first contact always becomes main. The main contact cannot be unchecked or removed while others exist; another contact must be made main first. Removing a contact deletes only the `student_contacts` link (audited); the contact row stays.
 
 **Screens**
 

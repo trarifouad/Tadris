@@ -140,7 +140,7 @@ ui/first_run.py        create the director account and school name on first star
 
 ## Phase 2: Students and contacts
 
-**Status:** built on `feat/students`, not yet committed or tagged. Repository layer started (`repositories/students.py`, `repositories/contacts.py`); migration 0005 adds search indexes. Students list (search, status filter, sortable columns), student dialog with optional main contact, detail page with a working Contacts tab and placeholder tabs, seed script `scripts/seed_demo.py PATH.db`. 338 tests green.
+**Status:** done. Repository layer started (`repositories/students.py`, `repositories/contacts.py`); migration 0005 adds search indexes. Students list (search, status filter, sortable columns, whole-row hover and selection), student dialog with optional main contact, detail page with a working Contacts tab and placeholder tabs. Reusable date field: slashes inserted while typing, calendar with day, month and year views. Seed script `scripts/seed_demo.py PATH.db`. 377 tests green. Tagged `phase-2`.
 
 **Decisions taken in this phase**
 

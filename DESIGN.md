@@ -382,6 +382,9 @@ STATUS_STYLE = {
 - Icons: Lucide SVGs, recolored by replacing `currentColor` in the SVG text before creating the `QIcon`. Use 20 px in the sidebar and tables, 16 px inside buttons.
 - Fonts: load them before building any widget, then call `app.setFont(QFont("Readex Pro", 10))`.
 - Theme switch: `apply_theme(app, "light" | "dark")` rebuilds the QSS from the chosen token dict, calls `app.setStyleSheet(...)` and recreates the table delegates with the new tokens.
+- The snippets above show the core rules. `ui/theme/qss.py` and `ui/theme/tokens.py` in the code are the source of truth; they add selectors for dialogs, the sidebar footer, combo boxes and table cells.
+- Combo-box arrows: QSS drops the native arrow once the drop-down is styled, so `ui/resources/icons/chevron-down-{light,dark}.svg` (Lucide, in each theme's `muted` color) is passed to `build_qss`.
+- Dialog height: fixed-width dialogs call `fit_to_content()` instead of `adjustSize()`, which undersizes layouts with word-wrapped labels and clips the inputs.
 - RTL later: write layouts with standard Qt layouts so `app.setLayoutDirection(Qt.RightToLeft)` flips them. Avoid hardcoded left and right in QSS where you can, and keep digits Latin in Arabic mode (a common choice in Algeria).
 
 ---

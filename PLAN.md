@@ -93,6 +93,8 @@ Rules:
 
 ## Phase 1: Core layer and login
 
+**Status:** done. Core layer, auth, settings, audit and counter services, first-run wizard, login, role-based main window, user accounts in Paramètres, Encre theme with bundled fonts. 234 tests green. Tagged `phase-1`. Services run their SQL directly for now; the repository layer starts in phase 2.
+
 **Goal:** the foundations every service depends on, and a working login.
 
 **Files**

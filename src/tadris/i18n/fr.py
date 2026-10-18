@@ -29,6 +29,111 @@ t = {
     "student.has_live_enrollments": (
         "Cet élève est encore inscrit dans un groupe. Retirez-le d'abord de ses groupes."
     ),
+    "percent.invalid": "Pourcentage invalide. Exemple : 60 ou 62,5 (entre 0 et 100).",
+    "time.invalid": "Heure invalide. Exemple : 17:30 ou 17h30.",
+    "name.required": "Le nom est obligatoire.",
+    "name.taken": "Ce nom existe déjà.",
+    "year.label_required": "Le libellé de l'année est obligatoire.",
+    "year.label_taken": "Une année porte déjà ce libellé.",
+    "year.dates_order": "La date de fin doit être après la date de début.",
+    "year.overlap": "Ces dates chevauchent l'année {label}.",
+    "year.not_found": "Année scolaire introuvable.",
+    "year.already_open": "Cette année est déjà ouverte.",
+    "year.other_open": "L'année {label} est encore ouverte. Clôturez-la d'abord.",
+    "year.not_open": "Cette année n'est pas ouverte.",
+    "year.ended": "Cette année est terminée : elle ne peut plus être ouverte.",
+    "year.groups_outside": "Des groupes de cette année commencent hors de ces dates.",
+    "year.not_usable": (
+        "Cette année est clôturée. Choisissez l'année ouverte ou une année à venir."
+    ),
+    "level.not_found": "Niveau introuvable.",
+    "subject.not_found": "Matière introuvable.",
+    "level.inactive": "Ce niveau est désactivé.",
+    "subject.inactive": "Cette matière est désactivée.",
+    "room.not_found": "Salle introuvable.",
+    "room.capacity_invalid": "La capacité doit être au moins 1.",
+    "room.inactive": "Cette salle est désactivée.",
+    "room.in_use": (
+        "Cette salle a encore des créneaux en cours ou à venir. Déplacez-les d'abord."
+    ),
+    "room.too_small": (
+        "La salle {room} a {room_capacity} places, mais le groupe compte déjà {enrolled} "
+        "élèves inscrits. Choisissez une salle plus grande."
+    ),
+    "teacher.not_found": "Enseignant introuvable.",
+    "teacher.name_required": "Le nom de l'enseignant est obligatoire.",
+    "teacher.inactive": "Cet enseignant est désactivé.",
+    "teacher.already_inactive": "Cet enseignant est déjà désactivé.",
+    "teacher.already_active": "Cet enseignant est déjà actif.",
+    "teacher.has_groups": (
+        "Cet enseignant a encore des groupes ouverts. Changez d'abord leur enseignant."
+    ),
+    "rate.before_current": (
+        "Le nouveau taux doit commencer après le {date} (début du taux actuel)."
+    ),
+    "rate.locked": (
+        "Ce taux a déjà servi à un paiement enseignant validé. Choisissez une date plus récente."
+    ),
+    "group.not_found": "Groupe introuvable.",
+    "group.name_taken": "Un groupe porte déjà ce nom cette année.",
+    "group.price_invalid": "Le prix ne peut pas être négatif.",
+    "group.capacity_invalid": "La capacité doit être au moins 1.",
+    "group.start_outside_year": "La date de début doit être dans l'année {label}.",
+    "group.closed": "Ce groupe est clôturé.",
+    "group.already_closed": "Ce groupe est déjà clôturé.",
+    "group.not_closed": "Ce groupe n'est pas clôturé.",
+    "group.has_enrollments": (
+        "Le groupe a déjà des élèves : le niveau, la matière et la date de début "
+        "ne peuvent plus changer."
+    ),
+    "group.same_teacher": "Cet enseignant est déjà celui du groupe.",
+    "group.teacher_before_current": (
+        "Le changement doit commencer après le {date} (début de l'enseignant actuel)."
+    ),
+    "group.teacher_date_outside": (
+        "La date du changement doit être entre le début du groupe ({start}) "
+        "et la fin de l'année ({end})."
+    ),
+    "group.start_after_teacher_change": (
+        "Le groupe change d'enseignant le {date} : il doit commencer avant cette date."
+    ),
+    "group.slots_have_sessions": (
+        "Des séances ont déjà eu lieu : la date de début ne peut plus reculer."
+    ),
+    "group.teacher_locked": (
+        "Cet enseignant a déjà été payé pour ce groupe. Choisissez une date plus récente."
+    ),
+    "weekday.1": "lundi",
+    "weekday.2": "mardi",
+    "weekday.3": "mercredi",
+    "weekday.4": "jeudi",
+    "weekday.5": "vendredi",
+    "weekday.6": "samedi",
+    "weekday.7": "dimanche",
+    "slot.not_found": "Créneau introuvable.",
+    "slot.times_order": "L'heure de fin doit être après l'heure de début.",
+    "slot.weekday_invalid": "Jour invalide.",
+    "slot.room_busy": (
+        "La salle {room} est déjà occupée le {day} de {start} à {end} par {group}. "
+        "Choisissez une autre salle ou un autre horaire."
+    ),
+    "slot.group_busy": (
+        "Le groupe {group} a déjà cours le {day} de {start} à {end}. Choisissez un autre horaire."
+    ),
+    "slot.teacher_busy": (
+        "{teacher} enseigne déjà le {day} de {start} à {end} ({group}). "
+        "Choisissez un autre horaire."
+    ),
+    "slot.ended": "Ce créneau est déjà terminé.",
+    "slot.outside_hours": (
+        "Ce créneau sort des horaires de l'école ({opens} – {closes}). Changez l'horaire, "
+        "ou les horaires de l'école dans Paramètres, onglet École."
+    ),
+    "hours.order": "L'heure de fermeture doit être après l'heure d'ouverture.",
+    "hours.slots_outside": (
+        "{count} créneau(x) sortent de ces horaires, par exemple {group} le {day} de {start} "
+        "à {end}. Déplacez-les d'abord dans l'emploi du temps."
+    ),
     "contact.name_required": "Le nom du contact est obligatoire.",
     "contact.phone_required": "Le téléphone du contact est obligatoire.",
     "contact.not_linked": "Ce contact n'est pas lié à cet élève.",
@@ -60,8 +165,13 @@ t = {
     "db.group_started": "Le groupe a déjà commencé.",
     "db.group_full": "Le groupe est complet.",
     "db.capacity_below_enrolled": "La capacité est inférieure aux inscriptions actuelles.",
-    "db.group_exceeds_room": "La capacité du groupe dépasse celle de la salle.",
-    "db.room_below_group": "La capacité de la salle est inférieure à celle d'un groupe.",
+    "db.group_exceeds_room": "La salle est trop petite pour les élèves inscrits du groupe.",
+    "db.room_below_group": (
+        "Un groupe qui a cours dans cette salle compte plus d'élèves inscrits que cette capacité."
+    ),
+    "db.room_full": (
+        "La salle de ce groupe est pleine. Choisissez une salle plus grande pour ses créneaux."
+    ),
     "db.room_slot_overlap": "Ce créneau chevauche un autre créneau de la salle.",
     "db.group_slot_overlap": "Ce créneau chevauche un autre créneau du groupe.",
     "db.session_group_mismatch": "La séance n'appartient pas au groupe du créneau.",
@@ -241,4 +351,245 @@ t = {
     "relation.grandparent": "Grand-parent",
     "relation.self": "L'élève lui-même",
     "confirm.yes": "Confirmer",
+    "action.add": "Ajouter",
+    "action.rename": "Renommer",
+    "action.activate": "Activer",
+    "action.deactivate": "Désactiver",
+    "action.move_up": "Monter",
+    "action.move_down": "Descendre",
+    "action.create": "Créer",
+    "active.yes": "Actif",
+    "active.no": "Désactivé",
+    "filter.all": "Tous",
+    "filter.all_f": "Toutes",
+    "settings.tab.school": "École",
+    "settings.tab.users": "Utilisateurs",
+    "school.caption": "Ces informations figurent en tête des reçus et des documents imprimés.",
+    "school.name": "Nom de l'école",
+    "school.phone": "Téléphone",
+    "school.address": "Adresse",
+    "school.hours": "Horaires d'ouverture",
+    "school.hours_caption": (
+        "Les créneaux de l'emploi du temps doivent tenir dans ces horaires, chaque jour."
+    ),
+    "school.opens_at": "Ouverture",
+    "school.closes_at": "Fermeture",
+    "school.saved": "Paramètres de l'école enregistrés",
+    "settings.tab.years": "Années scolaires",
+    "settings.tab.levels": "Niveaux",
+    "settings.tab.subjects": "Matières",
+    "settings.tab.rooms": "Salles",
+    "year_state.open": "Ouverte",
+    "year_state.upcoming": "À venir",
+    "year_state.closed": "Clôturée",
+    "years.caption": (
+        "Une seule année est ouverte à la fois. Une année à venir peut déjà recevoir ses "
+        "groupes et son emploi du temps."
+    ),
+    "years.new": "Nouvelle année",
+    "years.open": "Ouvrir",
+    "years.close": "Clôturer",
+    "years.empty": "Aucune année scolaire. Créez la première avec « Nouvelle année ».",
+    "years.col.label": "Année",
+    "years.col.start": "Début",
+    "years.col.end": "Fin",
+    "years.col.status": "Statut",
+    "years.col.groups": "Groupes",
+    "years.created": "Année créée : {label}",
+    "years.updated": "Année modifiée : {label}",
+    "years.opened": "Année ouverte : {label}",
+    "years.closed": "Année clôturée : {label} ({count} groupe(s) clôturé(s))",
+    "years.confirm_close_title": "Clôturer l'année",
+    "years.confirm_close": (
+        "Clôturer {label} ? Ses {count} groupe(s) seront clôturés et leurs créneaux libérés. "
+        "Les inscriptions ne seront plus possibles dans cette année."
+    ),
+    "year_dialog.new_title": "Nouvelle année scolaire",
+    "year_dialog.edit_title": "Modifier l'année scolaire",
+    "year_dialog.label": "Libellé",
+    "year_dialog.start": "Premier jour",
+    "year_dialog.end": "Dernier jour",
+    "levels.caption": "L'ordre des niveaux est celui des listes et des rapports.",
+    "levels.new": "Nouveau niveau",
+    "levels.empty": "Aucun niveau. Ajoutez-en un avec « Nouveau niveau » (par exemple 4AM).",
+    "subjects.caption": "Une matière désactivée n'est plus proposée pour les nouveaux groupes.",
+    "subjects.new": "Nouvelle matière",
+    "subjects.empty": "Aucune matière. Ajoutez-en une avec « Nouvelle matière ».",
+    "catalog.col.name": "Nom",
+    "catalog.col.status": "Statut",
+    "catalog.col.groups": "Groupes ouverts",
+    "catalog.saved": "Enregistré : {name}",
+    "name_dialog.level_new": "Nouveau niveau",
+    "name_dialog.level_edit": "Renommer le niveau",
+    "name_dialog.subject_new": "Nouvelle matière",
+    "name_dialog.subject_edit": "Renommer la matière",
+    "name_dialog.name": "Nom",
+    "rooms.caption": "La capacité d'une salle limite celle des groupes qui y ont cours.",
+    "rooms.new": "Nouvelle salle",
+    "rooms.empty": "Aucune salle. Ajoutez-en une avec « Nouvelle salle ».",
+    "rooms.col.name": "Salle",
+    "rooms.col.capacity": "Places",
+    "rooms.col.status": "Statut",
+    "rooms.col.slots": "Créneaux",
+    "room_dialog.new_title": "Nouvelle salle",
+    "room_dialog.edit_title": "Modifier la salle",
+    "room_dialog.name": "Nom",
+    "room_dialog.capacity": "Nombre de places",
+    "teachers.new": "Nouvel enseignant",
+    "teachers.back": "← Enseignants",
+    "groups.back": "← Groupes",
+    "teachers.search": "Rechercher un enseignant",
+    "teachers.filter.active": "Actifs",
+    "teachers.filter.inactive": "Inactifs",
+    "teachers.col.name": "Nom",
+    "teachers.col.phone": "Téléphone",
+    "teachers.col.rate": "Taux",
+    "teachers.col.groups": "Groupes",
+    "teachers.col.status": "Statut",
+    "teachers.empty": "Aucun enseignant. Ajoutez le premier avec « Nouvel enseignant ».",
+    "teachers.no_match": "Aucun enseignant ne correspond à cette recherche.",
+    "teachers.count": "{count} enseignant(s)",
+    "teachers.created": "Enseignant ajouté : {name}",
+    "teachers.updated": "Enseignant modifié : {name}",
+    "teachers.rate_set": "Nouveau taux pour {name} : {rate}",
+    "teachers.deactivated": "Enseignant désactivé : {name}",
+    "teachers.reactivated": "Enseignant réactivé : {name}",
+    "teacher_status.active": "Actif",
+    "teacher_status.inactive": "Inactif",
+    "teacher_detail.hired": "Depuis le {date}",
+    "teacher_detail.rate": "Taux actuel : {rate}",
+    "teacher_detail.new_rate": "Nouveau taux",
+    "teacher_detail.tab.groups": "Groupes",
+    "teacher_detail.tab.rates": "Historique des taux",
+    "teacher_detail.groups_empty": "Aucun groupe pour cet enseignant.",
+    "teacher_detail.confirm_deactivate_title": "Désactiver l'enseignant",
+    "teacher_detail.confirm_deactivate": "Désactiver {name} ? Il ne pourra plus recevoir de groupe.",
+    "rates.col.rate": "Taux",
+    "rates.col.from": "À partir du",
+    "rates.col.to": "Jusqu'au",
+    "rates.current": "En cours",
+    "rates.empty": "Aucun taux.",
+    "teacher_dialog.new_title": "Nouvel enseignant",
+    "teacher_dialog.edit_title": "Modifier l'enseignant",
+    "teacher_dialog.name": "Nom complet",
+    "teacher_dialog.phone": "Téléphone",
+    "teacher_dialog.hire_date": "Date d'arrivée",
+    "teacher_dialog.rate": "Taux sur les recettes",
+    "teacher_dialog.rate_from": "Taux applicable à partir du",
+    "teacher_dialog.rate_caption": (
+        "Part du prix des abonnements de ses groupes, par exemple 60 %. "
+        "Les changements de taux gardent l'historique."
+    ),
+    "rate_dialog.title": "Nouveau taux",
+    "rate_dialog.rate": "Taux",
+    "rate_dialog.from": "À partir du",
+    "rate_dialog.caption": (
+        "Le taux actuel ({rate}) s'arrête la veille. Les mois déjà calculés ne changent pas."
+    ),
+    "groups.new": "Nouveau groupe",
+    "groups.search": "Rechercher un groupe, une matière, un enseignant",
+    "groups.filter.year": "Année",
+    "groups.filter.level": "Tous les niveaux",
+    "groups.filter.subject": "Toutes les matières",
+    "groups.filter.open": "Ouverts",
+    "groups.filter.closed": "Clôturés",
+    "groups.col.name": "Groupe",
+    "groups.col.subject": "Matière",
+    "groups.col.level": "Niveau",
+    "groups.col.teacher": "Enseignant",
+    "groups.col.price": "Prix",
+    "groups.col.places": "Élèves",
+    "groups.col.start": "Début",
+    "groups.col.status": "Statut",
+    "groups.empty": "Aucun groupe. Créez le premier avec « Nouveau groupe ».",
+    "groups.empty_receptionist": "Aucun groupe pour l'instant.",
+    "groups.no_match": "Aucun groupe ne correspond à ces filtres.",
+    "groups.no_year": (
+        "Aucune année scolaire ouverte. Le directeur la crée dans Paramètres, "
+        "onglet Années scolaires."
+    ),
+    "groups.count": "{count} groupe(s)",
+    "groups.created": "Groupe créé : {name}",
+    "groups.updated": "Groupe modifié : {name}",
+    "groups.teacher_changed": "{name} : nouvel enseignant {teacher}",
+    "groups.closed_msg": "Groupe clôturé : {name}",
+    "groups.reopened": "Groupe rouvert : {name}",
+    "group_state.active": "Actif",
+    "group_state.upcoming": "À venir",
+    "group_state.closed": "Clôturé",
+    "group_detail.meta": "{subject} · {level} · {year}",
+    "group_detail.teacher": "Enseignant : {teacher}",
+    "group_detail.no_teacher": "Pas d'enseignant",
+    "group_detail.price": "{price} / mois",
+    "group_detail.places": "{enrolled} / {capacity} élèves",
+    "group_detail.places_room": (
+        "{enrolled} / {seats} élèves (limité par la salle {room}, groupe prévu pour {capacity})"
+    ),
+    "group_detail.starts": "Début le {date}",
+    "group_detail.change_teacher": "Changer d'enseignant",
+    "group_detail.close": "Clôturer",
+    "group_detail.reopen": "Rouvrir",
+    "group_detail.tab.slots": "Créneaux",
+    "group_detail.tab.teachers": "Enseignants",
+    "group_detail.tab.students": "Élèves",
+    "group_detail.students_later": "La liste des élèves arrive avec les inscriptions (étape 4).",
+    "group_detail.confirm_close_title": "Clôturer le groupe",
+    "group_detail.confirm_close": (
+        "Clôturer {name} ? Il ne recevra plus d'élèves et ses créneaux seront libérés "
+        "à partir d'aujourd'hui."
+    ),
+    "slots.add": "Ajouter un créneau",
+    "slots.empty": "Aucun créneau. Ajoutez le premier avec « Ajouter un créneau ».",
+    "slots.col.day": "Jour",
+    "slots.col.time": "Horaire",
+    "slots.col.room": "Salle",
+    "slots.col.from": "À partir du",
+    "slots.added": "Créneau ajouté",
+    "slots.updated": "Créneau modifié",
+    "slots.removed": "Créneau retiré",
+    "slots.confirm_remove_title": "Retirer le créneau",
+    "slots.confirm_remove": "Retirer le créneau du {day} de {start} à {end} ({group}) ?",
+    "history.col.teacher": "Enseignant",
+    "history.col.from": "À partir du",
+    "history.col.to": "Jusqu'au",
+    "group_dialog.new_title": "Nouveau groupe",
+    "group_dialog.edit_title": "Modifier le groupe",
+    "group_dialog.year": "Année scolaire",
+    "group_dialog.level": "Niveau",
+    "group_dialog.subject": "Matière",
+    "group_dialog.name": "Nom du groupe",
+    "group_dialog.name_placeholder": "G1",
+    "group_dialog.price": "Prix mensuel",
+    "group_dialog.capacity": "Places",
+    "group_dialog.start": "Date de début",
+    "group_dialog.teacher": "Enseignant",
+    "group_dialog.price_caption": "Un nouveau prix s'applique aux prochains abonnements seulement.",
+    "group_dialog.no_teacher": "Ajoutez d'abord un enseignant dans la page Enseignants.",
+    "change_teacher.title": "Changer d'enseignant",
+    "change_teacher.teacher": "Nouvel enseignant",
+    "change_teacher.from": "À partir du",
+    "change_teacher.caption": (
+        "{current} reste l'enseignant du groupe jusqu'à la veille. Les recettes sont "
+        "attribuées selon la date de chaque abonnement."
+    ),
+    "slot_dialog.new_title": "Nouveau créneau",
+    "slot_dialog.edit_title": "Modifier le créneau",
+    "slot_dialog.group": "Groupe",
+    "slot_dialog.room": "Salle",
+    "slot_dialog.day": "Jour",
+    "slot_dialog.start": "Début",
+    "slot_dialog.end": "Fin",
+    "slot_dialog.remove": "Retirer le créneau",
+    "slot_dialog.no_rooms": "Ajoutez d'abord une salle dans Paramètres.",
+    "timetable.view.room": "Par salle",
+    "timetable.view.group": "Par groupe",
+    "timetable.view.teacher": "Par enseignant",
+    "timetable.on": "Semaine du",
+    "timetable.new": "Nouveau créneau",
+    "timetable.empty": (
+        "Aucun créneau cette semaine. Double-cliquez sur la grille ou utilisez "
+        "« Nouveau créneau »."
+    ),
+    "timetable.nothing": "Ajoutez d'abord des salles et des groupes.",
+    "timetable.hint": "Double-cliquez sur une case vide pour ajouter un créneau.",
 }

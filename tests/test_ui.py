@@ -263,3 +263,33 @@ def test_selection_fills_the_row_with_a_leading_edge(qtbot):
     assert pixel(table, 1, 1, dx=1) == tokens()["primary_soft"]  # no frame on the left edge
     assert pixel(table, 1, 0, dx=1) == tokens()["primary"]  # 3 px ink edge
     assert pixel(table, 1, 1, dx=1) != tokens()["primary"]
+
+
+# ----- closed dialogs and popups are freed -----
+
+def test_closed_dialogs_and_calendars_do_not_pile_up(qtbot, conn, director, monkeypatch):
+    import gc
+
+    from PySide6.QtCore import QCoreApplication
+    from PySide6.QtWidgets import QApplication, QDialog
+
+    from tadris.ui.pages.students import StudentsPage
+    from tadris.ui.student_dialog import StudentDialog
+    from tadris.ui.widgets.date_edit import DateLineEdit
+
+    page = StudentsPage(conn, director)
+    field = DateLineEdit()
+    qtbot.addWidget(page)
+    qtbot.addWidget(field)
+    monkeypatch.setattr(StudentDialog, "exec", lambda self: QDialog.DialogCode.Rejected)
+
+    def live() -> int:
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        gc.collect()
+        return len(QApplication.allWidgets())
+
+    before = live()
+    for _ in range(10):
+        page.list._create()  # opened, then Annuler
+        field.open_calendar().close()
+    assert live() == before

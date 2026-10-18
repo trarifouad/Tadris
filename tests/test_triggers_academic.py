@@ -102,9 +102,41 @@ def test_slot_adjacent_periods_do_not_overlap(seeded):
     )
 
 
-def test_group_capacity_vs_room(seeded):
+SECOND_STUDENT = """
+INSERT INTO students(student_number,first_name,last_name) VALUES('2026-0002','C','D');
+INSERT INTO registrations(student_id,school_year_id,level_id,fee_amount) VALUES(2,1,1,0);
+"""
+ENROLL_SECOND = (
+    "INSERT INTO enrollments(student_id,group_id,registration_id,enrolled_on) "
+    "VALUES(2,1,2,'2026-09-01')"
+)
+
+
+def test_room_must_fit_enrolled_students_not_group_capacity(seeded):
+    # The seeded group has 10 places and 1 student: a 1-seat room is enough...
+    add_room(seeded, cap=1)
+    add_slot(seeded)
+    # ...and while the group meets there, a second student no longer fits.
+    seeded.executescript(SECOND_STUDENT)
+    with pytest.raises(sqlite3.IntegrityError, match="room is full"):
+        seeded.execute(ENROLL_SECOND)
+
+
+def test_room_cannot_shrink_below_enrolled_students(seeded):
     add_room(seeded, cap=5)
-    with pytest.raises(sqlite3.IntegrityError, match="room capacity"):
+    add_slot(seeded)
+    seeded.executescript(SECOND_STUDENT)
+    seeded.execute(ENROLL_SECOND)
+    seeded.execute("UPDATE rooms SET capacity = 2 WHERE id = 1")  # below the group's 10
+    with pytest.raises(sqlite3.IntegrityError, match="room capacity below enrolled students"):
+        seeded.execute("UPDATE rooms SET capacity = 1 WHERE id = 1")
+
+
+def test_room_too_small_for_enrolled_students(seeded):
+    seeded.executescript(SECOND_STUDENT)
+    seeded.execute(ENROLL_SECOND)
+    add_room(seeded, cap=1)
+    with pytest.raises(sqlite3.IntegrityError, match="room too small for enrolled students"):
         add_slot(seeded)
 
 

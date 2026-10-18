@@ -1,6 +1,7 @@
 from html import escape
 
 from PySide6.QtWidgets import (
+    QDialog,
     QHBoxLayout,
     QLabel,
     QMainWindow,
@@ -36,6 +37,24 @@ class ErrorBanner(QLabel):
         self.clear()
         self.hide()
         fit_to_content(self.window())
+
+
+class PageBanner(QLabel):
+    """Red banner on a page (not a dialog) for an action's BusinessRuleError."""
+
+    def __init__(self, parent: QWidget | None = None):
+        super().__init__(parent)
+        self.setObjectName("errorBanner")
+        self.setWordWrap(True)
+        self.hide()
+
+    def show_error(self, message: str) -> None:
+        self.setText(message)
+        self.show()
+
+    def clear_error(self) -> None:
+        self.clear()
+        self.hide()
 
 
 class WarningBanner(ErrorBanner):
@@ -133,6 +152,16 @@ def toast(widget: QWidget, message: str) -> None:
         window.statusBar().showMessage(message, TOAST_MS)
 
 
+def ask(dialog: QDialog) -> bool:
+    """Run a modal dialog; True if accepted. The dialog is then deleted: a dialog with a
+    parent page otherwise stays alive, hidden, until the page dies. Its fields can still be
+    read right after: Qt deletes it once control returns to the event loop."""
+    try:
+        return dialog.exec() == QDialog.DialogCode.Accepted
+    finally:
+        dialog.deleteLater()
+
+
 def confirm(parent: QWidget, title: str, text: str, action: str) -> bool:
     """Confirm step for destructive actions. The confirm button names the action."""
     box = QMessageBox(parent)
@@ -143,4 +172,6 @@ def confirm(parent: QWidget, title: str, text: str, action: str) -> bool:
     cancel = box.addButton(t["action.cancel"], QMessageBox.ButtonRole.RejectRole)
     box.setDefaultButton(cancel)
     box.exec()
-    return box.clickedButton() is accept
+    accepted = box.clickedButton() is accept
+    box.deleteLater()
+    return accepted

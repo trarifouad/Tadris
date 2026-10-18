@@ -1,4 +1,3 @@
-import sqlite3
 from dataclasses import dataclass
 
 from tadris.core.context import UserContext
@@ -6,8 +5,7 @@ from tadris.core.errors import BusinessRuleError, NotFound, ValidationError
 from tadris.core.permissions import require
 from tadris.core.phones import normalize_phone
 from tadris.core.text import clean
-from tadris.db.connection import transaction
-from tadris.db.errors import translate
+from tadris.db.errors import atomic
 from tadris.domain.models import ContactInput, ContactLink, ExistingContact, StudentContact
 from tadris.i18n.fr import t
 from tadris.repositories import contacts as repo
@@ -92,28 +90,22 @@ def add(conn, ctx: UserContext, student_id: int, data: ContactInput,
         link: ContactLink = DEFAULT_LINK) -> int:
     require(ctx, "student.update")
     values = clean_contact(data)
-    try:
-        with transaction(conn):
-            _require_student(conn, student_id)
-            return add_in_transaction(conn, ctx, student_id, values, link)
-    except sqlite3.IntegrityError as exc:
-        raise translate(exc) from exc
+    with atomic(conn):
+        _require_student(conn, student_id)
+        return add_in_transaction(conn, ctx, student_id, values, link)
 
 
 def link_existing(conn, ctx: UserContext, student_id: int, contact_id: int,
                   link: ContactLink = DEFAULT_LINK) -> None:
     """Link a contact already on file (a sibling's parent) to this student."""
     require(ctx, "student.update")
-    try:
-        with transaction(conn):
-            _require_student(conn, student_id)
-            if repo.get(conn, contact_id) is None:
-                raise NotFound(t["not_found"])
-            if repo.get_link(conn, student_id, contact_id) is not None:
-                raise BusinessRuleError(t["contact.already_linked"])
-            _link_in_transaction(conn, ctx, student_id, contact_id, link)
-    except sqlite3.IntegrityError as exc:
-        raise translate(exc) from exc
+    with atomic(conn):
+        _require_student(conn, student_id)
+        if repo.get(conn, contact_id) is None:
+            raise NotFound(t["not_found"])
+        if repo.get_link(conn, student_id, contact_id) is not None:
+            raise BusinessRuleError(t["contact.already_linked"])
+        _link_in_transaction(conn, ctx, student_id, contact_id, link)
 
 
 def find_by_phone(conn, ctx: UserContext, phone: str,
@@ -165,43 +157,40 @@ def update(conn, ctx: UserContext, student_id: int, contact_id: int, data: Conta
     require(ctx, "student.update")
     values = clean_contact(data)
     relation = clean(link.relation) or None
-    try:
-        with transaction(conn):
-            old_link = _require_link(conn, student_id, contact_id)
-            was_main = bool(old_link["is_main"])
-            if was_main and not link.is_main:
-                raise BusinessRuleError(t["contact.main_required_first"])
-            row = repo.get(conn, contact_id)
-            old = {key: row[key] for key in ("full_name", "phone", "phone_2", "address")}
-            new = values.snapshot()
-            if old != new:
-                repo.update(conn, contact_id, values.full_name, values.phone, values.phone_2,
-                            values.address)
-                changed = [key for key in new if old[key] != new[key]]
-                audit.log(
-                    conn, ctx, "contact.update", "contacts", contact_id,
-                    old={key: old[key] for key in changed},
-                    new={key: new[key] for key in changed},
-                )
-            old_l = _link_snapshot(old_link["relation"], was_main,
-                                   bool(old_link["can_receive_sms"]))
-            new_l = _link_snapshot(relation, link.is_main, link.can_receive_sms)
-            if old_l != new_l:
-                repo.update_link(conn, student_id, contact_id, relation, link.can_receive_sms)
-                if link.is_main and not was_main:
-                    repo.set_main(conn, student_id, contact_id)
-                audit.log(
-                    conn, ctx, "contact.update_link", "student_contacts", student_id,
-                    old={"contact_id": contact_id, **old_l},
-                    new={"contact_id": contact_id, **new_l},
-                )
-    except sqlite3.IntegrityError as exc:
-        raise translate(exc) from exc
+    with atomic(conn):
+        old_link = _require_link(conn, student_id, contact_id)
+        was_main = bool(old_link["is_main"])
+        if was_main and not link.is_main:
+            raise BusinessRuleError(t["contact.main_required_first"])
+        row = repo.get(conn, contact_id)
+        old = {key: row[key] for key in ("full_name", "phone", "phone_2", "address")}
+        new = values.snapshot()
+        if old != new:
+            repo.update(conn, contact_id, values.full_name, values.phone, values.phone_2,
+                        values.address)
+            changed = [key for key in new if old[key] != new[key]]
+            audit.log(
+                conn, ctx, "contact.update", "contacts", contact_id,
+                old={key: old[key] for key in changed},
+                new={key: new[key] for key in changed},
+            )
+        old_l = _link_snapshot(old_link["relation"], was_main,
+                               bool(old_link["can_receive_sms"]))
+        new_l = _link_snapshot(relation, link.is_main, link.can_receive_sms)
+        if old_l != new_l:
+            repo.update_link(conn, student_id, contact_id, relation, link.can_receive_sms)
+            if link.is_main and not was_main:
+                repo.set_main(conn, student_id, contact_id)
+            audit.log(
+                conn, ctx, "contact.update_link", "student_contacts", student_id,
+                old={"contact_id": contact_id, **old_l},
+                new={"contact_id": contact_id, **new_l},
+            )
 
 
 def set_main(conn, ctx: UserContext, student_id: int, contact_id: int) -> None:
     require(ctx, "student.update")
-    with transaction(conn):
+    with atomic(conn):
         _require_link(conn, student_id, contact_id)
         previous = repo.main_contact_id(conn, student_id)
         if previous == contact_id:
@@ -216,7 +205,7 @@ def set_main(conn, ctx: UserContext, student_id: int, contact_id: int) -> None:
 def unlink(conn, ctx: UserContext, student_id: int, contact_id: int) -> None:
     """Remove the link only; the contact stays on file (it may belong to a sibling)."""
     require(ctx, "student.update")
-    with transaction(conn):
+    with atomic(conn):
         row = _require_link(conn, student_id, contact_id)
         if row["is_main"] and repo.count_for_student(conn, student_id) > 1:
             raise BusinessRuleError(t["contact.main_required_first"])

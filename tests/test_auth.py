@@ -46,16 +46,16 @@ def test_bootstrap_only_once(conn, director):
 
 def test_bootstrap_rechecks_inside_the_transaction(conn, monkeypatch):
     # Two first-run windows: another one finishes between our check and our write.
-    real_transaction = auth.transaction
+    real_atomic = auth.atomic
     state = {"raced": False}
 
-    def racing_transaction(c):
+    def racing_atomic(c):
         if not state["raced"]:
             state["raced"] = True
             auth.bootstrap_director(c, "premier", "password1", "École A")
-        return real_transaction(c)
+        return real_atomic(c)
 
-    monkeypatch.setattr(auth, "transaction", racing_transaction)
+    monkeypatch.setattr(auth, "atomic", racing_atomic)
     with pytest.raises(ValidationError) as exc:
         auth.bootstrap_director(conn, "second", "password1", "École B")
     assert exc.value.message == t["auth.already_initialized"]

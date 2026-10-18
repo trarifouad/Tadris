@@ -1,6 +1,5 @@
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QDialog,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -21,7 +20,7 @@ from tadris.services import contacts, students
 from tadris.ui.contact_dialog import ContactDialog
 from tadris.ui.student_dialog import StudentDialog
 from tadris.ui.theme.status import kind_for
-from tadris.ui.widgets.common import Badge, confirm, primary_button, toast, variant_button
+from tadris.ui.widgets.common import Badge, ask, confirm, primary_button, toast, variant_button
 from tadris.ui.widgets.tables import ID_ROLE, fill, item, ruled_table, selected_id
 
 # Tabs filled by later phases: registration (4), groups (4), subscriptions (5),
@@ -130,7 +129,7 @@ class StudentDetailView(QWidget):
 
     def _edit(self) -> None:
         dialog = StudentDialog(self._conn, self._ctx, self.student, parent=self)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
+        if ask(dialog):
             self.refresh()
             toast(self, t["students.updated"].format(name=self.student.full_name))
 
@@ -284,7 +283,7 @@ class ContactsTab(QWidget):
     def _add(self) -> None:
         dialog = ContactDialog(self._conn, self._ctx, self._student_id,
                                is_first=not self._contacts, parent=self)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
+        if ask(dialog):
             self._done(t["contacts.added"].format(name=dialog.saved_name()), dialog.contact_id)
 
     def _edit(self) -> None:
@@ -292,7 +291,7 @@ class ContactsTab(QWidget):
         if contact is None:
             return
         dialog = ContactDialog(self._conn, self._ctx, self._student_id, contact, parent=self)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
+        if ask(dialog):
             self._done(t["contacts.updated"].format(name=dialog.saved_name()), contact.contact_id)
 
     def _make_main(self) -> None:

@@ -14,8 +14,11 @@ from tadris.core.context import UserContext
 from tadris.core.permissions import nav_for
 from tadris.i18n.fr import t
 from tadris.services import settings
+from tadris.ui.pages.groups import GroupsPage
 from tadris.ui.pages.settings import SettingsPage
 from tadris.ui.pages.students import StudentsPage
+from tadris.ui.pages.teachers import TeachersPage
+from tadris.ui.pages.timetable import TimetablePage
 
 SIDEBAR_WIDTH = 216
 
@@ -49,6 +52,8 @@ class MainWindow(QMainWindow):
 
         self.pages = QStackedWidget()
         self.nav_buttons: dict[str, QPushButton] = {}
+        self._slots: dict[str, int] = {}
+        self._built: set[str] = set()
         self._group = QButtonGroup(self)
         self._group.setExclusive(True)
 
@@ -69,9 +74,30 @@ class MainWindow(QMainWindow):
         if first is not None:
             first.click()
 
+    def _show(self, key: str, label: str) -> None:
+        index = self._slots[key]
+        if key not in self._built:
+            placeholder = self.pages.widget(index)
+            self.pages.removeWidget(placeholder)
+            placeholder.deleteLater()
+            self.pages.insertWidget(index, self._page_for(key, label))
+            self._built.add(key)
+        else:
+            # Other pages (or the other workstation) may have changed what it shows.
+            page = self.pages.widget(index)
+            if hasattr(page, "refresh"):
+                page.refresh()
+        self.pages.setCurrentIndex(index)
+
     def _page_for(self, key: str, label: str) -> QWidget:
-        if key == "students":
-            return StudentsPage(self._conn, self.ctx)
+        pages = {
+            "students": StudentsPage,
+            "groups": GroupsPage,
+            "timetable": TimetablePage,
+            "teachers": TeachersPage,
+        }
+        if key in pages:
+            return pages[key](self._conn, self.ctx)
         if key == "settings":
             return SettingsPage(self._conn, self.ctx)
         return PlaceholderPage(label)
@@ -98,11 +124,12 @@ class MainWindow(QMainWindow):
 
         for key, label_key in nav_for(self.ctx):
             label = t[label_key]
-            index = self.pages.addWidget(self._page_for(key, label))
+            # Pages are built on first visit: startup stays fast and each page loads fresh.
+            self._slots[key] = self.pages.addWidget(QWidget())
             button = QPushButton(label)
             button.setObjectName("navItem")
             button.setCheckable(True)
-            button.clicked.connect(lambda _checked, i=index: self.pages.setCurrentIndex(i))
+            button.clicked.connect(lambda _checked, k=key, lb=label: self._show(k, lb))
             self._group.addButton(button)
             self.nav_buttons[key] = button
             layout.addWidget(button)

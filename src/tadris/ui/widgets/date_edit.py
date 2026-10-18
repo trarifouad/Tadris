@@ -60,6 +60,8 @@ class DatePopup(QFrame):
     def __init__(self, parent=None, minimum: date | None = None, maximum: date | None = None):
         super().__init__(parent, Qt.WindowType.Popup)
         self.setObjectName("datePopup")
+        # A new popup opens each time; without this every closed one stays alive.
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         self.minimum = minimum or FALLBACK_MIN
         self.maximum = maximum or FALLBACK_MAX
         self.view = self.DAYS

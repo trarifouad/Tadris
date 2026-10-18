@@ -1,5 +1,4 @@
 import re
-import sqlite3
 
 from tadris.core import dates
 from tadris.core.context import UserContext
@@ -7,8 +6,7 @@ from tadris.core.errors import BusinessRuleError, NotFound, ValidationError
 from tadris.core.permissions import require
 from tadris.core.phones import digits, normalize_phone
 from tadris.core.text import clean, fold
-from tadris.db.connection import transaction
-from tadris.db.errors import translate
+from tadris.db.errors import atomic
 from tadris.domain.models import (
     ContactInput,
     ContactLink,
@@ -89,27 +87,24 @@ def create(
     first_name, last_name, birth, notes = _clean_input(data)
     if contact is not None:
         contact_values = contacts_service.clean_contact(contact)
-    try:
-        with transaction(conn):
-            number = next_number(conn)
-            student_id = repo.insert(conn, number, first_name, last_name, birth, notes)
-            audit.log(
-                conn, ctx, "student.create", "students", student_id,
-                new={"student_number": number, **_snapshot(first_name, last_name, birth, notes)},
+    with atomic(conn):
+        number = next_number(conn)
+        student_id = repo.insert(conn, number, first_name, last_name, birth, notes)
+        audit.log(
+            conn, ctx, "student.create", "students", student_id,
+            new={"student_number": number, **_snapshot(first_name, last_name, birth, notes)},
+        )
+        if contact is not None:
+            contacts_service.add_in_transaction(
+                conn, ctx, student_id, contact_values, link or ContactLink()
             )
-            if contact is not None:
-                contacts_service.add_in_transaction(
-                    conn, ctx, student_id, contact_values, link or ContactLink()
-                )
-            return student_id
-    except sqlite3.IntegrityError as exc:
-        raise translate(exc) from exc
+        return student_id
 
 
 def update(conn, ctx: UserContext, student_id: int, data: StudentInput) -> None:
     require(ctx, "student.update")
     first_name, last_name, birth, notes = _clean_input(data)
-    with transaction(conn):
+    with atomic(conn):
         row = _require_row(conn, student_id)
         old = _snapshot(row["first_name"], row["last_name"], row["birth_date"], row["notes"])
         new = _snapshot(first_name, last_name, birth, notes)
@@ -127,7 +122,7 @@ def update(conn, ctx: UserContext, student_id: int, data: StudentInput) -> None:
 def deactivate(conn, ctx: UserContext, student_id: int) -> None:
     """Students are never deleted. Deactivation hides them from the default list."""
     require(ctx, "student.deactivate")
-    with transaction(conn):
+    with atomic(conn):
         row = _require_row(conn, student_id)
         if row["status"] == "inactive":
             raise BusinessRuleError(t["student.already_inactive"])
@@ -142,7 +137,7 @@ def deactivate(conn, ctx: UserContext, student_id: int) -> None:
 
 def reactivate(conn, ctx: UserContext, student_id: int) -> None:
     require(ctx, "student.reactivate")
-    with transaction(conn):
+    with atomic(conn):
         row = _require_row(conn, student_id)
         if row["status"] == "active":
             raise BusinessRuleError(t["student.already_active"])

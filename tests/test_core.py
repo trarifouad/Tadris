@@ -5,14 +5,17 @@ import pytest
 from tadris.core import permissions, security
 from tadris.core.context import UserContext
 from tadris.core.dates import (
+    add_minutes,
     add_one_month,
     display_date,
     iso,
     parse_display_date,
+    parse_time,
     weekday_1_to_7,
 )
 from tadris.core.errors import PermissionDenied, ValidationError
 from tadris.core.money import format_dzd, parse_dzd
+from tadris.core.percent import apply_rate, format_percent, parse_percent
 from tadris.core.phones import format_phone, normalize_phone
 from tadris.core.text import clean, fold
 from tadris.i18n.fr import t
@@ -123,6 +126,8 @@ def test_verify_password_rejects_malformed_hash(stored):
 RECEPTIONIST_DENIED = {
     "student.deactivate",
     "student.reactivate",
+    "group.manage",
+    "academic.manage",
     "enrollment.override",
     "payment.void",
     "refund.approve",
@@ -254,3 +259,56 @@ def test_parse_display_date_rejects_invalid(text):
 
 def test_sql_fold_function(conn):
     assert conn.execute("SELECT fold('Hélène')").fetchone()[0] == "helene"
+
+
+# ----- percentages (basis points) -----
+
+@pytest.mark.parametrize("text, bp", [
+    ("60", 6000), ("60 %", 6000), ("62,5", 6250), ("62.5%", 6250), ("62,55", 6255),
+    ("0", 0), ("100", 10000), (" 7 ", 700),
+])
+def test_parse_percent(text, bp):
+    assert parse_percent(text) == bp
+
+
+@pytest.mark.parametrize("text", ["", "abc", "100,01", "101", "62,555", "-5", "6 0"])
+def test_parse_percent_rejects_invalid(text):
+    with pytest.raises(ValidationError) as exc:
+        parse_percent(text)
+    assert exc.value.message == t["percent.invalid"]
+
+
+@pytest.mark.parametrize("bp, text", [
+    (6000, "60 %"), (6250, "62,5 %"), (6255, "62,55 %"), (0, "0 %"), (10000, "100 %"),
+    (705, "7,05 %"),
+])
+def test_format_percent(bp, text):
+    assert format_percent(bp) == text
+    assert parse_percent(text) == bp
+
+
+def test_apply_rate_rounds_down():
+    assert apply_rate(60000, 6000) + apply_rate(120000, 6000) == 108000  # the plan's example
+    assert apply_rate(3333, 5000) == 1666
+
+
+# ----- times -----
+
+@pytest.mark.parametrize("text, value", [
+    ("17", "17:00"), ("17h", "17:00"), ("17H30", "17:30"), ("17:30", "17:30"),
+    ("1730", "17:30"), ("8h05", "08:05"), ("9.15", "09:15"), (" 17 : 30 ", "17:30"),
+])
+def test_parse_time(text, value):
+    assert parse_time(text) == value
+
+
+@pytest.mark.parametrize("text", ["", "24h", "17:60", "abc", "830", "17:3"])
+def test_parse_time_rejects_invalid(text):
+    with pytest.raises(ValidationError) as exc:
+        parse_time(text)
+    assert exc.value.message == t["time.invalid"]
+
+
+def test_add_minutes():
+    assert add_minutes("17:00", 90) == "18:30"
+    assert add_minutes("23:00", 90) == "23:59"

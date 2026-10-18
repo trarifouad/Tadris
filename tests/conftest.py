@@ -12,6 +12,24 @@ from tadris.services import auth as auth_service
 security.N = 2**4
 
 
+@pytest.fixture(autouse=True)
+def delete_leftover_windows():
+    """Delete the windows a test leaves behind (pages, dialogs, popups). Each UI test
+    re-applies the theme, which re-styles every live widget: leftovers would make every
+    later test slower."""
+    yield
+    from PySide6.QtCore import QCoreApplication, QEvent
+    from PySide6.QtWidgets import QApplication
+
+    app = QApplication.instance()
+    if app is None:
+        return
+    for widget in app.topLevelWidgets():
+        widget.close()
+        widget.deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
+
 @pytest.fixture
 def conn():
     auth_service._reset_failures()

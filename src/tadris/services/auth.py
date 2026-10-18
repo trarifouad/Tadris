@@ -6,7 +6,7 @@ from tadris.core.errors import PermissionDenied, ValidationError
 from tadris.core.permissions import require
 from tadris.core.security import hash_password, verify_password
 from tadris.db.connection import transaction
-from tadris.db.errors import translate
+from tadris.db.errors import atomic, translate
 from tadris.i18n.fr import t
 from tadris.services import audit
 
@@ -41,32 +41,29 @@ def bootstrap_director(conn, username: str, password: str, school_name: str) -> 
         raise ValidationError(t["auth.school_name_required"])
     if len(password) < MIN_PASSWORD_LEN:
         raise ValidationError(t["auth.password_short"])
-    try:
-        with transaction(conn):
-            # Re-check under the write lock: another first-run window may have finished.
-            if user_count(conn) > 0:
-                raise ValidationError(t["auth.already_initialized"])
-            conn.execute(
-                "INSERT INTO users(username, password_hash, role) VALUES (?, ?, 'director')",
-                (username, hash_password(password)),
-            )
-            user_id = int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])
-            conn.execute(
-                "INSERT INTO settings(key, value) VALUES ('school.name', ?)",
-                (school_name,),
-            )
-            ctx = UserContext(user_id=user_id, username=username, role="director")
-            audit.log(
-                conn,
-                ctx,
-                "user.bootstrap",
-                "users",
-                user_id,
-                new={"username": username, "role": "director"},
-            )
-            return ctx
-    except sqlite3.IntegrityError as exc:
-        raise translate(exc) from exc
+    with atomic(conn):
+        # Re-check under the write lock: another first-run window may have finished.
+        if user_count(conn) > 0:
+            raise ValidationError(t["auth.already_initialized"])
+        conn.execute(
+            "INSERT INTO users(username, password_hash, role) VALUES (?, ?, 'director')",
+            (username, hash_password(password)),
+        )
+        user_id = int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])
+        conn.execute(
+            "INSERT INTO settings(key, value) VALUES ('school.name', ?)",
+            (school_name,),
+        )
+        ctx = UserContext(user_id=user_id, username=username, role="director")
+        audit.log(
+            conn,
+            ctx,
+            "user.bootstrap",
+            "users",
+            user_id,
+            new={"username": username, "role": "director"},
+        )
+        return ctx
 
 
 def login(conn, username: str, password: str) -> UserContext:

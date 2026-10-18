@@ -1,4 +1,5 @@
-"""Fill a database with demo students and contacts, through the services.
+"""Fill a database with demo students, contacts and the school structure (year, levels,
+subjects, rooms, teachers, groups and a weekly timetable), through the services.
 
 Usage: python scripts/seed_demo.py PATH.db
 The path is required so the real database is never seeded by accident. Creates the director
@@ -10,10 +11,29 @@ import sys
 from datetime import date
 from pathlib import Path
 
+from tadris.core.dates import add_minutes
+from tadris.core.errors import BusinessRuleError
 from tadris.db.connection import connect
 from tadris.db.migrate import migrate
-from tadris.domain.models import ContactInput, ContactLink, StudentInput
-from tadris.services import auth, contacts, students
+from tadris.domain.models import (
+    ContactInput,
+    ContactLink,
+    GroupInput,
+    SlotInput,
+    StudentInput,
+    TeacherInput,
+)
+from tadris.services import (
+    auth,
+    catalog,
+    contacts,
+    groups,
+    rooms,
+    school_years,
+    students,
+    teachers,
+    timetable,
+)
 
 FAMILIES = [
     "Benali", "Haddad", "Mansouri", "Bouzid", "Saidi", "Khelifi", "Belkacem", "Meziane",
@@ -31,6 +51,55 @@ def phone(rng: random.Random) -> str:
     return f"0{rng.choice('567')}{rng.randrange(10**8):08d}"
 
 
+LEVELS = ["1AM", "2AM", "3AM", "4AM", "1AS", "2AS", "3AS"]
+SUBJECTS = ["Mathématiques", "Physique", "Sciences", "Français", "Anglais", "Arabe"]
+ROOMS = [("Salle A", 20), ("Salle B", 15), ("Salle C", 25), ("Labo", 12)]
+TEACHERS = [("Karim Haddad", 6000), ("Samia Rahmani", 5500), ("Nabil Cherif", 6000),
+            ("Leila Bouzid", 5000), ("Mourad Saidi", 6500)]
+# (subject, level, group name, teacher index, price, capacity)
+GROUPS = [
+    ("Mathématiques", "4AM", "Maths 4AM G1", 0, 3000, 15),
+    ("Mathématiques", "4AM", "Maths 4AM G2", 0, 3000, 15),
+    ("Physique", "4AM", "Physique 4AM", 1, 2500, 15),
+    ("Mathématiques", "3AS", "Maths 3AS", 4, 4000, 20),
+    ("Physique", "3AS", "Physique 3AS", 1, 3500, 12),
+    ("Français", "1AM", "Français 1AM", 3, 2000, 20),
+    ("Anglais", "2AS", "Anglais 2AS", 2, 2500, 15),
+    ("Sciences", "3AM", "Sciences 3AM", 2, 2500, 12),
+]
+STARTS = ["09:00", "10:30", "14:00", "15:30", "17:00", "18:30"]
+
+
+def seed_school(conn, director, rng: random.Random) -> None:
+    if school_years.current(conn, director) is not None:
+        return
+    year = school_years.create(conn, director, "2026-2027", date(2026, 9, 1), date(2027, 6, 30))
+    level_ids = {name: catalog.create(conn, director, "level", name) for name in LEVELS}
+    subject_ids = {name: catalog.create(conn, director, "subject", name) for name in SUBJECTS}
+    room_ids = [rooms.create(conn, director, name, capacity) for name, capacity in ROOMS]
+    teacher_ids = [
+        teachers.create(conn, director, TeacherInput(name, phone(rng), date(2024, 9, 1)), bp,
+                        date(2026, 9, 1))
+        for name, bp in TEACHERS
+    ]
+    for subject, level, name, teacher, price, capacity in GROUPS:
+        group_id = groups.create(conn, director, GroupInput(
+            year, level_ids[level], subject_ids[subject], name, price, capacity,
+            date(2026, 9, 15)), teacher_ids[teacher])
+        placed = 0
+        while placed < 2:
+            # Weekend mornings and weekday evenings; skip any clash the services refuse.
+            weekday = rng.choice((6, 6, 7, 1, 2, 3, 4, 5))
+            start = rng.choice(STARTS[:3] if weekday in (5, 6) else STARTS[4:])
+            end = add_minutes(start, 90)
+            try:
+                timetable.add_slot(conn, director, SlotInput(
+                    group_id, rng.choice(room_ids), weekday, start, end, date(2026, 9, 15)))
+                placed += 1
+            except BusinessRuleError:
+                continue
+
+
 def main(path: Path) -> None:
     rng = random.Random(2026)
     conn = connect(path)
@@ -40,6 +109,7 @@ def main(path: Path) -> None:
         director = auth.login(conn, "directeur", "password1")
         auth.create_user(conn, director, "accueil", "password2", "receptionist")
     director = auth.login(conn, "directeur", "password1")
+    seed_school(conn, director, rng)
 
     created = 0
     for family in FAMILIES:

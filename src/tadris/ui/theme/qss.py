@@ -59,6 +59,9 @@ def build_qss(t: dict, chevron: str = "", check: str = "") -> str:
     QScrollBar::add-line, QScrollBar::sub-line {{ width: 0; height: 0; }}
     QScrollBar::add-page, QScrollBar::sub-page {{ background: transparent; }}
     QComboBox::drop-down {{ border: none; width: 28px; }}
+    /* The stock spin arrows do not fit the Encre inputs. Collapse them here: with
+       setButtonSymbols(NoButtons) the stylesheet squeezes the text field to 1 px. */
+    QSpinBox::up-button, QSpinBox::down-button {{ width: 0px; border: none; }}
     QComboBox::down-arrow {{ image: url("{chevron}"); width: 14px; height: 14px; }}
     QComboBox QAbstractItemView {{ background: {t['surface']}; border: 1px solid {t['border']};
         selection-background-color: {t['primary_soft']}; selection-color: {t['text']}; }}
@@ -142,6 +145,7 @@ def build_qss(t: dict, chevron: str = "", check: str = "") -> str:
     QTabBar::tab:selected {{ color: {t['text']}; font-weight: 500;
         border-bottom: 2px solid {t['primary']}; }}
 
+    QScrollArea, QScrollArea > QWidget > QWidget {{ background: transparent; }}
     QStatusBar {{ background: {t['surface']}; border-top: 1px solid {t['border']}; }}
     QStatusBar QLabel {{ color: {t['muted']}; font-size: 12px; padding: 0 8px; }}
     """

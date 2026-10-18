@@ -1,6 +1,8 @@
 import sqlite3
+from contextlib import contextmanager
 
 from tadris.core.errors import BusinessRuleError
+from tadris.db.connection import transaction
 from tadris.i18n.fr import t
 
 _TRIGGER_MESSAGES = (
@@ -29,7 +31,10 @@ _TRIGGER_MESSAGES = (
     ("group is full", "db.group_full"),
     ("capacity below current enrollment", "db.capacity_below_enrolled"),
     ("group capacity exceeds room capacity", "db.group_exceeds_room"),
+    ("room too small for enrolled students", "db.group_exceeds_room"),
     ("room capacity below a group capacity", "db.room_below_group"),
+    ("room capacity below enrolled students", "db.room_below_group"),
+    ("room is full", "db.room_full"),
     ("room slot overlap", "db.room_slot_overlap"),
     ("group slot overlap", "db.group_slot_overlap"),
     ("session group differs from slot group", "db.session_group_mismatch"),
@@ -64,3 +69,14 @@ def translate(exc: sqlite3.IntegrityError) -> BusinessRuleError:
         if needle in raw:
             return BusinessRuleError(t[key])
     return BusinessRuleError(t["db.integrity"])
+
+
+@contextmanager
+def atomic(conn):
+    """BEGIN IMMEDIATE ... COMMIT, with trigger and constraint errors turned into French
+    BusinessRuleErrors."""
+    try:
+        with transaction(conn):
+            yield conn
+    except sqlite3.IntegrityError as exc:
+        raise translate(exc) from exc

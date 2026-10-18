@@ -3,6 +3,7 @@ from datetime import date
 import pytest
 from PySide6.QtCore import QDate, Qt
 from PySide6.QtWidgets import QLabel
+from shiboken6 import isValid
 
 from tadris.core import dates
 from tadris.domain.models import ContactInput, ContactLink, StudentInput
@@ -567,7 +568,8 @@ def popup(qtbot):
     popup = field.open_calendar()
     popup.field = field
     yield popup
-    popup.close()
+    if isValid(popup):  # picking a day closes and deletes it
+        popup.close()
 
 
 def enabled_texts(buttons) -> list[str]:

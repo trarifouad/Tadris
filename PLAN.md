@@ -184,7 +184,23 @@ ui/first_run.py        create the director account and school name on first star
 
 ## Phase 3: Academic setup
 
-**Goal:** the school structure and weekly timetable exist in the system.
+**Status:** done. Services and repositories for school years, levels and subjects (`catalog`), rooms, teachers with rate history, groups with teacher history, and the weekly timetable; migrations 0006 (one open year, lookup indexes), 0007 (rooms checked against enrolled students) and 0008 (`school_years.opened_on`). Paramètres tabs (school details and hours, users, years, levels, subjects, rooms), Enseignants and Groupes pages (list and detail), Emploi du temps grid by room, group or teacher. Pages are built on first visit and reload each time they are shown again. Seed script fills the school structure too. 527 tests green. Tagged `phase-3`.
+
+**Decisions taken in this phase**
+
+- One open year at a time (service rule and unique index). A year created while another is open waits as "à venir" (status `closed`, `opened_on` empty) until it is first opened, even once its start date has passed (the previous year may still be open at la rentrée): its groups and slots can be prepared; registrations and enrollments stay in the open year (phase 4). Opening a year requires closing the current one. Closing a year closes its groups and ends their slots. A year closed by mistake can be reopened until its end date; a finished year cannot (migration 0008 adds `opened_on`).
+- Groups, prices and teacher changes are director-only (`group.manage`). The front desk manages timetable slots (`timetable.manage`). Years, levels, subjects and rooms are director-only (`academic.manage`), readable by both (`academic.view`). Rates are visible to the director only.
+- Rates: basis points in half-open periods; a new rate closes the current one on its start date (no gap, no overlap). Same start date = correction, refused once an approved or paid payout covers it. Teacher changes on a group follow the same rule, refused once that teacher was paid for the group.
+- Level, subject and start date of a group are fixed once it has students; the school year never changes. Changing the start date moves the first teacher period with it (refused past a planned teacher change); moving it later also moves its slots' start (slots over before it are removed; refused once a slot has sessions).
+- A group's teacher is the one assigned on a given date: a change can be planned for later and only shows from its date, in the groups list, the timetable and the teacher pages. Its date must fall between the group's start and the end of the year. Queries take today's date from the service rather than SQLite's clock.
+- Closing a group ends its running slots today and removes slots that never produced a session (the slot triggers do not look at group status, so a closed group must free its rooms).
+- Editing a slot without sessions changes it in place; with sessions it ends today and a new slot takes over. Removing follows the same split.
+- A room must fit the students actually enrolled (trial or active), not the group's maximum: a group planned for 16 with 5 students can meet in a 5-seat room. While it meets there, the smallest room among its running or future slots caps its enrollments, so its seats are min(capacity, smallest room), shown on the group page. A room cannot shrink below the enrolled students of a group using it. Migration 0007 replaces the phase 0 triggers that compared group capacity with room capacity.
+- Conflict messages name the clash: room, group, and teacher (one teacher, two groups at the same time: a service rule that follows the teacher history, so a teacher is busy in a group only during their period there). The room is checked first.
+- School opening hours (Paramètres, École tab, same every day; default 08:00–20:00 until set): every slot must fit inside them; changing them is refused while a running or future slot of an open group falls outside, naming it. The grid shows exactly these hours and the slot dialog offers times inside them. The École tab also edits the school name, address and phone (keys that existed without a screen).
+- The timetable week starts on Saturday; times are typed freely (17h30, 1730) or picked by quarter hour, and the service stores them as 'HH:MM' whatever the caller sends. A past week still shows the slots of groups closed since (closing ends their slots, so validity alone decides).
+- The École tab saves all or nothing in one transaction.
+- Every service write goes through `atomic()` (phase 2 services moved to it), so trigger errors always reach the user in French.
 
 **Screens**
 
@@ -225,6 +241,8 @@ ui/first_run.py        create the director account and school name on first star
 2. Enrollment: choose a group of the same year and level; status `active`, or `trial` if it is the first free trial.
 3. Switch group: old enrollment becomes `switched`, new enrollment points to it through `switched_from_id`.
 4. Leave group: set `left_on` and status `left`.
+
+**Note from the phase 3 review:** the enrollment triggers can be bypassed by the `override:enrollment_level` and `override:enrollment_start` rows in `settings`. A director override must set the row and remove it inside the same `atomic()` transaction as the enrollment, never leave it set, and be audited.
 5. Director override: enroll in another level, or after the group start date. The service sets the settings override key inside the transaction, writes `audit_log` with the reason, and clears the key.
 
 **Screens**

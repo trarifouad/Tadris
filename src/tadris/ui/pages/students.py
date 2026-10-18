@@ -1,11 +1,9 @@
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QComboBox,
-    QDialog,
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -21,7 +19,8 @@ from tadris.services import students
 from tadris.ui.pages.student_detail import StudentDetailView
 from tadris.ui.student_dialog import StudentDialog
 from tadris.ui.theme.status import kind_for
-from tadris.ui.widgets.common import primary_button, toast
+from tadris.ui.widgets.common import ask, primary_button, toast
+from tadris.ui.widgets.forms import ListDetailPage
 from tadris.ui.widgets.tables import CENTER, ID_ROLE, fill, item, ruled_table
 
 SEARCH_DELAY_MS = 250
@@ -30,40 +29,20 @@ STATUS_FILTERS = (("students.filter.active", "active"),
                   ("students.filter.all", None))
 
 
-class StudentsPage(QWidget):
+class StudentsPage(ListDetailPage):
     """Élèves: the list, and a student's detail page in place of it."""
 
     def __init__(self, conn, ctx: UserContext):
-        super().__init__()
-        self._conn = conn
-        self._ctx = ctx
-        self.setObjectName("page")
-        self.list = StudentListView(conn, ctx)
-        self.list.opened.connect(self.open_student)
-        self.detail: StudentDetailView | None = None
-        self.stack = QStackedWidget()
-        self.stack.addWidget(self.list)
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(self.stack)
+        super().__init__(StudentListView(conn, ctx),
+                         lambda student_id: StudentDetailView(conn, ctx, student_id))
 
     def open_student(self, student_id: int) -> None:
-        self._drop_detail()
-        self.detail = StudentDetailView(self._conn, self._ctx, student_id)
-        self.detail.back.connect(self.show_list)
-        self.stack.addWidget(self.detail)
-        self.stack.setCurrentWidget(self.detail)
+        self.open(student_id)
 
-    def show_list(self) -> None:
-        self.list.refresh()
-        self.stack.setCurrentWidget(self.list)
-        self._drop_detail()
-
-    def _drop_detail(self) -> None:
+    def refresh(self) -> None:
+        super().refresh()
         if self.detail is not None:
-            self.stack.removeWidget(self.detail)
-            self.detail.deleteLater()
-            self.detail = None
+            self.detail.contacts.refresh()  # contacts are shared with siblings
 
 
 class StudentListView(QWidget):
@@ -168,7 +147,7 @@ class StudentListView(QWidget):
 
     def _create(self) -> None:
         dialog = StudentDialog(self._conn, self._ctx, parent=self)
-        if dialog.exec() != QDialog.DialogCode.Accepted:
+        if not ask(dialog):
             return
         student = students.get(self._conn, self._ctx, dialog.student_id)
         toast(self, t["students.created"].format(name=student.full_name,

@@ -1,6 +1,11 @@
 # Single source for status colors: domain -> status -> badge kind (see DESIGN.md).
 STATUS_STYLE = {
     "student": {"active": "success", "inactive": "neutral"},
+    "teacher": {"active": "success", "inactive": "neutral"},
+    "room": {"active": "success", "inactive": "neutral"},
+    "flag": {"yes": "success", "no": "neutral"},
+    "year": {"open": "success", "upcoming": "info", "closed": "neutral"},
+    "group": {"active": "success", "upcoming": "info", "closed": "neutral"},
     "enrollment": {"trial": "info", "active": "success", "left": "neutral", "switched": "neutral"},
     "subscription": {
         "active": "success", "expiring": "warning", "ended": "neutral", "cancelled": "danger",

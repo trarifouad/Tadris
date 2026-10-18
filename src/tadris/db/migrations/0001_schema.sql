@@ -197,7 +197,7 @@ CREATE TABLE timetable_slots (
   valid_to   TEXT,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S','now','localtime')),
   CHECK (end_time > start_time),
-  CHECK (valid_to IS NULL OR valid_to >= valid_from)
+  CHECK (valid_to IS NULL OR valid_to > valid_from)
 );
 
 CREATE TABLE sessions (

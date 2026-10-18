@@ -32,6 +32,39 @@ BEGIN
         >= (SELECT capacity FROM class_groups WHERE id = NEW.group_id);
 END;
 
+CREATE TRIGGER trg_enrollment_rules_upd BEFORE UPDATE ON enrollments
+BEGIN
+  SELECT RAISE(ABORT, 'registration belongs to another student')
+  WHERE (SELECT student_id FROM registrations WHERE id = NEW.registration_id) <> NEW.student_id;
+
+  SELECT RAISE(ABORT, 'registration is cancelled')
+  WHERE (SELECT status FROM registrations WHERE id = NEW.registration_id) <> 'active';
+
+  SELECT RAISE(ABORT, 'registration school year differs from group')
+  WHERE (SELECT school_year_id FROM registrations WHERE id = NEW.registration_id) <>
+        (SELECT school_year_id FROM class_groups WHERE id = NEW.group_id);
+
+  SELECT RAISE(ABORT, 'registration level differs from group level')
+  WHERE (SELECT level_id FROM registrations WHERE id = NEW.registration_id) <>
+        (SELECT level_id FROM class_groups WHERE id = NEW.group_id)
+    AND NOT EXISTS (SELECT 1 FROM settings
+                     WHERE key = 'override:enrollment_level' AND value = '1');
+
+  SELECT RAISE(ABORT, 'group is closed')
+  WHERE (SELECT status FROM class_groups WHERE id = NEW.group_id) = 'closed';
+
+  SELECT RAISE(ABORT, 'group already started')
+  WHERE NEW.enrolled_on > (SELECT start_date FROM class_groups WHERE id = NEW.group_id)
+    AND NOT EXISTS (SELECT 1 FROM settings
+                     WHERE key = 'override:enrollment_start' AND value = '1');
+
+  SELECT RAISE(ABORT, 'group is full')
+  WHERE NEW.status IN ('trial','active')
+    AND (SELECT COUNT(*) FROM enrollments
+          WHERE group_id = NEW.group_id AND status IN ('trial','active') AND id <> NEW.id)
+        >= (SELECT capacity FROM class_groups WHERE id = NEW.group_id);
+END;
+
 -- ===== Capacity: group <= smallest room used by its current/future slots =====
 CREATE TRIGGER trg_group_capacity_not_below_enrolled BEFORE UPDATE OF capacity ON class_groups
 WHEN NEW.capacity < (SELECT COUNT(*) FROM enrollments
@@ -42,17 +75,17 @@ CREATE TRIGGER trg_group_capacity_vs_room BEFORE UPDATE OF capacity ON class_gro
 WHEN NEW.capacity > COALESCE(
        (SELECT MIN(r.capacity) FROM timetable_slots s JOIN rooms r ON r.id = s.room_id
          WHERE s.group_id = NEW.id
-           AND (s.valid_to IS NULL OR s.valid_to >= date('now','localtime'))), 2147483647)
+           AND (s.valid_to IS NULL OR s.valid_to > date('now','localtime'))), 2147483647)
 BEGIN SELECT RAISE(ABORT, 'group capacity exceeds room capacity'); END;
 
 CREATE TRIGGER trg_room_capacity_update BEFORE UPDATE OF capacity ON rooms
 WHEN EXISTS (SELECT 1 FROM timetable_slots s JOIN class_groups g ON g.id = s.group_id
               WHERE s.room_id = NEW.id AND g.status <> 'closed'
-                AND (s.valid_to IS NULL OR s.valid_to >= date('now','localtime'))
+                AND (s.valid_to IS NULL OR s.valid_to > date('now','localtime'))
                 AND g.capacity > NEW.capacity)
 BEGIN SELECT RAISE(ABORT, 'room capacity below a group capacity'); END;
 
--- ===== Timetable slots: room capacity + overlaps (valid_to inclusive here) =====
+-- ===== Timetable slots: room capacity + overlaps, half-open [valid_from, valid_to) =====
 CREATE TRIGGER trg_slots_ins BEFORE INSERT ON timetable_slots
 BEGIN
   SELECT RAISE(ABORT, 'group capacity exceeds room capacity')
@@ -63,15 +96,15 @@ BEGIN
   WHERE EXISTS (SELECT 1 FROM timetable_slots s
                  WHERE s.room_id = NEW.room_id AND s.weekday = NEW.weekday
                    AND s.start_time < NEW.end_time AND s.end_time > NEW.start_time
-                   AND s.valid_from <= COALESCE(NEW.valid_to, '9999-12-31')
-                   AND COALESCE(s.valid_to, '9999-12-31') >= NEW.valid_from);
+                   AND s.valid_from < COALESCE(NEW.valid_to, '9999-12-31')
+                   AND COALESCE(s.valid_to, '9999-12-31') > NEW.valid_from);
 
   SELECT RAISE(ABORT, 'group slot overlap')
   WHERE EXISTS (SELECT 1 FROM timetable_slots s
                  WHERE s.group_id = NEW.group_id AND s.weekday = NEW.weekday
                    AND s.start_time < NEW.end_time AND s.end_time > NEW.start_time
-                   AND s.valid_from <= COALESCE(NEW.valid_to, '9999-12-31')
-                   AND COALESCE(s.valid_to, '9999-12-31') >= NEW.valid_from);
+                   AND s.valid_from < COALESCE(NEW.valid_to, '9999-12-31')
+                   AND COALESCE(s.valid_to, '9999-12-31') > NEW.valid_from);
 END;
 
 CREATE TRIGGER trg_slots_upd BEFORE UPDATE ON timetable_slots
@@ -84,15 +117,15 @@ BEGIN
   WHERE EXISTS (SELECT 1 FROM timetable_slots s
                  WHERE s.id <> NEW.id AND s.room_id = NEW.room_id AND s.weekday = NEW.weekday
                    AND s.start_time < NEW.end_time AND s.end_time > NEW.start_time
-                   AND s.valid_from <= COALESCE(NEW.valid_to, '9999-12-31')
-                   AND COALESCE(s.valid_to, '9999-12-31') >= NEW.valid_from);
+                   AND s.valid_from < COALESCE(NEW.valid_to, '9999-12-31')
+                   AND COALESCE(s.valid_to, '9999-12-31') > NEW.valid_from);
 
   SELECT RAISE(ABORT, 'group slot overlap')
   WHERE EXISTS (SELECT 1 FROM timetable_slots s
                  WHERE s.id <> NEW.id AND s.group_id = NEW.group_id AND s.weekday = NEW.weekday
                    AND s.start_time < NEW.end_time AND s.end_time > NEW.start_time
-                   AND s.valid_from <= COALESCE(NEW.valid_to, '9999-12-31')
-                   AND COALESCE(s.valid_to, '9999-12-31') >= NEW.valid_from);
+                   AND s.valid_from < COALESCE(NEW.valid_to, '9999-12-31')
+                   AND COALESCE(s.valid_to, '9999-12-31') > NEW.valid_from);
 END;
 
 -- ===== Sessions: weekday match + no room/teacher/group overlap (cancelled ignored) =====

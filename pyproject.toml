@@ -8,6 +8,9 @@ version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = ["PySide6", "reportlab", "openpyxl", "platformdirs"]
 
+[project.optional-dependencies]
+dev = ["pytest", "pytest-qt", "ruff"]
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
@@ -20,3 +23,6 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 100
 src = ["src", "tests"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["tadris"]

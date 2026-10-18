@@ -38,6 +38,7 @@ ACTIONS: dict[str, frozenset[str]] = {
     "sms.manage": DIRECTOR_ONLY,
     "settings.view": DIRECTOR_ONLY,
     "settings.change": DIRECTOR_ONLY,
+    "user.view": DIRECTOR_ONLY,
     "user.create": DIRECTOR_ONLY,
     "user.disable": DIRECTOR_ONLY,
     "audit.view": DIRECTOR_ONLY,

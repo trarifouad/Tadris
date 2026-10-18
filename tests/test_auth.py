@@ -139,6 +139,20 @@ def test_create_user_and_audit(conn, director):
     assert audit["entity_id"] == user_id
 
 
+def test_list_users_sorted_with_roles(conn, director, receptionist):
+    users = auth.list_users(conn, director)
+    assert [(u["username"], u["role"], u["status"]) for u in users] == [
+        ("accueil", "receptionist", "active"),
+        ("directeur", "director", "active"),
+    ]
+    assert "password_hash" not in users[0]
+
+
+def test_receptionist_cannot_list_users(conn, receptionist):
+    with pytest.raises(PermissionDenied):
+        auth.list_users(conn, receptionist)
+
+
 def test_receptionist_cannot_create_users(conn, receptionist):
     with pytest.raises(PermissionDenied):
         auth.create_user(conn, receptionist, "autre", "password3", "receptionist")

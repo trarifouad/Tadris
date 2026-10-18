@@ -86,6 +86,14 @@ def login(conn, username: str, password: str) -> UserContext:
     return _ctx_from_row(row)
 
 
+def list_users(conn, ctx: UserContext) -> list[dict]:
+    require(ctx, "user.view")
+    rows = conn.execute(
+        "SELECT id, username, role, status, created_at FROM users ORDER BY username"
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
 def create_user(conn, ctx: UserContext, username: str, password: str, role: str) -> int:
     require(ctx, "user.create")
     username = username.strip()

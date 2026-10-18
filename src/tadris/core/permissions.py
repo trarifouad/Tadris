@@ -60,10 +60,8 @@ NAV_ITEMS: tuple[tuple[str, str, str], ...] = (
 
 
 def allowed(ctx: UserContext, action: str) -> bool:
-    roles = ACTIONS.get(action)
-    if roles is None:
-        return False
-    return ctx.role in roles
+    # Unknown actions raise KeyError: a typo must fail in tests, not deny everyone.
+    return ctx.role in ACTIONS[action]
 
 
 def require(ctx: UserContext, action: str) -> None:

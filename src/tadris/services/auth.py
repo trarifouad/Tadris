@@ -43,6 +43,9 @@ def bootstrap_director(conn, username: str, password: str, school_name: str) -> 
         raise ValidationError(t["auth.password_short"])
     try:
         with transaction(conn):
+            # Re-check under the write lock: another first-run window may have finished.
+            if user_count(conn) > 0:
+                raise ValidationError(t["auth.already_initialized"])
             conn.execute(
                 "INSERT INTO users(username, password_hash, role) VALUES (?, ?, 'director')",
                 (username, hash_password(password)),

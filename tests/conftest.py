@@ -1,6 +1,6 @@
 import pytest
 
-import tadris.core.security as security
+from tadris.core import security
 from tadris.db.connection import connect
 from tadris.db.migrate import migrate
 from tadris.services import auth as auth_service

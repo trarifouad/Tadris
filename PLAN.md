@@ -184,7 +184,7 @@ ui/first_run.py        create the director account and school name on first star
 
 ## Phase 3: Academic setup
 
-**Status:** built on `feat/academic`, not yet committed. Services and repositories for school years, levels and subjects (`catalog`), rooms, teachers with rate history, groups with teacher history, and the weekly timetable; migrations 0006 (one open year, lookup indexes), 0007 (rooms checked against enrolled students) and 0008 (`school_years.opened_on`). Paramètres tabs (school details and hours, users, years, levels, subjects, rooms), Enseignants and Groupes pages (list and detail), Emploi du temps grid by room, group or teacher. Pages are built on first visit and reload each time they are shown again. Seed script fills the school structure too.
+**Status:** done. Services and repositories for school years, levels and subjects (`catalog`), rooms, teachers with rate history, groups with teacher history, and the weekly timetable; migrations 0006 (one open year, lookup indexes), 0007 (rooms checked against enrolled students) and 0008 (`school_years.opened_on`). Paramètres tabs (school details and hours, users, years, levels, subjects, rooms), Enseignants and Groupes pages (list and detail), Emploi du temps grid by room, group or teacher. Pages are built on first visit and reload each time they are shown again. Seed script fills the school structure too. 527 tests green. Tagged `phase-3`.
 
 **Decisions taken in this phase**
 

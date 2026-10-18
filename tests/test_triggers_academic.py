@@ -1,4 +1,5 @@
 import sqlite3
+
 import pytest
 
 
@@ -59,12 +60,46 @@ def test_group_full(seeded):
         enroll(seeded, sid, rid)
 
 
+def test_enrollment_update_respects_capacity(seeded):
+    seeded.execute("UPDATE class_groups SET capacity=1 WHERE id=1")
+    sid, rid = add_student(seeded, 2)
+    seeded.execute(
+        "INSERT INTO enrollments(student_id,group_id,registration_id,enrolled_on,status) "
+        "VALUES(?,1,?,?,'left')",
+        (sid, rid, "2026-09-01"),
+    )
+    with pytest.raises(sqlite3.IntegrityError, match="full"):
+        seeded.execute("UPDATE enrollments SET status='active' WHERE student_id=?", (sid,))
+
+
+def test_enrollment_update_level_mismatch(seeded):
+    seeded.execute("INSERT INTO levels(name) VALUES('4AM')")
+    seeded.execute(
+        "INSERT INTO class_groups(school_year_id,level_id,subject_id,name,price,capacity,start_date) "
+        "VALUES(1,2,1,'G2',3000,10,'2026-09-01')"
+    )
+    with pytest.raises(sqlite3.IntegrityError, match="level"):
+        seeded.execute("UPDATE enrollments SET group_id=2 WHERE id=1")
+
+
 # ----- timetable and sessions -----
 def test_slot_room_overlap(seeded):
     add_room(seeded)
     add_slot(seeded)
     with pytest.raises(sqlite3.IntegrityError, match="room"):
         add_slot(seeded, start="10:30", end="11:30")
+
+
+def test_slot_adjacent_periods_do_not_overlap(seeded):
+    add_room(seeded)
+    seeded.execute(
+        "INSERT INTO timetable_slots(group_id,room_id,weekday,start_time,end_time,valid_from,valid_to) "
+        "VALUES(1,1,1,'10:00','11:00','2026-09-01','2026-10-01')"
+    )
+    seeded.execute(
+        "INSERT INTO timetable_slots(group_id,room_id,weekday,start_time,end_time,valid_from,valid_to) "
+        "VALUES(1,1,1,'10:00','11:00','2026-10-01','2026-11-01')"
+    )
 
 
 def test_group_capacity_vs_room(seeded):

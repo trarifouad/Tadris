@@ -1,7 +1,6 @@
 import sqlite3
+
 import pytest
-
-
 
 
 def test_charge_needs_exactly_one_parent(seeded):

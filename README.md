@@ -1,24 +1,31 @@
 # Tadris | تدريس
 
-Offline-first desktop application for managing a private tutoring school (école de soutien scolaire) in Algeria.
+Offline-first desktop application for a private tutoring school (soutien scolaire) in Algeria.
 
 Tadris runs on a single computer with no internet connection. It replaces paper registers and spreadsheets for the director and the reception desk.
 
-> **Status:** In development (Version 1)
+> **Status:** Phase 1 in development. UI language: French (Arabic later).
 
-## Features
+## How it works
 
-- **Students & guardians:** registration, profiles, yearly registration numbers
-- **Teachers:** multiple salary methods, including percentage of revenue
-- **Groups & timetable:** groups, rooms, recurring sessions, overlap protection
-- **Attendance:** a session is deducted from the balance only when the student attends
-- **Subscriptions:** session-based, with balance tracking and expiry alerts
-- **Payments & receipts:** partial payments, configurable maximum debt, numbered receipts
-- **Expenses & reports:** PDF and Excel exports
-- **Access control:** Director and Receptionist roles with permissions
-- **Backups:** local database backup and restore
+- **Subscriptions are monthly.** The group price is copied onto the subscription at creation. `end_date = start_date + 1 month`. Student absence never extends or changes a subscription.
+- **Money is whole DZD integers.** Debt is always derived (charges minus valid allocations minus adjustments). There is no stored running-balance column.
+- **Payments are immutable.** Corrections are new rows (`payment_voids`), never negative payments.
+- **Teacher pay** is a percentage of group revenue on an accrual basis: the full subscription price of the month, whether or not the student has paid yet. Rates and prices are snapshots.
+- **One free trial** per student, ever. No hard deletes; status changes instead.
 
-## Tech Stack
+## Features (v1)
+
+- Students and guardians, yearly registration numbers
+- Groups, rooms, weekly timetable with overlap protection
+- Attendance for generated sessions (does not change subscription dates)
+- Monthly subscriptions, renewals, numbered receipts
+- Partial payments, derived debt, director voids
+- Teacher payouts as a percentage of accrued group revenue
+- Director and receptionist roles
+- Local verified backups
+
+## Tech stack
 
 | Layer | Technology |
 |-------|-----------|
@@ -28,48 +35,47 @@ Tadris runs on a single computer with no internet connection. It replaces paper 
 | Reports | ReportLab (PDF), openpyxl (Excel) |
 | Packaging | PyInstaller |
 
-## Getting Started
+## Getting started
 
-### Requirements
-
-- Python 3.12+
-- Windows 10/11 (primary target)
-
-### Install and run
+Python 3.12+. Primary target is Windows 10/11; development on Linux is fine.
 
 ```bash
 git clone https://github.com/<your-username>/tadris.git
 cd tadris
 python -m venv .venv
-.venv\Scripts\activate        # Linux/macOS: source .venv/bin/activate
-pip install -r requirements.txt
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+pip install -e ".[dev]"
 python -m tadris
 ```
 
-### Build an executable
-
 ```bash
-pyinstaller tadris.spec
+pytest -q
+ruff check .
 ```
 
-## Project Structure
+## Project structure
 
 ```
-tadris/
-├── ui/          # PySide6 windows, dialogs and widgets
-├── services/    # Business logic (subscriptions, payments, salaries)
-├── db/          # SQLite schema, migrations, repositories
-├── reports/     # PDF and Excel generation
-└── __main__.py  # Entry point
+src/tadris/
+├── ui/             # PySide6 windows, dialogs, theme (never imports sqlite3)
+├── services/       # Business logic, transactions, audit, permissions
+├── repositories/   # SQL only, one file per aggregate
+├── db/             # Connection, migrations, trigger-error translation
+├── core/           # Money, dates, errors, context, permissions, passwords
+├── i18n/           # French strings
+└── __main__.py     # Entry point
+tests/              # Schema, trigger and service tests
 ```
 
-The UI never touches the database directly. All rules live in `services/`, which keeps the app ready for a future sync layer.
+The UI never touches the database. Services open `BEGIN IMMEDIATE` transactions and write `audit_log`. SQLite triggers are the last line of defense.
 
 ## Roadmap
 
-- **V1:** single-computer desktop app, French UI
-- **Later:** Arabic (RTL) interface, parent/student app via a server API, sync, Excel import, discounts, academic-year archival
+See `PLAN.md` for phases and `DESIGN.md` for the UI system.
+
+- **V1:** single-computer desktop app, French UI, monthly subscriptions
+- **Later:** Arabic (RTL), multi-machine sync, parent portal
 
 ## License
 
-Choose a license (MIT is a common default), or keep the repo private if this is a commercial product for a client.
+Private unless a license file is added.

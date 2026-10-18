@@ -19,7 +19,8 @@ def transaction(conn: sqlite3.Connection):
     try:
         yield conn
     except BaseException:
-        conn.execute("ROLLBACK")
+        if conn.in_transaction:
+            conn.execute("ROLLBACK")
         raise
     else:
         conn.execute("COMMIT")

@@ -4,7 +4,7 @@ Offline-first desktop application for a private tutoring school (soutien scolair
 
 Tadris runs on a single computer with no internet connection. It replaces paper registers and spreadsheets for the director and the reception desk.
 
-> **Status:** Phase 1 in development. UI language: French (Arabic later).
+> **Status:** Phase 1 done (core, login, role-based main window). Phase 2 (students and contacts) next. UI language: French (Arabic later).
 
 ## How it works
 

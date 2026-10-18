@@ -4,7 +4,7 @@ import pytest
 
 from tadris.core import permissions, security
 from tadris.core.context import UserContext
-from tadris.core.dates import add_one_month, iso, weekday_1_to_7
+from tadris.core.dates import add_one_month, display_date, iso, weekday_1_to_7
 from tadris.core.errors import PermissionDenied, ValidationError
 from tadris.core.money import format_dzd, parse_dzd
 from tadris.i18n.fr import t
@@ -87,6 +87,11 @@ def test_iso():
     assert iso(date(2026, 9, 1)) == "2026-09-01"
 
 
+@pytest.mark.parametrize("value", ["2026-10-18", "2026-10-18T14:05:00"])
+def test_display_date(value):
+    assert display_date(value) == "18/10/2026"
+
+
 # ----- passwords -----
 
 def test_password_hash_and_verify():
@@ -119,6 +124,7 @@ RECEPTIONIST_DENIED = {
     "sms.manage",
     "settings.view",
     "settings.change",
+    "user.view",
     "user.create",
     "user.disable",
     "audit.view",

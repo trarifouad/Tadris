@@ -1,6 +1,10 @@
+import os
+
 import pytest
 
 from tadris.core import security
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from tadris.db.connection import connect
 from tadris.db.migrate import migrate
 from tadris.services import auth as auth_service

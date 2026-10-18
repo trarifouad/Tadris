@@ -15,7 +15,7 @@ dev = ["pytest", "pytest-qt", "ruff"]
 where = ["src"]
 
 [tool.setuptools.package-data]
-tadris = ["db/migrations/*.sql"]
+tadris = ["db/migrations/*.sql", "ui/resources/fonts/*.ttf", "ui/resources/fonts/*.txt", "ui/resources/icons/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -1,11 +1,16 @@
 import pytest
 
+import tadris.core.security as security
 from tadris.db.connection import connect
 from tadris.db.migrate import migrate
+from tadris.services import auth as auth_service
+
+security.N = 2**4
 
 
 @pytest.fixture
 def conn():
+    auth_service._reset_failures()
     c = connect(":memory:")
     migrate(c)
     yield c

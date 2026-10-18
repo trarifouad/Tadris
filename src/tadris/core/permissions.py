@@ -14,6 +14,7 @@ ACTIONS: dict[str, frozenset[str]] = {
     "student.create": BOTH,
     "student.update": BOTH,
     "student.deactivate": DIRECTOR_ONLY,
+    "student.reactivate": DIRECTOR_ONLY,
     "group.view": BOTH,
     "group.manage": BOTH,
     "timetable.view": BOTH,

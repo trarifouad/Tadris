@@ -15,6 +15,7 @@ from tadris.core.permissions import nav_for
 from tadris.i18n.fr import t
 from tadris.services import settings
 from tadris.ui.pages.settings import SettingsPage
+from tadris.ui.pages.students import StudentsPage
 
 SIDEBAR_WIDTH = 216
 
@@ -69,6 +70,8 @@ class MainWindow(QMainWindow):
             first.click()
 
     def _page_for(self, key: str, label: str) -> QWidget:
+        if key == "students":
+            return StudentsPage(self._conn, self.ctx)
         if key == "settings":
             return SettingsPage(self._conn, self.ctx)
         return PlaceholderPage(label)

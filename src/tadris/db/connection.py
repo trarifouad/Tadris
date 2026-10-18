@@ -1,11 +1,14 @@
 import sqlite3
 from contextlib import contextmanager
 
+from tadris.core.text import fold
+
 
 def connect(path) -> sqlite3.Connection:
     # isolation_level=None: we control transactions explicitly
     conn = sqlite3.connect(path, isolation_level=None)
     conn.row_factory = sqlite3.Row
+    conn.create_function("fold", 1, fold, deterministic=True)
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA journal_mode = WAL")
     conn.execute("PRAGMA busy_timeout = 5000")

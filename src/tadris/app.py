@@ -1,3 +1,4 @@
+import os
 import sys
 
 from PySide6.QtWidgets import QApplication, QDialog
@@ -13,7 +14,15 @@ from tadris.ui.main_window import MainWindow
 from tadris.ui.theme import apply_theme, load_fonts
 
 
+def _choose_linux_platform() -> None:
+    # Qt's Wayland backend aborts on GNOME 50, whose xsettings schema no longer has the
+    # 'antialiasing' key it reads. XWayland (xcb) works. An explicit QT_QPA_PLATFORM wins.
+    if sys.platform.startswith("linux"):
+        os.environ.setdefault("QT_QPA_PLATFORM", "xcb")
+
+
 def main() -> int:
+    _choose_linux_platform()
     app = QApplication(sys.argv)
     app.setApplicationName(t["app.name"])
     load_fonts()

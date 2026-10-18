@@ -1,26 +1,13 @@
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import (
-    QAbstractItemView,
-    QDialog,
-    QHBoxLayout,
-    QHeaderView,
-    QLabel,
-    QTableWidget,
-    QTableWidgetItem,
-    QVBoxLayout,
-    QWidget,
-)
+from PySide6.QtWidgets import QDialog, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from tadris.core.context import UserContext
 from tadris.core.dates import display_date
 from tadris.i18n.fr import t
 from tadris.services import auth
-from tadris.ui.theme import tokens
-from tadris.ui.theme.delegates import RuledDelegate
 from tadris.ui.user_dialog import UserDialog
-from tadris.ui.widgets.common import primary_button
-
-ROW_HEIGHT = 40
+from tadris.ui.widgets.common import primary_button, toast
+from tadris.ui.widgets.tables import fill, item, ruled_table
 
 
 class SettingsPage(QWidget):
@@ -51,24 +38,12 @@ class SettingsPage(QWidget):
         section_head.addStretch()
         section_head.addWidget(self.new_user, alignment=Qt.AlignmentFlag.AlignBottom)
 
-        self.table = QTableWidget(0, 4)
-        self.table.setHorizontalHeaderLabels([
+        self.table = ruled_table([
             t["users.col.username"],
             t["users.col.role"],
             t["users.col.status"],
             t["users.col.created"],
         ])
-        self.table.setItemDelegate(RuledDelegate(tokens(), self.table))
-        self.table.setShowGrid(False)
-        self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self.table.verticalHeader().hide()
-        self.table.verticalHeader().setDefaultSectionSize(ROW_HEIGHT)
-        header = self.table.horizontalHeader()
-        header.setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        header.setHighlightSections(False)
-        header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 22, 24, 24)
@@ -81,16 +56,15 @@ class SettingsPage(QWidget):
 
     def refresh(self) -> None:
         users = auth.list_users(self._conn, self._ctx)
-        self.table.setRowCount(len(users))
-        for row, user in enumerate(users):
-            cells = (
-                user["username"],
-                t[f"role.{user['role']}"],
-                t[f"user_status.{user['status']}"],
-                display_date(user["created_at"]),
-            )
-            for column, text in enumerate(cells):
-                self.table.setItem(row, column, QTableWidgetItem(text))
+        fill(self.table, [
+            [
+                item(user["username"]),
+                item(t[f"role.{user['role']}"]),
+                item(t[f"user_status.{user['status']}"]),
+                item(display_date(user["created_at"])),
+            ]
+            for user in users
+        ])
 
     def _create_user(self) -> None:
         dialog = UserDialog(self._conn, self._ctx, self)
@@ -98,4 +72,4 @@ class SettingsPage(QWidget):
             return
         self.refresh()
         message = t["users.created"].format(username=dialog.username.text().strip())
-        self.window().statusBar().showMessage(message, 3000)
+        toast(self, message)

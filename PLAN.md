@@ -12,7 +12,8 @@ Estimated effort: 3 to 4 months part-time (about 10 to 15 hours per week).
 | Topic | Rule |
 |---|---|
 | Subscriptions | Monthly, fixed price snapshot copied from the group at creation. `end_date = start_date + 1 month`. Student absence never extends or changes a subscription. |
-| Money | Whole DZD integers. Debt is always derived (charges minus valid allocations minus adjustments). Never store a running debt column. |
+| Money | Whole DZD integers. Debt is always derived (charges minus valid allocations). Never store a running debt column. |
+| Discounts | None. A student always owes the full price of each month and fee: no remises, no corrections (decided in phase 8). Money handed back is a refund, which does not change what is owed. |
 | Payments | Immutable. Corrections are new rows (`payment_voids`, never negative payments). |
 | Teacher pay | Percentage of group revenue, accrual basis: the full subscription price of the month, whether or not the student has paid yet. One percentage per teacher, applied to each of their groups. Example: 60% of 60,000 plus 60% of 120,000 = 108,000. |
 | Rates and prices | Snapshots. Never recompute an old month from today's price or rate. |
@@ -382,7 +383,7 @@ Add a `holidays` table or a settings JSON list in this phase. Decide which and a
 
 **Services**
 
-- `debt.for_student(conn, student_id)`: sum of open charges minus allocations of non-voided payments minus adjustments. Per charge and total.
+- `debt.for_student(conn, student_id)`: sum of open charges minus allocations of non-voided payments (the adjustments planned here were dropped in phase 8). Per charge and total.
 - `payments.record(student, amount, method, payer_contact, auto_allocate=True)`: inserts payment, allocates oldest due charge first (override possible), creates the receipt number from the counter, all in one transaction with audit. An unallocated remainder stays as credit and is visible in the debt view.
 - `payments.void(payment, reason)`: director only; blocked by triggers if used in a payout or refunded.
 - `receipts.render_pdf(receipt_id)`: school header from settings, student, items paid, remaining balance, receipt number, cashier.
@@ -416,18 +417,29 @@ Add a `holidays` table or a settings JSON list in this phase. Decide which and a
 
 ## Phase 8: Adjustments and refunds
 
-**Goal:** handle discounts, corrections and money returned.
+**Status:** done. Migration 0012: `refunds` rebuilt to target one charge (a month or the registration fee) with who asked, the number, the method and who paid out; `balance_entries` dropped (no adjustments). Repository and service `refunds` (options with a suggestion, request, approve, reject, pay out, queue, the day's refunds); refund slip PDF (`RB2026-00001`, REMBOURSÉ stamp, signed by whoever takes the money). Student page: Remboursements tab; sidebar Paiements: « Remboursements à traiter » queue; cash of the day nets the refunds; cancelling a month or a registration looks at what was paid and not refunded. Seed asks three refunds. 943 tests green; every trigger message (58) has a failing test; a phase 7 database upgrades and keeps every money rule.
+
+**Decisions taken in this phase**
+
+- No discounts: the school gives no remises nor corrections (decided after a first version had them). A student owes the full price of each month and fee; the teacher's share is always the percentage of that full price. The adjustments table (`balance_entries`, never written before) is dropped in 0012.
+- A refund hands back money paid on one charge; it never changes what is owed. A month refunded in full stays paid; cancelling it is then allowed (cancelling a month or a registration looks at what was paid and not refunded). A refund does not cancel the subscription or its charge by itself: the director cancels the month afterwards if it should not count.
+- Refunds target a charge, so the registration fee can be refunded before a registration is cancelled (0001 allowed months only; the table was empty and is rebuilt in 0012).
+- Flow: the desk asks (pending), the director approves (the amount may change) or rejects (reason in the audit log), the desk pays out an approved refund. Paying out takes the money back from the payments that paid the charge, latest first, never more than each one gave (trigger), numbers it `RB2026-00001` from the year's counter and prints the slip. A payment with money refunded can no longer be voided (0003).
+- Suggestion: for a month, what was paid and kept beyond the value of the days used (until the day the student left, or today; a date can be typed), at the month's price, rounded up for the school; for the fee, everything kept (the director decides).
+- Not covered: money paid and allocated to no charge (credit) cannot be refunded (parking lot).
+
+**Goal (as planned):** handle discounts, corrections and money returned. Discounts and corrections were dropped (see the decisions above).
 
 **Services**
 
-- `adjustments.add(student, charge or subscription, type, amount, reason)`: type is `discount` or `correction`; director approval for amounts over a configurable limit.
+- ~~`adjustments.add(...)`~~: dropped, no discounts.
 - `refunds.request(subscription, amount_final, reason)`: stores the computed suggestion and the final amount; status `pending`.
 - `refunds.approve` (director), `refunds.pay_out`, `refunds.reject`.
 - On approval or payment, create `refund_allocations` against the original payment allocations so the cap is enforced per payment.
 
 **Screens**
 
-- Student page, adjustments tab.
+- Student page, refunds tab (the planned adjustments tab was dropped).
 - Refund request dialog and a director approval queue.
 
 **Rules**
@@ -440,15 +452,17 @@ Add a `holidays` table or a settings JSON list in this phase. Decide which and a
 
 - Refund cap across several payments.
 - Locked refund rejects edits.
-- Debt view reflects discounts and corrections.
+- ~~Debt view reflects discounts and corrections~~ (dropped).
 
-**Acceptance:** a refund can never exceed what was paid, and every adjustment appears in the audit log.
+**Acceptance:** a refund can never exceed what was paid, and every refund step appears in the audit log.
 
 **Time:** 1 week.
 
 ---
 
 ## Phase 9: Teacher payouts (Full v1 milestone)
+
+**Note from phase 8:** there are no discounts, so a payout line counts each month at its full price, as section 1 says (trigger `amount must equal the charge amount`). A month refunded in part still counts in full; a month refunded in full and then cancelled no longer counts (open charges only).
 
 **Goal:** pay teachers their percentage correctly and permanently.
 
@@ -660,3 +674,5 @@ Add a `holidays` table or a settings JSON list in this phase. Decide which and a
 - Teacher fixed-salary or per-session pay methods.
 - Exams, grades and report cards.
 - Inventory of books and materials.
+- Refund a student's credit (money paid and allocated to no charge), e.g. paid in advance and gone before the next month was created.
+- Remises (discounts) and corrections: built then dropped in phase 8 by decision; the school charges the full price.

@@ -53,7 +53,12 @@ _TRIGGER_MESSAGES = (
     ("refund exceeds paid minus already refunded", "db.refund_exceeds_paid"),
     ("refund allocations exceed refund amount", "db.refund_alloc_exceed"),
     ("refund_allocations are immutable", "db.refund_allocations_immutable"),
-    ("allocation belongs to another subscription", "db.refund_other_subscription"),
+    ("allocation belongs to another subscription", "db.refund_other_subscription"),  # 0004
+    ("allocation belongs to another charge", "db.refund_other_charge"),
+    ("a new refund is pending", "db.refund_new_pending"),
+    ("refund subscription differs from its charge", "db.refund_subscription_mismatch"),
+    ("refund must be approved before it is paid", "db.refund_not_approved"),
+    ("refunded amount must match its allocations", "db.refund_amount_mismatch"),
     ("charge is not an open subscription charge", "db.payout_charge_not_open"),
     ("amount must equal the charge amount", "db.payout_amount_mismatch"),
     ("charge belongs to another group", "db.payout_charge_other_group"),

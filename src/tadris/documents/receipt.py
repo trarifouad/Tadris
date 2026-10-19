@@ -6,6 +6,7 @@ from pathlib import Path
 
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
+from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.platypus import Flowable, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from tadris.documents.pdf import (
@@ -52,6 +53,11 @@ class Stamp(Flowable):
         self.text, self.day, self.size = text, day, size
         self.width = self.height = size
 
+    def text_size(self, largest: float = 15) -> float:
+        """The word fits inside the inner ring: PAYÉ at full size, REMBOURSÉ smaller."""
+        room = (self.size / 2 - 4.5) * 2 * 0.82
+        return min(largest, largest * room / stringWidth(self.text, FONT_BOLD, largest))
+
     def draw(self) -> None:
         c = self.canv
         r = self.size / 2
@@ -64,7 +70,7 @@ class Stamp(Flowable):
         c.circle(0, 0, r - 1, stroke=1, fill=0)
         c.setLineWidth(0.7)
         c.circle(0, 0, r - 4.5, stroke=1, fill=0)
-        c.setFont(FONT_BOLD, 15)
+        c.setFont(FONT_BOLD, self.text_size())
         c.drawCentredString(0, 1, self.text)
         c.setFont(MONO, 8)
         c.drawCentredString(0, -11, self.day)

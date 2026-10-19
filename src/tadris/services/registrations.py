@@ -27,7 +27,7 @@ def _to_registration(row) -> Registration:
         year_label=row["year_label"], level_id=row["level_id"], level=row["level"],
         fee_amount=row["fee_amount"], status=row["status"], registered_at=row["registered_at"],
         live_enrollments=row["live_enrollments"], fee_charge_id=row["fee_charge_id"],
-        fee_paid=row["fee_paid"],
+        fee_paid=row["fee_paid"], fee_refunded=row["fee_refunded"],
     )
 
 
@@ -135,17 +135,17 @@ def change_level(conn, ctx: UserContext, registration_id: int, level_id: int) ->
 
 
 def cancel(conn, ctx: UserContext, registration_id: int, reason: str) -> None:
-    """Director only. Refused while the student is in a group of the year or once part of the
-    fee was paid (a refund comes first). The open fee charge is cancelled with it."""
+    """Director only. Refused while the student is in a group of the year or while part of
+    the fee paid is kept (refund it first). The open fee charge is cancelled with it."""
     require(ctx, "registration.cancel")
     reason = clean(reason)
     if not reason:
         raise ValidationError(t["registration.reason_required"])
     with atomic(conn):
         row = _require_changeable(conn, registration_id)
-        if row["fee_paid"]:
-            raise BusinessRuleError(t["registration.fee_paid"].format(
-                amount=format_dzd(row["fee_paid"])))
+        kept = row["fee_paid"] - row["fee_refunded"]
+        if kept:
+            raise BusinessRuleError(t["registration.fee_paid"].format(amount=format_dzd(kept)))
         charge_id = row["fee_charge_id"]
         if charge_id is not None and row["fee_charge_status"] == "open":
             repo.cancel_charge(conn, charge_id)

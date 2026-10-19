@@ -34,6 +34,7 @@ ACTIONS: dict[str, frozenset[str]] = {
     "refund.request": BOTH,
     "refund.approve": DIRECTOR_ONLY,
     "refund.reject": DIRECTOR_ONLY,
+    "refund.pay": BOTH,  # hand the money over once approved
     "payout.view": DIRECTOR_ONLY,
     "payout.manage": DIRECTOR_ONLY,
     "academic.view": BOTH,

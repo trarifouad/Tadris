@@ -286,8 +286,8 @@ def test_group_teacher_period_overlap(seeded):
 # ----- refunds -----
 def test_refund_cannot_exceed_paid(seeded):
     seeded.execute("INSERT INTO payment_allocations(payment_id,charge_id,amount) VALUES(1,1,3000)")
-    seeded.execute("INSERT INTO refunds(subscription_id,amount_computed,amount_final,reason) "
-                   "VALUES(1,3000,3000,'x')")
+    seeded.execute("INSERT INTO refunds(charge_id,subscription_id,amount_computed,amount_final,"
+                   "reason) VALUES(1,1,3000,3000,'x')")
     with pytest.raises(sqlite3.IntegrityError, match="exceeds paid"):
         seeded.execute("INSERT INTO refund_allocations(refund_id,payment_allocation_id,amount) "
                        "VALUES(1,1,3001)")

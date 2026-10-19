@@ -49,9 +49,17 @@ def group(c, name="G2", year=1) -> int:
                   "capacity,start_date) VALUES(?,1,1,?,2000,10,'2026-09-01')", (year, name))
 
 
-def refund(c, amount=1000, status="pending") -> int:
-    return one(c, "INSERT INTO refunds(subscription_id,amount_computed,amount_final,reason,"
-                  "status) VALUES(1,?,?,'Départ',?)", (amount, amount, status))
+def refund(c, amount=1000, charge=1, subscription=1) -> int:
+    """A pending refund (0012: refunds target a charge; subscription_id is the month's)."""
+    return one(c, "INSERT INTO refunds(charge_id,subscription_id,amount_computed,amount_final,"
+                  "reason) VALUES(?,?,?,?,'Départ')", (charge, subscription, amount, amount))
+
+
+def pay_out(c, refund_id, amount) -> None:
+    """Approve, then mark paid: the allocations must already add up to the amount."""
+    c.execute("UPDATE refunds SET status='approved', approved_by=1 WHERE id=?", (refund_id,))
+    c.execute("UPDATE refunds SET status='paid', refunded_amount=? WHERE id=?",
+              (amount, refund_id))
 
 
 def refund_alloc(c, refund_id, allocation_id, amount) -> int:
@@ -138,11 +146,17 @@ def test_void_refused_once_refunded(seeded):
         seeded.execute("INSERT INTO payment_voids(payment_id,reason,voided_by) VALUES(1,'x',1)")
 
 
-@pytest.mark.parametrize("status", ["paid", "rejected"])
-def test_refund_closed_takes_no_allocation(seeded, status):
+def test_refund_closed_takes_no_allocation(seeded):
     allocation = alloc(seeded, 1, 1, 3000)
+    rejected = refund(seeded)
+    seeded.execute("UPDATE refunds SET status='rejected', approved_by=1 WHERE id=?", (rejected,))
     with refused("refund is locked"):
-        refund_alloc(seeded, refund(seeded, status=status), allocation, 100)
+        refund_alloc(seeded, rejected, allocation, 100)
+    paid = refund(seeded, amount=500)
+    refund_alloc(seeded, paid, allocation, 500)
+    pay_out(seeded, paid, 500)
+    with refused("refund is locked"):
+        refund_alloc(seeded, paid, allocation, 1)
 
 
 def test_refund_from_a_voided_payment(seeded):
@@ -153,10 +167,10 @@ def test_refund_from_a_voided_payment(seeded):
 
 
 def test_refund_of_another_charge(seeded):
-    """Money paid on the fee is not money paid on subscription 1."""
+    """Money paid on the fee is not money paid on the month."""
     payment = pay(seeded, 1, 2000)
     allocation = alloc(seeded, payment, fee_charge(seeded), 2000)
-    with refused("allocation belongs to another subscription"):
+    with refused("allocation belongs to another charge"):
         refund_alloc(seeded, refund(seeded), allocation, 100)
 
 
@@ -180,11 +194,9 @@ def test_refunds_and_their_allocations_are_locked(seeded):
         seeded.execute("DELETE FROM refunds WHERE id=?", (refund_id,))
     with refused("refund is locked"):
         seeded.execute("UPDATE refunds SET reason='autre' WHERE id=?", (refund_id,))
-    seeded.execute("UPDATE refunds SET status='approved', approved_by=1 WHERE id=?",
-                   (refund_id,))  # allowed: the approval fields
-    seeded.execute("UPDATE refunds SET status='paid' WHERE id=?", (refund_id,))
+    pay_out(seeded, refund_id, 1000)  # allowed: the approval and payout fields
     with refused("refund is locked"):
-        seeded.execute("UPDATE refunds SET refunded_amount=1000 WHERE id=?", (refund_id,))
+        seeded.execute("UPDATE refunds SET method='cash' WHERE id=?", (refund_id,))
 
 
 # ----- teacher payouts -----

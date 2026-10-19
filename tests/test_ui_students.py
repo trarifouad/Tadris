@@ -225,7 +225,8 @@ def test_detail_header_and_tabs(qtbot, conn, director, amine):
     assert view.status.kind() == "success"
     assert [view.tabs.tabText(i) for i in range(view.tabs.count())] == [
         t[f"student_detail.tab.{key}"] for key in
-        ("registration", "groups", "subscriptions", "payments", "attendance", "contacts")
+        ("registration", "groups", "subscriptions", "payments", "refunds", "attendance",
+         "contacts")
     ]
     assert view.tabs.currentWidget() is view.registration
     assert table_rows(view.contacts.table)[0][:3] == [

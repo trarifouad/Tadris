@@ -135,6 +135,21 @@ t = {
     "payment.allocations_exceed": "Les montants affectés dépassent le paiement ({amount}).",
     "payment.reason_required": "Indiquez le motif de l'annulation.",
     "payment.already_voided": "Ce paiement est déjà annulé.",
+    "refund.not_found": "Remboursement introuvable.",
+    "refund.charge_not_found": "Ligne à rembourser introuvable.",
+    "refund.amount_invalid": "Le montant doit être un nombre entier de dinars supérieur à 0.",
+    "refund.reason_required": "Indiquez le motif (ex. : départ de l'élève, erreur de paiement).",
+    "refund.exceeds": (
+        "Le remboursement dépasse ce qui a été payé sur cette ligne et n'est ni remboursé ni "
+        "déjà demandé ({amount})."
+    ),
+    "refund.not_pending": "Ce remboursement a déjà été décidé.",
+    "refund.not_approved": "Ce remboursement doit d'abord être approuvé par la direction.",
+    "refund.closed": "Ce remboursement est déjà versé ou refusé.",
+    "refund.money_gone": (
+        "Un paiement de cette ligne a été annulé depuis l'approbation : seuls {amount} peuvent "
+        "être rendus. Refusez ce remboursement et faites une nouvelle demande."
+    ),
     "debt.warning": (
         "Attention : cet élève doit déjà {amount} en retard (seuil d'alerte : {threshold})."
     ),
@@ -205,6 +220,16 @@ t = {
     "receipt.stamp_voided": "ANNULÉ",
     "receipt.thanks": "Merci. Conservez ce reçu.",
     "receipt.signature": "Cachet et signature",
+    "refund_slip.title": "Bon de remboursement",
+    "refund_slip.method": "Rendu en",
+    "refund_slip.reason": "Motif",
+    "refund_slip.approved_by": "Approuvé par",
+    "refund_slip.paid_out_by": "Remis par",
+    "refund_slip.total": "Total remboursé",
+    "refund_slip.stamp": "REMBOURSÉ",
+    "refund_slip.thanks": "Le bénéficiaire reconnaît avoir reçu la somme ci-dessus.",
+    "refund_slip.signature": "Signature du bénéficiaire",
+    "refund.not_paid_yet": "Le bon s'imprime une fois le remboursement versé.",
     "payment_method.cash": "Espèces",
     "payment_method.transfer": "Virement",
     "payment_method.cheque": "Chèque",
@@ -380,6 +405,13 @@ t = {
     "db.refund_alloc_exceed": "Les affectations dépassent le montant du remboursement.",
     "db.refund_allocations_immutable": "Les affectations de remboursement ne peuvent pas être modifiées.",
     "db.refund_other_subscription": "Ce paiement ne concerne pas l'abonnement remboursé.",
+    "db.refund_other_charge": "Ce paiement ne concerne pas la ligne remboursée.",
+    "db.refund_new_pending": "Un nouveau remboursement commence « en attente », sans montant versé.",
+    "db.refund_subscription_mismatch": "Le remboursement ne correspond pas à l'abonnement de la ligne.",
+    "db.refund_not_approved": "Ce remboursement doit être approuvé par la direction avant d'être versé.",
+    "db.refund_amount_mismatch": (
+        "Le montant versé ne correspond pas aux paiements remboursés."
+    ),
     "db.payout_charge_not_open": "Cette charge n'est pas une charge d'abonnement ouverte.",
     "db.payout_amount_mismatch": "Le montant doit être égal à celui de la charge.",
     "db.payout_charge_other_group": "Cette charge appartient à un autre groupe.",
@@ -490,6 +522,7 @@ t = {
     "student_detail.tab.groups": "Groupes",
     "student_detail.tab.subscriptions": "Abonnements",
     "student_detail.tab.payments": "Paiements",
+    "student_detail.tab.refunds": "Remboursements",
     "student_detail.tab.attendance": "Présences",
     "student_detail.tab.contacts": "Contacts",
     "attendance_status.present": "Présent",
@@ -674,6 +707,7 @@ t = {
     ),
     "payments_page.tab.debtors": "Élèves en retard",
     "payments_page.tab.cash": "Caisse du jour",
+    "payments_page.tab.refunds": "Remboursements à traiter ({count})",
     "debtors.group": "Groupe",
     "debtors.all_groups": "Tous les groupes",
     "debtors.min_amount": "Montant minimum",
@@ -691,6 +725,10 @@ t = {
     "cash.by_method": "Par mode : {parts}",
     "cash.by_cashier": "Par caissier : {parts}",
     "cash.voided": "Annulés (non comptés) : {count} paiement(s), {total}",
+    "cash.refunded": (
+        "Remboursements versés : {count}, {total}. Espèces à avoir en caisse pour la "
+        "journée : {drawer}."
+    ),
     "cash.empty": "Aucun paiement reçu ce jour-là.",
     "cash.col.time": "Heure",
     "cash.col.receipt": "Reçu",
@@ -699,6 +737,62 @@ t = {
     "cash.col.method": "Mode",
     "cash.col.cashier": "Reçu par",
     "cash.col.status": "Statut",
+    "refund_status.pending": "En attente",
+    "refund_status.approved": "Approuvé",
+    "refund_status.paid": "Versé",
+    "refund_status.rejected": "Refusé",
+    "refunds.title": "Remboursements",
+    "refunds.empty": "Aucun remboursement.",
+    "refunds.queue_empty": "Aucun remboursement en attente de décision ou de versement.",
+    "refunds.request": "Demander un remboursement",
+    "refunds.requested": "Demande de remboursement enregistrée : la direction doit l'approuver",
+    "refunds.approve": "Approuver",
+    "refunds.reject": "Refuser",
+    "refunds.pay": "Rembourser",
+    "refunds.print": "Imprimer le bon",
+    "refunds.approved": "Remboursement approuvé : {line}",
+    "refunds.rejected": "Remboursement refusé : {line}",
+    "refunds.paid": "Remboursement {number} de {amount} versé",
+    "refunds.col.date": "Demandé le",
+    "refunds.col.student": "Élève",
+    "refunds.col.line": "Ligne",
+    "refunds.col.amount": "Montant",
+    "refunds.col.status": "Statut",
+    "refunds.col.number": "N°",
+    "refund_dialog.title": "Demander un remboursement",
+    "refund_dialog.submit": "Envoyer la demande",
+    "refund_dialog.caption": (
+        "Rend de l'argent déjà payé sur une ligne, après approbation de la direction. Le "
+        "montant proposé est ce qui a été payé pour les jours non utilisés."
+    ),
+    "refund_dialog.charge": "Ligne",
+    "refund_dialog.unused_from": "Non utilisé à partir du",
+    "refund_dialog.amount": "Montant à rendre",
+    "refund_dialog.reason": "Motif",
+    "refund_dialog.reason_placeholder": "Ex. : départ de l'élève, inscrit par erreur",
+    "refund_dialog.info": (
+        "Payé {paid} · déjà rendu {refunded} · déjà demandé {reserved} · peut être rendu "
+        "{refundable}. Proposé : {suggestion}."
+    ),
+    "refund_dialog.nothing": "Rien à rendre : aucune ligne n'a de montant payé et non rendu.",
+    "refund_decision.caption": (
+        "{student} · {line} : {amount} demandés par {by} (proposé : {suggestion}). Motif : "
+        "{reason}."
+    ),
+    "approve_refund.title": "Approuver le remboursement",
+    "approve_refund.submit": "Approuver",
+    "approve_refund.amount": "Montant approuvé",
+    "reject_refund.title": "Refuser le remboursement",
+    "reject_refund.submit": "Refuser",
+    "reject_refund.reason": "Motif du refus",
+    "reject_refund.placeholder": "Ex. : le mois est déjà bien entamé",
+    "pay_out.title": "Rembourser",
+    "pay_out.submit": "Rembourser {amount}",
+    "pay_out.method": "Rendu en",
+    "pay_out.caption": (
+        "Remettre {amount} pour {student} ({line}). Le bon de remboursement s'imprime pour "
+        "être signé par la personne qui reçoit l'argent."
+    ),
     "subscriptions_page.col.student": "Élève",
     "subscriptions_page.col.number": "N°",
     "subscriptions_page.col.group": "Groupe",

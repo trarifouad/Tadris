@@ -49,12 +49,18 @@ def test_enrollment_level_has_no_override_any_more(seeded):
         enroll(seeded, sid, rid)
 
 
-def test_migration_removes_the_level_override_key(conn):
-    from tadris.db.migrate import migrate
+def rerun(conn, prefix: str) -> None:
+    """Run one migration file again on an already migrated database (its own SQL only:
+    later migrations, which create tables, are not replayed)."""
+    from tadris.db.migrate import MIGRATIONS_DIR
 
-    conn.execute("PRAGMA user_version = 9")
+    [path] = MIGRATIONS_DIR.glob(f"{prefix}_*.sql")
+    conn.executescript(path.read_text(encoding="utf-8"))
+
+
+def test_migration_removes_the_level_override_key(conn):
     conn.execute("INSERT INTO settings(key,value) VALUES('override:enrollment_level','1')")
-    migrate(conn)
+    rerun(conn, "0010")
     assert conn.execute("SELECT COUNT(*) FROM settings WHERE key LIKE 'override:%'"
                         ).fetchone()[0] == 0
 
@@ -65,12 +71,9 @@ def test_enrollment_after_group_start_is_allowed(seeded):
 
 
 def test_migration_removes_the_start_override_key(conn):
-    from tadris.db.migrate import migrate
-
-    conn.execute("PRAGMA user_version = 8")
     conn.execute("INSERT INTO settings(key,value) VALUES('override:enrollment_start','1')")
-    conn.executescript("DROP TRIGGER trg_enrollment_status_upd;")  # re-run 0009 on top of 8
-    migrate(conn)
+    conn.executescript("DROP TRIGGER trg_enrollment_status_upd;")  # 0009 creates it
+    rerun(conn, "0009")
     assert conn.execute("SELECT COUNT(*) FROM settings WHERE key LIKE 'override:%'"
                         ).fetchone()[0] == 0
 

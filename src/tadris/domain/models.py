@@ -360,3 +360,89 @@ class MissingSubscription:
     group_id: int
     group_title: str
     enrolled_on: str
+
+
+# ----- sessions and attendance -----
+
+
+@dataclass(frozen=True)
+class Holiday:
+    id: int
+    label: str
+    start_date: str
+    end_date: str  # last day off, included
+
+    @property
+    def days(self) -> int:
+        return (date.fromisoformat(self.end_date) - date.fromisoformat(self.start_date)).days + 1
+
+
+@dataclass(frozen=True)
+class Session:
+    id: int
+    group_id: int
+    group_title: str
+    group_name: str
+    slot_id: int | None
+    room_id: int
+    room: str
+    teacher_id: int
+    teacher: str
+    scheduled_teacher_id: int | None  # the group's teacher on that date
+    date: str
+    start_time: str
+    end_time: str
+    status: str  # 'planned', 'held' or 'cancelled'
+    source: str  # 'generated', 'manual' or 'makeup'
+    cancellation_reason: str | None
+    makeup_of_session_id: int | None
+    makeup_id: int | None  # the makeup scheduled for this cancelled session
+    makeup_date: str | None  # its date
+    makeup_of_date: str | None  # for a makeup: the date of the session it replaces
+    attendance_count: int  # students whose attendance is recorded
+    expected: int = 0  # students in the group on that date
+
+    @property
+    def substitute(self) -> bool:
+        """Taught by someone else than the group's teacher that day."""
+        return (self.scheduled_teacher_id is not None
+                and self.teacher_id != self.scheduled_teacher_id)
+
+
+ATTENDANCE_STATUSES = ("present", "late", "absent", "excused")
+
+
+@dataclass(frozen=True)
+class RosterLine:
+    """A student expected at a session, with what was recorded (None: not yet)."""
+
+    enrollment_id: int
+    student_id: int
+    student_number: str
+    student_name: str
+    trial: bool
+    not_renewed: bool  # a paid student with no month covering the session date
+    status: str | None
+
+
+@dataclass(frozen=True)
+class AttendanceRecord:
+    session_id: int
+    date: str
+    start_time: str
+    end_time: str
+    group_id: int
+    group_title: str
+    status: str
+
+
+@dataclass(frozen=True)
+class AttendanceSummary:
+    present: int = 0
+    late: int = 0
+    absent: int = 0
+    excused: int = 0
+
+    @property
+    def total(self) -> int:
+        return self.present + self.late + self.absent + self.excused

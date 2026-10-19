@@ -11,7 +11,7 @@ from tadris.i18n.fr import t
 from tadris.repositories import groups as repo
 from tadris.repositories import timetable as timetable_repo
 from tadris.repositories.students import like_pattern
-from tadris.services import audit, catalog, school_years, teachers, timetable
+from tadris.services import audit, catalog, school_years, sessions, teachers, timetable
 
 # Groups belong to the open year or an upcoming one. The price is copied onto each
 # subscription when it is created, so a price change only affects later subscriptions.
@@ -174,6 +174,8 @@ def change_teacher(conn, ctx: UserContext, group_id: int, teacher_id: int,
                                          slot["start_time"], slot["end_time"],
                                          max(slot["valid_from"], start), slot["valid_to"],
                                          slot["id"])
+        if current is not None:  # the planned sessions with the old teacher are redone
+            sessions.discard_for_teacher_change(conn, group_id, start, current["teacher_id"])
         if current is None:
             repo.insert_teacher_row(conn, group_id, teacher_id, start)
         elif start < current["valid_from"]:
@@ -189,6 +191,7 @@ def change_teacher(conn, ctx: UserContext, group_id: int, teacher_id: int,
         audit.log(conn, ctx, "group.change_teacher", "class_groups", group_id,
                   old={"teacher_id": None if current is None else current["teacher_id"]},
                   new={"teacher_id": teacher_id, "valid_from": start})
+        sessions.generate_in(conn)
 
 
 def teacher_history(conn, ctx: UserContext, group_id: int) -> list[TeacherPeriod]:
@@ -202,12 +205,15 @@ def teacher_history(conn, ctx: UserContext, group_id: int) -> list[TeacherPeriod
 
 
 def release(conn, ctx: UserContext, group_id: int) -> tuple[int, int]:
-    """Inside a transaction: a group being closed frees its rooms and its students leave it
-    today. Returns (slots ended, students who left)."""
+    """Inside a transaction: a group being closed frees its rooms, its students leave it and
+    what is still planned from today is cancelled. Returns (slots ended, students who
+    left)."""
     from tadris.services import enrollments  # enrollments depends on this module
 
     left = enrollments.end_for_closed_group(conn, ctx, group_id)
-    return timetable.end_group_slots(conn, ctx, group_id), left
+    ended = timetable.end_group_slots(conn, ctx, group_id)
+    sessions.cancel_for_closed_group(conn, ctx, group_id)
+    return ended, left
 
 
 def close(conn, ctx: UserContext, group_id: int) -> None:

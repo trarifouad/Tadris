@@ -10,7 +10,7 @@ from tadris.domain.models import Slot, SlotInput
 from tadris.i18n.fr import t
 from tadris.repositories import groups as groups_repo
 from tadris.repositories import timetable as repo
-from tadris.services import audit, settings
+from tadris.services import audit, sessions, settings
 from tadris.services import rooms as rooms_service
 
 # Slots repeat every week in half-open periods [valid_from, valid_to). Conflicts are checked
@@ -18,7 +18,9 @@ from tadris.services import rooms as rooms_service
 # for rooms and groups. Teacher clashes (one teacher, two groups, same time) are a service
 # rule that follows the teacher history: a teacher is busy in a group only during their
 # period there. Student clashes too: a student of the group may not have another of their
-# groups at the same time.
+# groups at the same time. Every change keeps the generated sessions in step: a slot's
+# pending sessions are discarded, then generated again; only kept sessions (history) decide
+# whether a slot is changed in place or ended.
 
 WEEKDAYS = range(1, 8)
 
@@ -150,6 +152,7 @@ def add_slot(conn, ctx: UserContext, data: SlotInput) -> int:
             "group_id": group["id"], "room_id": room["id"], "weekday": data.weekday,
             "start_time": data.start_time, "end_time": data.end_time, "valid_from": start_from,
         })
+        sessions.generate_in(conn)
         return slot_id
 
 
@@ -173,12 +176,14 @@ def update_slot(conn, ctx: UserContext, slot_id: int, data: SlotInput) -> int:
         new = (data.room_id, data.weekday, data.start_time, data.end_time)
         if new == (row["room_id"], row["weekday"], row["start_time"], row["end_time"]):
             return slot_id
-        if repo.session_count(conn, slot_id) == 0:
+        sessions.discard_for_slot(conn, slot_id)  # its forecast follows the new hours
+        if sessions.kept_count(conn, slot_id) == 0:
             check_clashes(conn, group, room, data.weekday, data.start_time, data.end_time,
                           row["valid_from"], row["valid_to"], slot_id)
             repo.update(conn, slot_id, *new)
             audit.log(conn, ctx, "slot.update", "timetable_slots", slot_id,
                       old=_snapshot(row), new=_snapshot(repo.get(conn, slot_id, today)))
+            sessions.generate_in(conn)
             return slot_id
         _end(conn, ctx, row, today)
         start_from = repo.get(conn, slot_id, today)["valid_to"]  # the new slot takes over from here
@@ -188,6 +193,7 @@ def update_slot(conn, ctx: UserContext, slot_id: int, data: SlotInput) -> int:
         audit.log(conn, ctx, "slot.replace", "timetable_slots", new_id,
                   old={"slot_id": slot_id, **_snapshot(row)},
                   new=_snapshot(repo.get(conn, new_id, today)))
+        sessions.generate_in(conn)
         return new_id
 
 
@@ -212,9 +218,10 @@ def end_group_slots(conn, ctx: UserContext, group_id: int) -> int:
 
 def follow_group_start(conn, ctx: UserContext, group_id: int, start_date: str) -> None:
     """Inside a transaction: the group's start date moved later, so its slots start then
-    too. A slot over before that date is removed. Refused once a slot has sessions."""
+    too. A slot over before that date is removed. Refused once a slot has kept sessions."""
     for row in repo.starting_before(conn, group_id, start_date):
-        if repo.session_count(conn, row["id"]):
+        sessions.discard_for_slot(conn, row["id"])
+        if sessions.kept_count(conn, row["id"]):
             raise BusinessRuleError(t["group.slots_have_sessions"])
         if row["valid_to"] is not None and row["valid_to"] <= start_date:
             repo.delete(conn, row["id"])
@@ -224,12 +231,16 @@ def follow_group_start(conn, ctx: UserContext, group_id: int, start_date: str) -
         repo.set_valid_from(conn, row["id"], start_date)
         audit.log(conn, ctx, "slot.move_start", "timetable_slots", row["id"],
                   old={"valid_from": row["valid_from"]}, new={"valid_from": start_date})
+    sessions.generate_in(conn)
 
 
 def _end(conn, ctx: UserContext, row, on: str) -> None:
-    """A slot that never produced a session and has not started is removed (a correction);
-    otherwise it ends on `on` (at the earliest the day after it started)."""
-    if repo.session_count(conn, row["id"]) == 0 and row["valid_from"] >= on:
+    """A slot that has no kept session and has not started is removed (a correction);
+    otherwise it ends on `on` (at the earliest the day after it started). Its pending
+    sessions from `on` go either way."""
+    sessions.discard_for_slot(conn, row["id"], from_date=on)
+    if sessions.kept_count(conn, row["id"]) == 0 and row["valid_from"] >= on:
+        sessions.discard_for_slot(conn, row["id"])  # an earlier forecast would block the delete
         repo.delete(conn, row["id"])
         audit.log(conn, ctx, "slot.delete", "timetable_slots", row["id"], old=_snapshot(row))
         return

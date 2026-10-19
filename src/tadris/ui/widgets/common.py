@@ -175,3 +175,11 @@ def confirm(parent: QWidget, title: str, text: str, action: str) -> bool:
     accepted = box.clickedButton() is accept
     box.deleteLater()
     return accepted
+
+
+def open_document(path) -> None:
+    """Open a printed document (PDF) in the system viewer, where it is printed."""
+    from PySide6.QtCore import QUrl
+    from PySide6.QtGui import QDesktopServices
+
+    QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))

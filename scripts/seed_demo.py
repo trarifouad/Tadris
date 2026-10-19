@@ -1,6 +1,7 @@
 """Fill a database with demo students, contacts and the school structure (year, levels,
 subjects, rooms, teachers, groups and a weekly timetable), then register most students for the
-year and place them in groups (some on trial, a few switched or gone), through the services.
+year and place them in groups (some on trial, a few switched or gone), add holidays, cancel a
+session with its makeup, set a substitute and take today's attendance, through the services.
 
 Usage: python scripts/seed_demo.py PATH.db
 The path is required so the real database is never seeded by accident. Creates the director
@@ -25,14 +26,17 @@ from tadris.domain.models import (
     TeacherInput,
 )
 from tadris.services import (
+    attendance,
     auth,
     catalog,
     contacts,
     enrollments,
     groups,
+    holidays,
     registrations,
     rooms,
     school_years,
+    sessions,
     settings,
     students,
     teachers,
@@ -151,6 +155,56 @@ def seed_enrollments(conn, director, rng: random.Random) -> tuple[int, int]:
     return registered, placed
 
 
+HOLIDAYS = [("1er Novembre", date(2026, 11, 1), None),
+            ("Vacances d'hiver", date(2026, 12, 20), date(2027, 1, 3))]
+MARKS = ["present"] * 17 + ["late", "late", "absent", "absent", "excused"]
+
+
+def seed_sessions(conn, director, rng: random.Random) -> int:
+    """Holidays, a cancelled session and its makeup, a substitute, today's attendance.
+    Returns how many attendance lines were taken."""
+    if not holidays.list_holidays(conn, director):
+        for label, start, end in HOLIDAYS:
+            holidays.create(conn, director, label, start, end)
+    if not settings.get(conn, "school.address"):
+        opens_at, closes_at = settings.school_hours(conn)
+        settings.save_school(conn, director, settings.get(conn, "school.name"),
+                             "0550 12 34 56", "12 rue des Oliviers, Oran", opens_at, closes_at)
+    today = date.today()
+    planned = [s for s in sessions.listing(conn, director, today, today + timedelta(days=13))
+               if s.status == "planned"]
+    future = [s for s in planned if s.date > today.isoformat()]
+    if len(future) >= 2:
+        cancelled = future[0]
+        sessions.cancel(conn, director, cancelled.id, "Enseignant malade")
+        for offset in range(1, 6):  # the first free day after, same hours and room
+            try:
+                sessions.schedule_makeup(conn, director, cancelled.id,
+                                         date.fromisoformat(cancelled.date)
+                                         + timedelta(days=offset),
+                                         cancelled.start_time, cancelled.end_time,
+                                         cancelled.room_id)
+                break
+            except BusinessRuleError:
+                continue
+        others = [t for t in teachers.search(conn, director) if t.id != future[1].teacher_id]
+        for teacher in others:
+            try:
+                sessions.set_teacher(conn, director, future[1].id, teacher.id)
+                break
+            except BusinessRuleError:
+                continue
+    marked = 0
+    for s in planned:
+        if s.date != today.isoformat():
+            continue
+        lines = attendance.roster(conn, director, s.id)
+        if lines:
+            marked += attendance.save(conn, director, s.id,
+                                      {line.enrollment_id: rng.choice(MARKS) for line in lines})
+    return marked
+
+
 def main(path: Path) -> None:
     rng = random.Random(2026)
     conn = connect(path)
@@ -184,9 +238,10 @@ def main(path: Path) -> None:
             if rng.random() < 0.1:
                 students.deactivate(conn, director, student_id)
     registered, placed = seed_enrollments(conn, director, rng)
+    marked = seed_sessions(conn, director, rng)
     conn.close()
     print(f"{created} students created in {path}: {registered} registered for the year, "
-          f"{placed} placed in groups")
+          f"{placed} placed in groups, {marked} attendance line(s) taken today")
 
 
 if __name__ == "__main__":

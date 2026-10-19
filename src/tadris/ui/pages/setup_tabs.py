@@ -14,8 +14,8 @@ from tadris.core.dates import display_date
 from tadris.core.errors import BusinessRuleError
 from tadris.core.money import format_dzd
 from tadris.i18n.fr import t
-from tadris.services import catalog, registrations, rooms, school_years, settings
-from tadris.ui.setup_dialogs import NameDialog, RoomDialog, YearDialog
+from tadris.services import catalog, holidays, registrations, rooms, school_years, settings
+from tadris.ui.setup_dialogs import HolidayDialog, NameDialog, RoomDialog, YearDialog
 from tadris.ui.theme.status import kind_for
 from tadris.ui.widgets.common import (
     PageBanner,
@@ -263,6 +263,60 @@ class RoomsTab(SetupTab):
         if room is not None and self.list.run(rooms.set_active, self._conn, self._ctx, room.id,
                                               room.status != "active"):
             self._done(t["catalog.saved"].format(name=room.name), room.id)
+
+
+class HolidaysTab(SetupTab):
+    def __init__(self, conn, ctx: UserContext):
+        super().__init__(conn, ctx, t["holidays.caption"], [
+            t["holidays.col.label"], t["holidays.col.start"], t["holidays.col.end"],
+            t["holidays.col.days"],
+        ], t["holidays.empty"])
+        self._holidays = {}
+        self.edit = self.button(t["action.edit"], self._edit)
+        self.remove = self.button(t["holidays.remove"], self._remove, "danger")
+        self.new = self.main_button(t["holidays.new"], self._new)
+        self.list.activated.connect(lambda _id: self._edit())
+        self.refresh()
+
+    def refresh(self) -> None:
+        listed = holidays.list_holidays(self._conn, self._ctx)
+        self._holidays = {h.id: h for h in listed}
+        self.list.set_rows([[
+            item(h.label, item_id=h.id),
+            item(display_date(h.start_date), h.start_date, align=CENTER),
+            item(display_date(h.end_date), h.end_date, align=CENTER),
+            item(str(h.days), h.days, align=RIGHT),
+        ] for h in listed])
+
+    def selected(self):
+        return self._holidays.get(self.list.selected_id())
+
+    def _update_buttons(self) -> None:
+        self.edit.setEnabled(self.selected() is not None)
+        self.remove.setEnabled(self.selected() is not None)
+
+    def _new(self) -> None:
+        dialog = HolidayDialog(self._conn, self._ctx, parent=self)
+        if ask(dialog):
+            self._done(t["holidays.saved"].format(label=dialog.label.text().strip()),
+                       dialog.holiday_id)
+
+    def _edit(self) -> None:
+        holiday = self.selected()
+        if holiday is None:
+            return
+        dialog = HolidayDialog(self._conn, self._ctx, holiday, parent=self)
+        if ask(dialog):
+            self._done(t["holidays.saved"].format(label=dialog.label.text().strip()), holiday.id)
+
+    def _remove(self) -> None:
+        holiday = self.selected()
+        if holiday is None or not confirm(
+                self, t["holidays.confirm_remove_title"],
+                t["holidays.confirm_remove"].format(label=holiday.label), t["holidays.remove"]):
+            return
+        if self.list.run(holidays.remove, self._conn, self._ctx, holiday.id):
+            self._done(t["holidays.removed"].format(label=holiday.label))
 
 
 class SchoolTab(QWidget):

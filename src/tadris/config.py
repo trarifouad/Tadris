@@ -22,6 +22,13 @@ def db_override() -> Path | None:
 def db_path() -> Path:
     return db_override() or data_dir() / "tadris.db"
 
+def documents_dir() -> Path:
+    """Printed documents (attendance sheets, receipts), next to the database in use."""
+    p = db_path().parent / "documents"
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
 def backup_dir() -> Path:
     p = data_dir() / "backups"
     p.mkdir(exist_ok=True)

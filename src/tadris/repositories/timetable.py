@@ -72,11 +72,6 @@ def delete(conn, slot_id: int) -> None:
     conn.execute("DELETE FROM timetable_slots WHERE id = ?", (slot_id,))
 
 
-def session_count(conn, slot_id: int) -> int:
-    row = conn.execute("SELECT COUNT(*) FROM sessions WHERE slot_id = ?", (slot_id,)).fetchone()
-    return int(row[0])
-
-
 def valid_on(conn, on: str, room_id: int | None = None, group_id: int | None = None,
              teacher_id: int | None = None) -> list:
     """Slots valid on a date, optionally for one room, group or teacher (on that date).

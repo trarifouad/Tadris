@@ -62,6 +62,7 @@ _TRIGGER_MESSAGES = (
     ("payout is not draft", "db.payout_not_draft"),
     ("payout is locked", "db.payout_locked"),
     ("accrual date outside payout period", "db.payout_period"),
+    ("holiday overlap", "db.holiday_overlap"),
 )
 
 

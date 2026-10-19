@@ -49,6 +49,10 @@ def build_qss(t: dict, chevron: str = "", check: str = "") -> str:
     QCheckBox::indicator:checked:disabled {{ background: {t['faint']};
         border-color: {t['faint']}; }}
     QCheckBox:disabled {{ color: {t['muted']}; }}
+    QTableView::indicator {{ width: 16px; height: 16px; border-radius: 4px;
+        border: 1px solid {t['border_strong']}; background: {t['surface']}; }}
+    QTableView::indicator:checked {{ background: {t['primary']}; border-color: {t['primary']};
+        image: url("{check}"); }}
     QScrollBar:vertical {{ background: transparent; width: 10px; margin: 2px; }}
     QScrollBar::handle:vertical {{ background: {t['border_strong']}; border-radius: 3px;
         min-height: 32px; }}

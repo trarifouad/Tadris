@@ -9,7 +9,7 @@ account (directeur / password1) and a receptionist (accueil / password2) if the 
 
 import random
 import sys
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 from tadris.core.dates import add_minutes
@@ -72,6 +72,7 @@ GROUPS = [
     ("Sciences", "3AM", "Sciences 3AM", 2, 2500, 12),
 ]
 STARTS = ["09:00", "10:30", "14:00", "15:30", "17:00", "18:30"]
+GROUP_START = date(2026, 9, 15)
 
 
 def seed_school(conn, director, rng: random.Random) -> None:
@@ -89,7 +90,7 @@ def seed_school(conn, director, rng: random.Random) -> None:
     for subject, level, name, teacher, price, capacity in GROUPS:
         group_id = groups.create(conn, director, GroupInput(
             year, level_ids[level], subject_ids[subject], name, price, capacity,
-            date(2026, 9, 15)), teacher_ids[teacher])
+            GROUP_START), teacher_ids[teacher])
         placed = 0
         while placed < 2:
             # Weekend mornings and weekday evenings; skip any clash the services refuse.
@@ -98,7 +99,7 @@ def seed_school(conn, director, rng: random.Random) -> None:
             end = add_minutes(start, 90)
             try:
                 timetable.add_slot(conn, director, SlotInput(
-                    group_id, rng.choice(room_ids), weekday, start, end, date(2026, 9, 15)))
+                    group_id, rng.choice(room_ids), weekday, start, end, GROUP_START))
                 placed += 1
             except BusinessRuleError:
                 continue
@@ -127,7 +128,11 @@ def seed_enrollments(conn, director, rng: random.Random) -> tuple[int, int]:
         for i, group_id in enumerate(wanted):
             trial = i == 0 and rng.random() < 0.15
             try:
-                enrollment_id = enrollments.enroll(conn, director, row.id, group_id, trial=trial)
+                # Entry dates spread from the groups' start to today: some first months are
+                # over, some end soon, some run on (the Abonnements lists have rows).
+                entered = min(GROUP_START + timedelta(days=rng.randrange(0, 40)), date.today())
+                enrollment_id = enrollments.enroll(conn, director, row.id, group_id,
+                                                   trial=trial, enrolled_on=entered)
             except BusinessRuleError:
                 continue
             placed += 1

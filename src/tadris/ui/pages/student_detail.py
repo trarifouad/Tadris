@@ -20,13 +20,14 @@ from tadris.services import contacts, students
 from tadris.ui.contact_dialog import ContactDialog
 from tadris.ui.pages.registration_tab import RegistrationTab
 from tadris.ui.pages.student_groups_tab import StudentGroupsTab
+from tadris.ui.pages.subscriptions_tab import SubscriptionsTab
 from tadris.ui.student_dialog import StudentDialog
 from tadris.ui.theme.status import kind_for
 from tadris.ui.widgets.common import Badge, ask, confirm, primary_button, toast, variant_button
 from tadris.ui.widgets.tables import ID_ROLE, fill, item, ruled_table, selected_id
 
-# Tabs filled by later phases: subscriptions (5), payments (7), attendance (6).
-LATER_TABS = ("subscriptions", "payments", "attendance")
+# Tabs filled by later phases: payments (7), attendance (6).
+LATER_TABS = ("payments", "attendance")
 
 
 class StudentDetailView(QWidget):
@@ -96,11 +97,15 @@ class StudentDetailView(QWidget):
         self.tabs.setDocumentMode(True)
         self.registration = RegistrationTab(conn, ctx, student_id)
         self.groups = StudentGroupsTab(conn, ctx, student_id)
-        # Each tab shows what the other changes: groups count, who may enroll.
+        self.subscriptions = SubscriptionsTab(conn, ctx, student_id)
+        # Each tab shows what the others change: groups count, who may enroll, the months
+        # an enrollment, a confirmed trial or a switch creates.
         self.registration.changed.connect(self.groups.refresh)
         self.groups.changed.connect(self.registration.refresh)
+        self.groups.changed.connect(self.subscriptions.refresh)
         self.tabs.addTab(self.registration, t["student_detail.tab.registration"])
         self.tabs.addTab(self.groups, t["student_detail.tab.groups"])
+        self.tabs.addTab(self.subscriptions, t["student_detail.tab.subscriptions"])
         for key in LATER_TABS:
             self.tabs.addTab(_later_tab(), t[f"student_detail.tab.{key}"])
         self.contacts = ContactsTab(conn, ctx, student_id)

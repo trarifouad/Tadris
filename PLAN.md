@@ -285,7 +285,17 @@ ui/first_run.py        create the director account and school name on first star
 
 ## Phase 5: Subscriptions
 
-**Goal:** monthly subscriptions with renewal.
+**Status:** done. No schema change. Service and repository for subscriptions (create, start, renew, renew many, cancel, mark ended at app start, the desk's lists); the first month is created by the enrollment service. Student page: Abonnements tab (renew, start, cancel); sidebar: Abonnements page (ending within 7 days, ended and not renewed, without any month; double-click opens the student); group page: bulk renewal. Seed entry dates spread over September and October so the lists have rows. 716 tests green.
+
+**Decisions taken in this phase**
+
+- First month: full price for a full month from the entry date (each student has their own cycle; no prorating). Created automatically, in the same transaction: on enrolling as active, from the entry date; on confirming a trial, from the confirmation (or the group's first day if later): the trial days are free.
+- Switch mid-month: the running month stays with the old group (and its teacher); the new group's first month starts when it ends, at the new group's price (on the switch date when no month runs). No money moves, even if prices differ. Past the end of the year, no month is created and the switch is not blocked. A switched trial stays free.
+- Leaving keeps the running month unchanged; refunds come in phase 8.
+- Renewal is manual (both roles), from the student page, the Abonnements page or a group page (bulk: every row ticked, untick who stops, all or nothing). Only the latest month of a live paid enrollment in an open group is renewed; the next month starts on its end date, or later after a gap, never earlier, never after the end of the year. The price is the group's on the renewal day. `renewal_of_id` stays unique even for a cancelled renewal: renewing again then leaves the link out.
+- Month ends follow `add_one_month`: 31 Jan → 28 Feb → 28 Mar (each month starts on the previous end).
+- Cancel: director only (`subscription.cancel`), with a reason; refused once part of the month was paid (refund first, phase 8) or once its charge is in a teacher payout; the charge is cancelled and the period is free again. A paid enrollment left without any month shows in « Sans abonnement » with « Nouvel abonnement ».
+- A free group (price 0) gets months without charges. Display states: à venir, en cours, se termine bientôt (7 days or less), terminé, annulé. At app start, months past their last day are marked `ended` (audited without a user).
 
 **Services**
 
@@ -606,9 +616,9 @@ Add a `holidays` table or a settings JSON list in this phase. Decide which and a
 
 | Needed before | Question | Default proposal |
 |---|---|---|
-| 5 | Mid-month join: full or prorated first subscription | Full price starting at the enrollment date (moved from phase 4: no subscription exists before phase 5) |
-| 5 | Group switch mid-month: money effect | New subscription from the switch date, old one cancelled, difference handled as adjustment, director approves (moved from phase 4) |
-| 5 | Non-renewed student: still allowed in class? | Warning on the attendance screen, no hard block |
+| 5 | Mid-month join: full or prorated first subscription | **Decided:** full price for a full month from the entry date |
+| 5 | Group switch mid-month: money effect | **Decided:** the running month stays with the old group; the new group's first month starts when it ends |
+| 6 | Non-renewed student: still allowed in class? | Warning on the attendance screen, no hard block |
 | 3 / 6 | Timetable slot validity | **Decided:** half-open `[valid_from, valid_to)`, same as rates and subscriptions. Adjacent periods that share a boundary date do not overlap. |
 | 6 | Holidays storage | `holidays` table with date and label |
 | 7 | Receipt paper | A4 first, thermal later |

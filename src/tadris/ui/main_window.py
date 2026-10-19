@@ -17,6 +17,7 @@ from tadris.services import settings
 from tadris.ui.pages.groups import GroupsPage
 from tadris.ui.pages.settings import SettingsPage
 from tadris.ui.pages.students import StudentsPage
+from tadris.ui.pages.subscriptions_page import SubscriptionsPage
 from tadris.ui.pages.teachers import TeachersPage
 from tadris.ui.pages.timetable import TimetablePage
 
@@ -100,7 +101,16 @@ class MainWindow(QMainWindow):
             return pages[key](self._conn, self.ctx)
         if key == "settings":
             return SettingsPage(self._conn, self.ctx)
+        if key == "subscriptions":
+            page = SubscriptionsPage(self._conn, self.ctx)
+            page.open_student.connect(self.open_student)
+            return page
         return PlaceholderPage(label)
+
+    def open_student(self, student_id: int) -> None:
+        """Show a student's page from another page (e.g. a list of months to renew)."""
+        self.nav_buttons["students"].click()
+        self.pages.widget(self._slots["students"]).open_student(student_id)
 
     def _build_sidebar(self) -> QFrame:
         sidebar = QFrame()

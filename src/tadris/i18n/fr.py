@@ -94,6 +94,36 @@ t = {
     "enrollment.leave_before_attendance": (
         "Une présence est déjà notée le {date} : la date de sortie ne peut pas être avant."
     ),
+    "subscription.not_found": "Abonnement introuvable.",
+    "subscription.charge_description": "Abonnement {group} du {start} au {end}",
+    "subscription.enrollment_not_live": (
+        "L'élève n'est plus dans ce groupe : son abonnement ne peut pas être renouvelé."
+    ),
+    "subscription.trial": "Un élève en essai n'a pas d'abonnement : confirmez d'abord l'essai.",
+    "subscription.group_closed": "Ce groupe est clôturé : pas de nouvel abonnement.",
+    "subscription.cancelled": "Cet abonnement est annulé.",
+    "subscription.not_latest": (
+        "Seul le dernier abonnement peut être renouvelé (celui qui se termine le {end})."
+    ),
+    "subscription.start_before_end": (
+        "Le renouvellement ne peut pas commencer avant la fin de l'abonnement précédent ({end})."
+    ),
+    "subscription.start_outside_year": (
+        "Un abonnement doit commencer pendant l'année scolaire (jusqu'au {end})."
+    ),
+    "subscription.start_before_entry": (
+        "Un abonnement ne peut pas commencer avant l'entrée dans le groupe ({date})."
+    ),
+    "subscription.already_running": (
+        "Cet élève a déjà un abonnement en cours ou à venir dans ce groupe (jusqu'au {end}). "
+        "Utilisez « Renouveler »."
+    ),
+    "subscription.already_cancelled": "Cet abonnement est déjà annulé.",
+    "subscription.paid": (
+        "Cet abonnement a déjà été payé en partie ({amount}). Remboursez d'abord le paiement."
+    ),
+    "subscription.in_payout": "Cet abonnement est déjà compté dans un paiement enseignant.",
+    "subscription.reason_required": "Indiquez le motif de l'annulation.",
     "percent.invalid": "Pourcentage invalide. Exemple : 60 ou 62,5 (entre 0 et 100).",
     "time.invalid": "Heure invalide. Exemple : 17:30 ou 17h30.",
     "name.required": "Le nom est obligatoire.",
@@ -274,6 +304,7 @@ t = {
     "nav.dashboard": "Tableau de bord",
     "nav.students": "Élèves",
     "nav.groups": "Groupes",
+    "nav.subscriptions": "Abonnements",
     "nav.timetable": "Emploi du temps",
     "nav.attendance": "Présences",
     "nav.payments": "Paiements",
@@ -376,6 +407,85 @@ t = {
     "student_detail.tab.attendance": "Présences",
     "student_detail.tab.contacts": "Contacts",
     "student_detail.tab_later": "Cet onglet sera rempli dans une prochaine étape.",
+    "subscription_state.upcoming": "À venir",
+    "subscription_state.active": "En cours",
+    "subscription_state.expiring": "Se termine bientôt",
+    "subscription_state.ended": "Terminé",
+    "subscription_state.cancelled": "Annulé",
+    "subscriptions.period": "du {start} au {end}",
+    "subscriptions.col.group": "Groupe",
+    "subscriptions.col.period": "Période",
+    "subscriptions.col.price": "Prix",
+    "subscriptions.col.due": "Reste à payer",
+    "subscriptions.col.status": "Statut",
+    "subscriptions.summary": "Reste à payer sur les abonnements : {due}",
+    "subscriptions.free": "Gratuit",
+    "subscriptions.empty": (
+        "Aucun abonnement. Le premier mois est créé à l'inscription dans un groupe (ou à la "
+        "confirmation d'un essai)."
+    ),
+    "subscriptions.renew": "Renouveler",
+    "subscriptions.cancel": "Annuler l'abonnement",
+    "subscriptions.start": "Nouvel abonnement",
+    "subscriptions.renewed": "Abonnement renouvelé : {group}, {period}",
+    "subscriptions.started": "Abonnement créé : {group}, {period}",
+    "subscriptions.cancelled_msg": "Abonnement annulé : {group}",
+    "subscriptions_page.title": "Abonnements",
+    "subscriptions_page.caption": (
+        "Les élèves encore dans leur groupe dont le mois se termine, est terminé, ou qui n'ont "
+        "plus d'abonnement. Double-cliquez sur une ligne pour ouvrir la fiche de l'élève."
+    ),
+    "subscriptions_page.tab.soon": "Se terminent dans 7 jours ({count})",
+    "subscriptions_page.tab.lapsed": "Terminés, non renouvelés ({count})",
+    "subscriptions_page.tab.missing": "Sans abonnement ({count})",
+    "subscriptions_page.col.student": "Élève",
+    "subscriptions_page.col.number": "N°",
+    "subscriptions_page.col.group": "Groupe",
+    "subscriptions_page.col.period": "Mois actuel",
+    "subscriptions_page.col.entry": "Entrée",
+    "subscriptions_page.col.due": "Reste à payer",
+    "subscriptions_page.empty.soon": "Aucun mois ne se termine dans les 7 prochains jours.",
+    "subscriptions_page.empty.lapsed": "Tous les mois terminés ont été renouvelés.",
+    "subscriptions_page.empty.missing": "Tous les élèves ont un abonnement.",
+    "subscriptions_page.renew": "Renouveler…",
+    "bulk_renew.submit": "Renouveler",
+    "bulk_renew.caption": (
+        "Chaque mois suivant commence à la fin du mois actuel, au prix actuel du groupe. "
+        "Décochez les élèves qui s'arrêtent."
+    ),
+    "bulk_renew.col.student": "Élève",
+    "bulk_renew.col.group": "Groupe",
+    "bulk_renew.col.current": "Mois actuel",
+    "bulk_renew.col.next": "Nouveau mois",
+    "bulk_renew.col.price": "Prix",
+    "bulk_renew.total": "{count} abonnement(s) à renouveler · {total}",
+    "bulk_renew.done": "{count} abonnement(s) renouvelé(s)",
+    "group_detail.renew": "Renouveler les abonnements",
+    "group_detail.renew_title": "Renouveler les abonnements · {name}",
+    "group_detail.nothing_to_renew": (
+        "Aucun abonnement à renouveler dans ce groupe : aucun mois terminé ni se terminant dans "
+        "les 7 jours."
+    ),
+    "renew_dialog.title": "Renouveler l'abonnement",
+    "renew_dialog.submit": "Renouveler",
+    "renew_dialog.caption": (
+        "{group} · mois actuel {period}. Le mois suivant commence à sa fin, ou plus tard après "
+        "une interruption."
+    ),
+    "renew_dialog.start": "Début du mois",
+    "renew_dialog.preview": "Nouveau mois : {period} · {price} (prix actuel du groupe)",
+    "start_dialog.title": "Nouvel abonnement",
+    "start_dialog.submit": "Créer",
+    "start_dialog.caption": (
+        "Pour un groupe où l'élève n'a plus d'abonnement (par exemple après une annulation)."
+    ),
+    "start_dialog.group": "Groupe",
+    "cancel_subscription_dialog.title": "Annuler l'abonnement",
+    "cancel_subscription_dialog.submit": "Annuler l'abonnement",
+    "cancel_subscription_dialog.caption": (
+        "Le mois {period} de {group} ({price}) sera annulé, ainsi que son montant dû. "
+        "Impossible une fois payé en partie ou compté dans un paiement enseignant."
+    ),
     "enrollment_status.trial": "Essai",
     "enrollment_status.active": "Actif",
     "enrollment_status.left": "Sorti",

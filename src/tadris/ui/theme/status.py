@@ -9,7 +9,8 @@ STATUS_STYLE = {
     "registration": {"active": "success", "cancelled": "neutral"},
     "enrollment": {"trial": "info", "active": "success", "left": "neutral", "switched": "neutral"},
     "subscription": {
-        "active": "success", "expiring": "warning", "ended": "neutral", "cancelled": "danger",
+        "upcoming": "info", "active": "success", "expiring": "warning", "ended": "neutral",
+        "cancelled": "danger",
     },
     "session": {"planned": "info", "held": "success", "cancelled": "danger"},
     "attendance": {"present": "success", "late": "warning", "absent": "danger", "excused": "info"},

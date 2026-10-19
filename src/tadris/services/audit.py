@@ -27,3 +27,12 @@ def log(
             None if new is None else json.dumps(new, ensure_ascii=False, default=str),
         ),
     )
+
+
+def log_system(conn, action: str, entity: str, new: Any = None) -> None:
+    """An entry written by the app itself (no user), e.g. the start-up bookkeeping."""
+    conn.execute(
+        "INSERT INTO audit_log(user_id, action, entity_name, new_value) VALUES (NULL, ?, ?, ?)",
+        (action, entity, None if new is None else json.dumps(new, ensure_ascii=False,
+                                                              default=str)),
+    )

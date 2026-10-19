@@ -18,9 +18,10 @@ from tadris.core.permissions import allowed
 from tadris.core.text import fold
 from tadris.domain.models import Group
 from tadris.i18n.fr import t
-from tadris.services import catalog, groups, school_years, timetable
+from tadris.services import catalog, groups, school_years, subscriptions, timetable
 from tadris.ui.group_dialogs import ChangeTeacherDialog, GroupDialog, SlotDialog, day_name
 from tadris.ui.pages.group_students_tab import GroupStudentsTab
+from tadris.ui.subscription_dialogs import BulkRenewDialog
 from tadris.ui.theme.status import kind_for
 from tadris.ui.widgets.common import (
     Badge,
@@ -202,6 +203,8 @@ class GroupDetailView(QWidget):
         self.close_group.clicked.connect(self._close)
         self.reopen = self.header.add_action(QPushButton(t["group_detail.reopen"]))
         self.reopen.clicked.connect(self._reopen)
+        self.renew = self.header.add_action(QPushButton(t["group_detail.renew"]))
+        self.renew.clicked.connect(self._renew)
 
         self.slots = ListSection([
             t["slots.col.day"], t["slots.col.time"], t["slots.col.room"], t["slots.col.from"],
@@ -261,6 +264,7 @@ class GroupDetailView(QWidget):
         self.change_teacher.setVisible(self.manages and is_open)
         self.close_group.setVisible(self.manages and is_open)
         self.reopen.setVisible(self.manages and not is_open)
+        self.renew.setVisible(is_open and allowed(self._ctx, "subscription.manage"))
         self.add_slot.setVisible(self.plans and is_open)
         self.edit_slot.setVisible(self.plans and is_open)
 
@@ -300,6 +304,17 @@ class GroupDetailView(QWidget):
                        name=self.group.name, enrolled=self.group.enrolled),
                    t["group_detail.close"]):
             self._run(groups.close, t["groups.closed_msg"].format(name=self.group.name))
+
+    def _renew(self) -> None:
+        months = subscriptions.renewable(self._conn, self._ctx, self.group_id)
+        if not months:
+            self.error.show_error(t["group_detail.nothing_to_renew"])
+            return
+        dialog = BulkRenewDialog(self._conn, self._ctx, months,
+                                 t["group_detail.renew_title"].format(name=self.group.name),
+                                 parent=self)
+        if ask(dialog):
+            self._done(t["bulk_renew.done"].format(count=len(dialog.renewed)))
 
     def _reopen(self) -> None:
         self._run(groups.reopen, t["groups.reopened"].format(name=self.group.name))

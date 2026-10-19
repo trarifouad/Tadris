@@ -14,6 +14,7 @@ from tadris.core.context import UserContext
 from tadris.core.permissions import nav_for
 from tadris.i18n.fr import t
 from tadris.services import settings
+from tadris.ui.pages.attendance import AttendancePage
 from tadris.ui.pages.groups import GroupsPage
 from tadris.ui.pages.settings import SettingsPage
 from tadris.ui.pages.students import StudentsPage
@@ -96,6 +97,7 @@ class MainWindow(QMainWindow):
             "groups": GroupsPage,
             "timetable": TimetablePage,
             "teachers": TeachersPage,
+            "attendance": AttendancePage,
         }
         if key in pages:
             return pages[key](self._conn, self.ctx)

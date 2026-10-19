@@ -19,6 +19,7 @@ from tadris.i18n.fr import t
 from tadris.services import contacts, students
 from tadris.ui.contact_dialog import ContactDialog
 from tadris.ui.pages.registration_tab import RegistrationTab
+from tadris.ui.pages.student_attendance_tab import StudentAttendanceTab
 from tadris.ui.pages.student_groups_tab import StudentGroupsTab
 from tadris.ui.pages.subscriptions_tab import SubscriptionsTab
 from tadris.ui.student_dialog import StudentDialog
@@ -26,8 +27,8 @@ from tadris.ui.theme.status import kind_for
 from tadris.ui.widgets.common import Badge, ask, confirm, primary_button, toast, variant_button
 from tadris.ui.widgets.tables import ID_ROLE, fill, item, ruled_table, selected_id
 
-# Tabs filled by later phases: payments (7), attendance (6).
-LATER_TABS = ("payments", "attendance")
+# Tabs filled by later phases: payments (7).
+LATER_TABS = ("payments",)
 
 
 class StudentDetailView(QWidget):
@@ -108,6 +109,8 @@ class StudentDetailView(QWidget):
         self.tabs.addTab(self.subscriptions, t["student_detail.tab.subscriptions"])
         for key in LATER_TABS:
             self.tabs.addTab(_later_tab(), t[f"student_detail.tab.{key}"])
+        self.attendance = StudentAttendanceTab(conn, ctx, student_id)
+        self.tabs.addTab(self.attendance, t["student_detail.tab.attendance"])
         self.contacts = ContactsTab(conn, ctx, student_id)
         self.contacts.changed.connect(self.refresh)
         self.tabs.addTab(self.contacts, t["student_detail.tab.contacts"])

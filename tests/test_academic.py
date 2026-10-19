@@ -83,17 +83,21 @@ def next_weekday(weekday: int, after: date = TODAY) -> date:
 
 
 def add_session(conn, slot_id):
-    """A generated session for the slot's next occurrence (phase 6 will do this)."""
+    """A kept (held) session at the slot's next occurrence: the slot then has history. The
+    generator already made that session as a forecast; holding it makes it history."""
     row = conn.execute(
         "SELECT s.group_id, s.room_id, s.weekday, s.start_time, s.end_time, gt.teacher_id "
         "FROM timetable_slots s JOIN group_teachers gt ON gt.group_id = s.group_id "
         "AND gt.valid_to IS NULL WHERE s.id = ?", (slot_id,)).fetchone()
-    conn.execute(
-        "INSERT INTO sessions(group_id, slot_id, room_id, teacher_id, date, start_time, end_time)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (row["group_id"], slot_id, row["room_id"], row["teacher_id"],
-         dates.iso(next_weekday(row["weekday"])), row["start_time"], row["end_time"]),
-    )
+    day = dates.iso(next_weekday(row["weekday"]))
+    held = conn.execute("UPDATE sessions SET status = 'held' WHERE slot_id = ? AND date = ?",
+                        (slot_id, day))
+    if held.rowcount == 0:
+        conn.execute(
+            "INSERT INTO sessions(group_id, slot_id, room_id, teacher_id, date, start_time, "
+            "end_time, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'held')",
+            (row["group_id"], slot_id, row["room_id"], row["teacher_id"], day,
+             row["start_time"], row["end_time"]))
 
 
 def enroll(conn, school, group_id, count):

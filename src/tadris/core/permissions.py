@@ -27,6 +27,7 @@ ACTIONS: dict[str, frozenset[str]] = {
     "subscription.manage": BOTH,
     "subscription.cancel": DIRECTOR_ONLY,
     "session.view": BOTH,
+    "session.manage": BOTH,
     "attendance.save": BOTH,
     "payment.record": BOTH,
     "payment.void": DIRECTOR_ONLY,

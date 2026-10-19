@@ -331,7 +331,16 @@ ui/first_run.py        create the director account and school name on first star
 
 ## Phase 6: Sessions and attendance
 
-**Goal:** daily operation: print the list, take attendance.
+**Status:** done. Migration 0011 (holidays). Services: holidays, session generator and session actions (`sessions`), attendance, printing (reportlab, `documents/`). Paramètres → Vacances; sidebar Présences (day or week, filters, cancel, restore, makeup, substitute, Régénérer, week sheet); attendance screen (status buttons, save, corrections, print); student page Présences tab. Seed adds holidays, a cancelled session with its makeup, a substitute and today's attendance. 795 tests green.
+
+**Decisions taken in this phase**
+
+- Holidays are periods with a label, both days included (a single day has the same start and end), in a `holidays` table; the director manages them in Paramètres → Vacances; periods never overlap (service and trigger).
+- Sessions are generated for the next 14 days (today included): at app start, when a slot is added, and with « Régénérer ». One per slot meeting that day, in its room, with the group's teacher on that date; skipped on holidays, for closed groups, outside a slot's validity, before the group starts or after its year. Never duplicated (unique slot and date, cancelled sessions included). A generated session that would clash is skipped and reported.
+- A pending session (generated, planned, today or later, no attendance) is a forecast: it is discarded and generated again when a slot changes or ends, a holiday is added, moved or removed, the group's start moves, or a teacher change applies (only the sessions with the old teacher: a substitute stays). Every other session is history and is kept. The phase 3 rules (change a slot in place or end it, delete a slot or end it, move a group's start) now count kept sessions only.
+- Cancel: both roles, reason required, planned sessions only (not once attendance is taken). Restore: if the room, teacher and group are still free and no makeup exists. Makeup: one per cancelled session, any date from the group's start to the end of the year, within opening hours; room, teacher, group and the group's students must be free, the room must fit the students of that day. Substitute: one session only, teacher active and free; the group's teacher again removes it. Closing a group or a year cancels what is still planned from today (« Groupe clôturé »).
+- Attendance: the group's students on the session date (left_on included, so a switch day lists the student in both groups), trial students marked « Essai », paid students with no month covering the date marked « Mois non renouvelé » (listed normally, no block). From the session's day on, never before; corrections by both roles at any time, each save audited with every change (old → new); the first save marks the session held.
+- Printing: PDF files in a `documents` folder next to the database, opened in the system viewer. Session sheet (A4 portrait, boxes ticked when recorded) and a group's week sheet (A4 landscape, letters P/R/A/E, « — » when not in the group that day). Font Readex Pro (French accents now, Arabic later). Every print is written to `print_log`.
 
 **Services**
 
@@ -618,9 +627,9 @@ Add a `holidays` table or a settings JSON list in this phase. Decide which and a
 |---|---|---|
 | 5 | Mid-month join: full or prorated first subscription | **Decided:** full price for a full month from the entry date |
 | 5 | Group switch mid-month: money effect | **Decided:** the running month stays with the old group; the new group's first month starts when it ends |
-| 6 | Non-renewed student: still allowed in class? | Warning on the attendance screen, no hard block |
+| 6 | Non-renewed student: still allowed in class? | **Decided:** « Mois non renouvelé » badge on the attendance screen, no block |
 | 3 / 6 | Timetable slot validity | **Decided:** half-open `[valid_from, valid_to)`, same as rates and subscriptions. Adjacent periods that share a boundary date do not overlap. |
-| 6 | Holidays storage | `holidays` table with date and label |
+| 6 | Holidays storage | **Decided:** `holidays` table of periods (start, end included, label) |
 | 7 | Receipt paper | A4 first, thermal later |
 | 7 | Overpayment | Keep as credit on the student |
 | 7 | Debt limit | Warning at a configurable amount, director override |

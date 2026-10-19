@@ -14,6 +14,12 @@ def build_qss(t: dict, chevron: str = "", check: str = "") -> str:
         f'    QLabel#badge[kind="{kind}"] {{ background: {t[kind + "_bg"]}; color: {t[kind]}; }}'
         for kind in BADGE_KINDS
     )
+    # Attendance marks: a checked mark takes its status colour, like the badges.
+    marks = "\n".join(
+        f'    QPushButton#mark[kind="{kind}"]:checked {{ background: {t[kind + "_bg"]}; '
+        f'color: {t[kind]}; border: 1px solid {t[kind]}; }}'
+        for kind in BADGE_KINDS
+    )
     return f"""
     * {{ font-family: "Readex Pro", "Segoe UI", sans-serif; font-size: 14px; color: {t['text']}; }}
     QMainWindow, QWidget#page {{ background: {t['bg']}; }}
@@ -22,6 +28,8 @@ def build_qss(t: dict, chevron: str = "", check: str = "") -> str:
     QPushButton {{ min-height: 36px; padding: 0 16px; border-radius: 6px; font-weight: 500;
                    border: 1px solid {t['border_strong']}; background: {t['surface']}; }}
     QPushButton:hover {{ background: {t['surface_alt']}; }}
+    QPushButton#mark {{ min-height: 28px; padding: 0 10px; font-weight: 400; }}
+{marks}
     QPushButton[variant="primary"] {{ background: {t['primary']}; color: {t['on_primary']};
                                       border: none; }}
     QPushButton[variant="primary"]:hover {{ background: {t['primary_hover']}; }}

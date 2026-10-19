@@ -1,4 +1,5 @@
-"""Dialogs for the school structure kept in Paramètres: years, levels, subjects, rooms."""
+"""Dialogs for the school structure kept in Paramètres: years, levels, subjects, rooms,
+holidays."""
 
 from datetime import date
 
@@ -7,12 +8,12 @@ from PySide6.QtWidgets import QLineEdit
 from tadris.core.context import UserContext
 from tadris.core.dates import parse_display_date
 from tadris.core.errors import ValidationError
-from tadris.domain.models import NamedItem, Room, SchoolYear
+from tadris.domain.models import Holiday, NamedItem, Room, SchoolYear
 from tadris.i18n.fr import t
-from tadris.services import catalog, rooms, school_years
+from tadris.services import catalog, holidays, rooms, school_years
 from tadris.ui.widgets.common import labeled
 from tadris.ui.widgets.date_edit import DateLineEdit
-from tadris.ui.widgets.forms import FormDialog, row
+from tadris.ui.widgets.forms import FormDialog, caption, row
 from tadris.ui.widgets.inputs import count_spin
 
 
@@ -99,3 +100,39 @@ class RoomDialog(FormDialog):
         else:
             rooms.update(self._conn, self._ctx, self._room.id, self.name.text(),
                          self.capacity.value())
+
+
+class HolidayDialog(FormDialog):
+    """A period off (both days included); leave the end empty for a single day."""
+
+    def __init__(self, conn, ctx: UserContext, holiday: Holiday | None = None, parent=None):
+        key = "holiday_dialog.new_title" if holiday is None else "holiday_dialog.edit_title"
+        super().__init__(t[key], t["action.save"], parent=parent)
+        self._conn, self._ctx, self._holiday = conn, ctx, holiday
+        self.holiday_id: int | None = None if holiday is None else holiday.id
+        self.label = QLineEdit()
+        self.label.setPlaceholderText(t["holiday_dialog.placeholder"])
+        self.start = DateLineEdit()
+        self.end = DateLineEdit()
+        if holiday is not None:
+            self.label.setText(holiday.label)
+            self.start.set_value(date.fromisoformat(holiday.start_date))
+            if holiday.end_date != holiday.start_date:
+                self.end.set_value(date.fromisoformat(holiday.end_date))
+        self.add(labeled(t["holiday_dialog.label"], self.label, required=True))
+        self.add(row(labeled(t["holiday_dialog.start"], self.start, required=True),
+                     labeled(t["holiday_dialog.end"], self.end)))
+        note = caption(t["holiday_dialog.caption"])
+        note.setWordWrap(True)
+        self.add(note)
+        self.finish(self.label)
+
+    def save(self) -> None:
+        start = required_date(self.start)
+        end = parse_display_date(self.end.text()) if self.end.text().strip() else None
+        if self._holiday is None:
+            self.holiday_id = holidays.create(self._conn, self._ctx, self.label.text(), start,
+                                              end)
+        else:
+            holidays.update(self._conn, self._ctx, self._holiday.id, self.label.text(), start,
+                            end)

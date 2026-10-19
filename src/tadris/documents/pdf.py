@@ -10,6 +10,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 
 FONT, FONT_BOLD = "Readex", "Readex-SemiBold"
+MONO = "PlexMono"  # amounts and numbers: digits line up
 INK = colors.HexColor("#1F1B2D")
 MUTED = colors.HexColor("#5A5868")
 RULE = colors.HexColor("#C9C5D6")
@@ -27,6 +28,7 @@ def register_fonts() -> None:
     fonts = files("tadris.ui.resources") / "fonts"
     pdfmetrics.registerFont(TTFont(FONT, str(fonts / "ReadexPro-Regular.ttf")))
     pdfmetrics.registerFont(TTFont(FONT_BOLD, str(fonts / "ReadexPro-SemiBold.ttf")))
+    pdfmetrics.registerFont(TTFont(MONO, str(fonts / "IBMPlexMono-Medium.ttf")))
     _registered = True
 
 

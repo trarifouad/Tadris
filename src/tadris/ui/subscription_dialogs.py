@@ -11,6 +11,7 @@ from tadris.core.money import format_dzd
 from tadris.domain.models import Enrollment, Subscription
 from tadris.i18n.fr import t
 from tadris.services import groups, subscriptions
+from tadris.ui.payment_dialogs import debt_banner
 from tadris.ui.setup_dialogs import required_date
 from tadris.ui.widgets.common import labeled
 from tadris.ui.widgets.date_edit import DateLineEdit
@@ -64,6 +65,9 @@ class RenewDialog(_MonthDialog):
         self.new_id: int | None = None
         previous_end = date.fromisoformat(subscription.end_date)
         self.date.minimum = previous_end
+        banner = debt_banner(conn, ctx, subscription.student_id)
+        if banner is not None:
+            self.add(banner)
         note = caption(t["renew_dialog.caption"].format(
             group=subscription.group_title,
             period=period_text(subscription.start_date, subscription.end_date)))

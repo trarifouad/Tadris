@@ -9,6 +9,7 @@ from tadris.core.permissions import allowed
 from tadris.domain.models import Enrollment, GroupOption, Student
 from tadris.i18n.fr import t
 from tadris.services import enrollments
+from tadris.ui.payment_dialogs import debt_banner
 from tadris.ui.setup_dialogs import required_date
 from tadris.ui.widgets.common import fit_to_content, labeled
 from tadris.ui.widgets.date_edit import DateLineEdit
@@ -105,6 +106,9 @@ class _PickGroupDialog(FormDialog):
         self.reason = QLineEdit()
         self.reason.setPlaceholderText(t["enroll_dialog.reason_placeholder"])
         self.reason_box = labeled(t["enroll_dialog.reason"], self.reason, required=True)
+        banner = debt_banner(conn, ctx, student_id)  # a new month will add to the debt
+        if banner is not None:
+            self.add(banner)
         note = caption(intro)
         note.setWordWrap(True)
         self.add(note)

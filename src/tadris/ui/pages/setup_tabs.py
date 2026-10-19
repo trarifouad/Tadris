@@ -14,7 +14,15 @@ from tadris.core.dates import display_date
 from tadris.core.errors import BusinessRuleError
 from tadris.core.money import format_dzd
 from tadris.i18n.fr import t
-from tadris.services import catalog, holidays, registrations, rooms, school_years, settings
+from tadris.services import (
+    catalog,
+    debt,
+    holidays,
+    registrations,
+    rooms,
+    school_years,
+    settings,
+)
 from tadris.ui.setup_dialogs import HolidayDialog, NameDialog, RoomDialog, YearDialog
 from tadris.ui.theme.status import kind_for
 from tadris.ui.widgets.common import (
@@ -343,6 +351,8 @@ class SchoolTab(QWidget):
         hours_caption.setObjectName("caption")
         hours_caption.setWordWrap(True)
         self.registration_fee = money_edit()
+        self.debt_warning = money_edit()
+        self.debt_warning.setPlaceholderText(t["school.debt_warning_off"])
         fees_title = QLabel(t["school.fees"])
         fees_title.setObjectName("sectionTitle")
         fees_caption = QLabel(t["school.fees_caption"])
@@ -366,7 +376,7 @@ class SchoolTab(QWidget):
         form.addWidget(fees_title)
         form.addWidget(fees_caption)
         form.addLayout(row(labeled(t["school.registration_fee"], self.registration_fee),
-                           QWidget()))
+                           labeled(t["school.debt_warning"], self.debt_warning)))
         actions = QHBoxLayout()
         actions.addStretch()
         actions.addWidget(self.save)
@@ -392,13 +402,16 @@ class SchoolTab(QWidget):
         self.opens_at.setCurrentText(opens_at)
         self.closes_at.setCurrentText(closes_at)
         self.registration_fee.setText(format_dzd(registrations.default_fee(self._conn)))
+        threshold = debt.warning_threshold(self._conn)
+        self.debt_warning.setText(format_dzd(threshold) if threshold else "")
 
     def _save(self) -> None:
         try:
             settings.save_school(self._conn, self._ctx, self.name.text(), self.phone.text(),
                                  self.address.text(), self.opens_at.currentText(),
                                  self.closes_at.currentText(),
-                                 read_money(self.registration_fee, empty=0))
+                                 read_money(self.registration_fee, empty=0),
+                                 read_money(self.debt_warning, empty=0))
         except BusinessRuleError as exc:
             self.error.show_error(exc.message)
             return

@@ -18,6 +18,7 @@ from tadris.domain.models import StudentContact
 from tadris.i18n.fr import t
 from tadris.services import contacts, students
 from tadris.ui.contact_dialog import ContactDialog
+from tadris.ui.pages.payments_tab import PaymentsTab
 from tadris.ui.pages.registration_tab import RegistrationTab
 from tadris.ui.pages.student_attendance_tab import StudentAttendanceTab
 from tadris.ui.pages.student_groups_tab import StudentGroupsTab
@@ -26,9 +27,6 @@ from tadris.ui.student_dialog import StudentDialog
 from tadris.ui.theme.status import kind_for
 from tadris.ui.widgets.common import Badge, ask, confirm, primary_button, toast, variant_button
 from tadris.ui.widgets.tables import ID_ROLE, fill, item, ruled_table, selected_id
-
-# Tabs filled by later phases: payments (7).
-LATER_TABS = ("payments",)
 
 
 class StudentDetailView(QWidget):
@@ -99,16 +97,21 @@ class StudentDetailView(QWidget):
         self.registration = RegistrationTab(conn, ctx, student_id)
         self.groups = StudentGroupsTab(conn, ctx, student_id)
         self.subscriptions = SubscriptionsTab(conn, ctx, student_id)
+        self.payments = PaymentsTab(conn, ctx, student_id)
         # Each tab shows what the others change: groups count, who may enroll, the months
         # an enrollment, a confirmed trial or a switch creates.
         self.registration.changed.connect(self.groups.refresh)
         self.groups.changed.connect(self.registration.refresh)
         self.groups.changed.connect(self.subscriptions.refresh)
+        # What is owed and what was paid show on the registration, the months and payments.
+        for tab in (self.registration, self.groups, self.subscriptions):
+            tab.changed.connect(self.payments.refresh)
+        self.payments.changed.connect(self.registration.refresh)
+        self.payments.changed.connect(self.subscriptions.refresh)
         self.tabs.addTab(self.registration, t["student_detail.tab.registration"])
         self.tabs.addTab(self.groups, t["student_detail.tab.groups"])
         self.tabs.addTab(self.subscriptions, t["student_detail.tab.subscriptions"])
-        for key in LATER_TABS:
-            self.tabs.addTab(_later_tab(), t[f"student_detail.tab.{key}"])
+        self.tabs.addTab(self.payments, t["student_detail.tab.payments"])
         self.attendance = StudentAttendanceTab(conn, ctx, student_id)
         self.tabs.addTab(self.attendance, t["student_detail.tab.attendance"])
         self.contacts = ContactsTab(conn, ctx, student_id)
@@ -172,17 +175,6 @@ class StudentDetailView(QWidget):
         self.registration.refresh()  # an inactive student cannot be registered or enrolled
         self.groups.refresh()
         toast(self, t[message_key].format(name=self.student.full_name))
-
-
-def _later_tab() -> QWidget:
-    tab = QWidget()
-    caption = QLabel(t["student_detail.tab_later"])
-    caption.setObjectName("caption")
-    layout = QVBoxLayout(tab)
-    layout.setContentsMargins(4, 16, 4, 4)
-    layout.addWidget(caption)
-    layout.addStretch()
-    return tab
 
 
 def error_banner() -> QLabel:

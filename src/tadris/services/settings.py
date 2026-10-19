@@ -59,9 +59,11 @@ def set_value(conn, ctx: UserContext, key: str, value) -> None:
 
 
 def save_school(conn, ctx: UserContext, name: str, phone: str, address: str,
-                opens_at: str, closes_at: str, registration_fee: int | None = None) -> None:
-    """The École tab, all or nothing: details, opening hours and the default registration
-    fee (left unchanged when None)."""
+                opens_at: str, closes_at: str, registration_fee: int | None = None,
+                debt_warning: int | None = None) -> None:
+    """The École tab, all or nothing: details, opening hours, the default registration fee
+    and the debt warning threshold (each left unchanged when None; a threshold of 0 turns
+    the warning off)."""
     require(ctx, "settings.change")
     details = {key: _coerce(key, value) for key, value in (
         ("school.name", name), ("school.phone", phone), ("school.address", address))}
@@ -69,6 +71,10 @@ def save_school(conn, ctx: UserContext, name: str, phone: str, address: str,
         if registration_fee < 0:
             raise ValidationError(t["registration.fee_invalid"])
         details["defaults.registration_fee"] = str(registration_fee)
+    if debt_warning is not None:
+        if debt_warning < 0:
+            raise ValidationError(t["school.debt_warning_invalid"])
+        details["defaults.max_debt_warning"] = str(debt_warning)
     with atomic(conn):
         _set_hours(conn, ctx, opens_at, closes_at)
         for key, stored in details.items():

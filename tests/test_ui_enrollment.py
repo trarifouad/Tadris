@@ -133,12 +133,12 @@ def test_dialog_offers_only_valid_groups(qtbot, conn, director, receptionist, sc
     enrollments.enroll(conn, receptionist, amine, school.physics)
     desk = EnrollDialog(conn, receptionist, students.get(conn, receptionist, amine))
     qtbot.addWidget(desk)
-    # Not P1 (already in), not A1 (full), not M3 (another level: director only).
+    # Not P1 (already in), not A1 (full), not M3 (another level: never).
     assert sorted(offered_ids(desk)) == sorted([school.maths, school.french])
     assert desk.full_note.text() == t["enroll_dialog.full_hidden"].format(count=1)
     boss = EnrollDialog(conn, director, students.get(conn, director, amine))
     qtbot.addWidget(boss)
-    assert school.maths_3am in offered_ids(boss)
+    assert school.maths_3am not in offered_ids(boss)
 
 
 def test_enroll_from_the_tab(qtbot, conn, receptionist, school, amine, monkeypatch):
@@ -187,21 +187,15 @@ def test_trial_then_confirm(qtbot, conn, receptionist, school, amine, monkeypatc
     assert not dialog.trial.isEnabled()
 
 
-def test_other_level_needs_the_reason(qtbot, conn, director, school, amine):
-    dialog = EnrollDialog(conn, director, students.get(conn, director, amine))
-    qtbot.addWidget(dialog)
-    assert not shown(dialog.reason_box)
-    dialog.picker.select(school.maths_3am)
-    assert shown(dialog.reason_box)
-    dialog._submit()
-    assert dialog.banner.text() == t["enrollment.override_reason_required"]
-    dialog.reason.setText("Rattrapage")
-    dialog._submit()
-    assert dialog.result()
+def test_an_old_enrollment_of_another_level_is_still_marked(qtbot, conn, director, school,
+                                                            amine):
+    """Made before 0010 (director override): it shows its note and can still be left."""
+    enrollment_id = enrollments.enroll(conn, director, amine, school.maths)
+    conn.execute("UPDATE registrations SET level_id = ? WHERE student_id = ?",
+                 (school.l3am, amine))
     tab = make_tab(qtbot, conn, director, amine)
-    assert rows(tab)[0][4] == "Autre niveau (inscrit en 4AM)"
-    dialog.picker.select(school.maths)
-    assert not shown(dialog.reason_box)
+    assert rows(tab)[0][4] == "Autre niveau (inscrit en 3AM)"
+    enrollments.leave(conn, director, enrollment_id)
 
 
 def test_full_group_refused_at_submit_shows_in_the_dialog(qtbot, conn, director, receptionist,

@@ -255,49 +255,38 @@ def test_a_student_who_left_frees_the_seat_and_can_come_back(conn, director, rec
     assert [e.status for e in history] == ["active", "left"]
 
 
-# ----- level override -----
+# ----- one level per student -----
 
-def test_other_level_is_refused_for_the_front_desk(conn, receptionist, school, amine):
+@pytest.mark.parametrize("who", ["receptionist", "director"])
+def test_other_level_is_refused_for_everyone(conn, request, school, amine, who):
+    ctx = request.getfixturevalue(who)
     with pytest.raises(BusinessRuleError) as exc:
-        enrollments.enroll(conn, receptionist, amine, school.maths_3am)
+        enrollments.enroll(conn, ctx, amine, school.maths_3am, override_reason="Rattrapage")
     assert exc.value.message == t["enrollment.level_mismatch"].format(
         group="M3 · Maths 3AM", group_level="3AM", level="4AM")
-    with pytest.raises(PermissionDenied):
-        enrollments.enroll(conn, receptionist, amine, school.maths_3am,
-                           override_reason="Redouble en maths")
+    assert "Changer le niveau" in exc.value.message
     assert overrides_left(conn) == 0
 
 
-def test_director_override_needs_a_reason(conn, director, school, amine):
-    with pytest.raises(ValidationError) as exc:
-        enrollments.enroll(conn, director, amine, school.maths_3am, override_reason="  ")
-    assert exc.value.message == t["enrollment.override_reason_required"]
-
-
-def test_director_override_is_audited_and_never_left_set(conn, director, school, amine):
-    enrollment_id = enrollments.enroll(conn, director, amine, school.maths_3am,
-                                       override_reason="Rattrapage en maths")
-    assert overrides_left(conn) == 0
-    e = enrollments.get(conn, director, enrollment_id)
-    assert e.other_level and (e.group_level, e.registration_level) == ("3AM", "4AM")
-    entry = last_audit(conn, "enrollment.create")
-    assert (entry["overrides"], entry["reason"]) == (["level"], "Rattrapage en maths")
-    # Without the key, the database still refuses a level mismatch on its own.
+def test_database_refuses_another_level_even_with_the_old_key(conn, director, school, amine):
+    """Migration 0010: the triggers no longer read override:enrollment_level."""
+    registration = registrations.current(conn, director, amine).id
+    conn.execute("INSERT INTO settings(key, value) VALUES ('override:enrollment_level', '1')")
     with pytest.raises(Exception, match="level"):
         conn.execute("INSERT INTO enrollments(student_id, group_id, registration_id, "
                      "enrolled_on) VALUES (?, ?, ?, '2026-10-18')",
-                     (amine, school.maths_3am, e.registration_id))
+                     (amine, school.maths_3am, registration))
 
 
-def test_failed_override_leaves_no_key(conn, director, school, amine):
-    subject = groups.get(conn, director, school.maths_3am).subject_id
-    groups.update(conn, director, school.maths_3am, GroupInput(
-        school.year, school.l3am, subject, "M3", 3000, 1, date(2026, 9, 1)))
-    enrollments.enroll(conn, director, new_student(conn, director, school, "Sami", school.l3am),
-                       school.maths_3am)
-    with pytest.raises(BusinessRuleError):
-        enrollments.enroll(conn, director, amine, school.maths_3am, override_reason="motif")
-    assert overrides_left(conn) == 0
+def test_changing_level_goes_through_the_registration(conn, director, receptionist, school,
+                                                      amine):
+    """The way to move a student to another level: leave the groups, change the level."""
+    current = enrollments.enroll(conn, receptionist, amine, school.maths)
+    enrollments.leave(conn, receptionist, current)
+    registrations.change_level(conn, receptionist,
+                               registrations.current(conn, receptionist, amine).id, school.l3am)
+    enrollment_id = enrollments.enroll(conn, receptionist, amine, school.maths_3am)
+    assert not enrollments.get(conn, receptionist, enrollment_id).other_level
 
 
 def test_reason_is_ignored_when_levels_match(conn, director, school, amine):
@@ -307,16 +296,15 @@ def test_reason_is_ignored_when_levels_match(conn, director, school, amine):
 
 # ----- options for the dialog -----
 
-def test_options_list_open_groups_same_level_first(conn, director, receptionist, school, amine):
+def test_options_list_the_open_groups_of_the_students_level(conn, director, receptionist,
+                                                            school, amine):
     enrollments.enroll(conn, receptionist, amine, school.maths)
     groups.close(conn, director, school.physics)
     found = {o.group.id: o for o in enrollments.options(conn, receptionist, amine)}
     assert school.physics not in found  # closed
-    order = [o.group.id for o in enrollments.options(conn, receptionist, amine)]
-    assert order[-1] == school.maths_3am
+    assert school.maths_3am not in found  # another level: never offered
     assert found[school.maths].already_in and not found[school.maths].available
     assert found[school.french].available and found[school.french].free == 10
-    assert not found[school.maths_3am].same_level
 
 
 def test_options_empty_without_registration(conn, receptionist, school):
@@ -484,22 +472,13 @@ def test_switch_to_a_group_the_student_is_already_in(conn, receptionist, school,
     assert enrollments.get(conn, receptionist, old_id).status == "active"
 
 
-def test_switch_to_another_level_needs_the_director(conn, director, receptionist, school,
-                                                    amine):
+@pytest.mark.parametrize("who", ["receptionist", "director"])
+def test_switch_to_another_level_is_refused(conn, request, receptionist, school, amine, who):
     old_id = enrollments.enroll(conn, receptionist, amine, school.maths)
-    with pytest.raises(BusinessRuleError, match="Seul le directeur"):
-        enrollments.switch(conn, receptionist, old_id, school.maths_3am)
-    new_id = enrollments.switch(conn, director, old_id, school.maths_3am,
-                                override_reason="Niveau trop difficile")
-    assert enrollments.get(conn, director, new_id).other_level
-    assert overrides_left(conn) == 0
-
-
-def test_switch_out_of_a_level_override_group(conn, director, receptionist, school, amine):
-    """Leaving the override group works for the desk: only the new group's level counts."""
-    old_id = enrollments.enroll(conn, director, amine, school.maths_3am, override_reason="x")
-    new_id = enrollments.switch(conn, receptionist, old_id, school.maths)
-    assert not enrollments.get(conn, receptionist, new_id).other_level
+    with pytest.raises(BusinessRuleError, match="ne suit que des groupes de son niveau"):
+        enrollments.switch(conn, request.getfixturevalue(who), old_id, school.maths_3am,
+                           override_reason="Niveau trop difficile")
+    assert enrollments.get(conn, receptionist, old_id).status == "active"  # nothing changed
 
 
 def test_switch_date_rules(conn, receptionist, school, amine):
@@ -596,18 +575,20 @@ def test_director_allows_a_second_group_of_a_subject_with_a_reason(conn, directo
     assert overrides_left(conn) == 0
 
 
+def test_the_desk_cannot_lift_the_subject_rule_with_a_reason(conn, director, receptionist,
+                                                            school, amine):
+    m2 = second_maths(conn, director, school)
+    enrollments.enroll(conn, receptionist, amine, school.maths)
+    with pytest.raises(PermissionDenied):
+        enrollments.enroll(conn, receptionist, amine, m2, override_reason="Soutien")
+
+
 def test_switching_within_a_subject_needs_no_override(conn, director, receptionist, school,
                                                       amine):
     m2 = second_maths(conn, director, school)
     old = enrollments.enroll(conn, receptionist, amine, school.maths)
     new = enrollments.switch(conn, receptionist, old, m2)
     assert enrollments.get(conn, receptionist, new).group_id == m2
-
-
-def test_same_subject_at_another_level_is_only_a_level_override(conn, director, school, amine):
-    enrollments.enroll(conn, director, amine, school.maths)
-    enrollments.enroll(conn, director, amine, school.maths_3am, override_reason="Rattrapage")
-    assert last_audit(conn, "enrollment.create")["overrides"] == ["level"]
 
 
 def test_a_left_group_no_longer_counts_for_its_subject(conn, director, receptionist, school,

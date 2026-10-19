@@ -45,7 +45,7 @@ def open_copy(name: str):
 
 
 class Setup:
-    """The open year, two active levels, a teacher and a subject from the real data."""
+    """The open year, two active levels and a teacher from the real data."""
 
     def __init__(self, conn, director):
         self.conn, self.director = conn, director
@@ -54,20 +54,22 @@ class Setup:
                               "ORDER BY order_index LIMIT 2").fetchall()
         self.teacher = conn.execute("SELECT id FROM teachers WHERE status = 'active' LIMIT 1"
                                     ).fetchone()
-        self.subject = conn.execute("SELECT id FROM subjects WHERE is_active = 1 LIMIT 1"
-                                    ).fetchone()
-        if not (self.year and len(levels) == 2 and self.teacher and self.subject):
-            sys.exit("Il faut une année ouverte, deux niveaux, un enseignant et une matière "
-                     "actifs.")
+        if not (self.year and len(levels) == 2 and self.teacher):
+            sys.exit("Il faut une année ouverte, deux niveaux et un enseignant actifs.")
         self.lvl1, self.lvl2 = levels
 
-    def group(self, name: str, level, capacity: int = 10) -> int:
-        """A test group, created in the copy only."""
-        from tadris.services import groups
+    def group(self, name: str, level, capacity: int = 10, subject_of: int | None = None) -> int:
+        """A test group, created in the copy only, with its own test subject (a student may
+        take one group per subject), or the subject of the group `subject_of`."""
+        from tadris.services import catalog, groups
 
+        if subject_of is None:
+            subject_id = catalog.create(self.conn, self.director, "subject", f"Matière {name}")
+        else:
+            subject_id = groups.get(self.conn, self.director, subject_of).subject_id
         start = date.fromisoformat(self.year["start_date"])
         return groups.create(self.conn, self.director, GroupInput(
-            self.year["id"], level["id"], self.subject["id"], name, 3000, capacity, start),
+            self.year["id"], level["id"], subject_id, name, 3000, capacity, start),
             self.teacher["id"])
 
 

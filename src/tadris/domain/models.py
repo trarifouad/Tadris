@@ -291,7 +291,8 @@ class Enrollment:
 
     @property
     def other_level(self) -> bool:
-        """Placed by a director override in a group of another level."""
+        """In a group of another level: only enrollments made before migration 0010, when the
+        director could override the level, can be."""
         return self.group_level != self.registration_level
 
 
@@ -300,14 +301,13 @@ class GroupOption:
     """A group of the open year, as offered in the "enroll in group" dialog."""
 
     group: Group
-    same_level: bool  # other levels need the director override
     already_in: bool
-    # Already in another group of this subject and level: needs the director override too.
+    # Already in another group of this subject: needs the director override.
     same_subject: bool = False
 
     @property
     def needs_override(self) -> bool:
-        return not self.same_level or self.same_subject
+        return self.same_subject
 
     @property
     def free(self) -> int:

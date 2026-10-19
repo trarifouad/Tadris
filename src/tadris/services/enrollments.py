@@ -19,13 +19,11 @@ from tadris.services import audit, groups
 # An enrollment places a registered student in a group of the open year. A student may be in
 # several groups under one registration, never twice at once in the same group. Joining a
 # running group is normal; the entry date lies between the group's start and the end of the
-# year. One free trial per student, ever. A student cannot attend two groups at the same
-# time (refused for everyone). A group of another level, or a second group of the same subject
-# and level, needs the director with an audited reason; the level override key is set and
-# cleared inside the enrollment's own transaction.
+# year. One free trial per student, ever. A student follows the groups of one level, that of
+# their registration, and cannot attend two groups at the same time: both refused for
+# everyone. A second group of the same subject needs the director with an audited reason.
 
 LIVE = ("trial", "active")
-LEVEL_OVERRIDE = "override:enrollment_level"
 
 
 def _today() -> str:
@@ -79,7 +77,7 @@ def default_date(group_start: str, today: date | None = None) -> date:
 
 def options(conn, ctx: UserContext, student_id: int,
             leaving_group_id: int | None = None) -> list[GroupOption]:
-    """The open groups of the open year, for the student's registration: same level first.
+    """The open groups of the open year at the level of the student's registration.
     leaving_group_id: the group a switch leaves, which no longer counts as one of theirs."""
     require(ctx, "enrollment.create")
     year = years_repo.open_year(conn)
@@ -88,24 +86,23 @@ def options(conn, ctx: UserContext, student_id: int,
     registration = registrations_repo.for_student_year(conn, student_id, year["id"])
     if registration is None or registration["status"] != "active":
         return []
-    year_groups = [g for g in groups.search(conn, ctx, year_id=year["id"])
+    year_groups = [g for g in groups.search(conn, ctx, year_id=year["id"],
+                                            level_id=registration["level_id"])
                    if g.status != "closed"]
     live = {row["group_id"] for row in repo.for_student(conn, student_id)
             if row["status"] in LIVE} - {leaving_group_id}
     taken = {(g.subject_id, g.level_id) for g in year_groups if g.id in live}
-    found = [
-        GroupOption(group=g, same_level=g.level_id == registration["level_id"],
-                    already_in=g.id in live,
+    return [
+        GroupOption(group=g, already_in=g.id in live,
                     same_subject=g.id not in live and (g.subject_id, g.level_id) in taken)
         for g in year_groups
     ]
-    return sorted(found, key=lambda o: not o.same_level)  # stable: keeps the groups' order
 
 
 def enroll(conn, ctx: UserContext, student_id: int, group_id: int, trial: bool = False,
            enrolled_on: date | None = None, override_reason: str | None = None) -> int:
-    """Place the student in the group. override_reason lets the director enroll in a group of
-    another level; it is ignored when the levels match."""
+    """Place the student in the group. override_reason lets the director add a second group
+    of a subject the student already has; it is ignored otherwise."""
     require(ctx, "enrollment.create")
     with atomic(conn):
         if trial and repo.had_trial(conn, student_id):
@@ -147,6 +144,9 @@ def _place(conn, ctx: UserContext, student_id: int, group_id: int, enrolled_on: 
     registration = registrations_repo.for_student_year(conn, student_id, year["id"])
     if registration is None or registration["status"] != "active":
         raise BusinessRuleError(t["enrollment.not_registered"].format(label=year["label"]))
+    if group["level_id"] != registration["level_id"]:
+        raise BusinessRuleError(t["enrollment.level_mismatch"].format(
+            group=title, group_level=group["level"], level=registration["level"]))
     if repo.live_in_group(conn, student_id, group_id) is not None:
         raise BusinessRuleError(t["enrollment.already_in"].format(group=title))
     on = dates.iso(enrolled_on or default_date(group["start_date"]))
@@ -156,35 +156,22 @@ def _place(conn, ctx: UserContext, student_id: int, group_id: int, enrolled_on: 
             end=dates.display_date(group["year_end"])))
     _check_seats(group, title)
     _check_free_time(conn, student_id, group, title, on)
-    # Rules the director may lift with a reason: another level, a second group of a subject.
-    refusals = []
-    if group["level_id"] != registration["level_id"]:
-        refusals.append(("level", t["enrollment.level_mismatch"].format(
-            group=title, group_level=group["level"], level=registration["level"])))
+    # The one rule the director may lift, with a reason: a second group of a subject.
     same = repo.live_in_subject(conn, student_id, group["subject_id"], group["level_id"],
                                 group_id)
     if same is not None:
-        refusals.append(("same_subject", t["enrollment.same_subject"].format(
-            subject=group["subject"], level=group["level"], other=same["name"])))
-    if refusals:
         if not reason:
             if ctx.role == "director":
                 raise ValidationError(t["enrollment.override_reason_required"])
-            raise BusinessRuleError(refusals[0][1])
+            raise BusinessRuleError(t["enrollment.same_subject"].format(
+                subject=group["subject"], level=group["level"], other=same["name"]))
         require(ctx, "enrollment.override")
-    overrides = [kind for kind, _message in refusals]
-    if "level" in overrides:
-        repo.set_override(conn, LEVEL_OVERRIDE)
     enrollment_id = repo.insert(conn, student_id, group_id, registration["id"], on, status,
                                 started_as_trial, switched_from_id)
-    if "level" in overrides:
-        repo.clear_override(conn, LEVEL_OVERRIDE)
     entry = {
         "student_id": student_id, "group_id": group_id,
         "registration_id": registration["id"], "enrolled_on": on, "status": status,
-        **({"overrides": overrides, "group_level_id": group["level_id"],
-            "registration_level_id": registration["level_id"], "reason": reason}
-           if overrides else {}),
+        **({"overrides": ["same_subject"], "reason": reason} if same is not None else {}),
     }
     return enrollment_id, entry
 

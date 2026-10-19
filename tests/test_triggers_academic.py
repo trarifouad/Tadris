@@ -40,11 +40,23 @@ def test_enrollment_level_mismatch(seeded):
         enroll(seeded, sid, rid)
 
 
-def test_enrollment_level_director_override(seeded):
+def test_enrollment_level_has_no_override_any_more(seeded):
+    """Migration 0010: the old director key no longer lifts the rule."""
     seeded.execute("INSERT INTO levels(name) VALUES('4AM')")
     sid, rid = add_student(seeded, 2, level=2)
     seeded.execute("INSERT INTO settings(key,value) VALUES('override:enrollment_level','1')")
-    enroll(seeded, sid, rid)
+    with pytest.raises(sqlite3.IntegrityError, match="level"):
+        enroll(seeded, sid, rid)
+
+
+def test_migration_removes_the_level_override_key(conn):
+    from tadris.db.migrate import migrate
+
+    conn.execute("PRAGMA user_version = 9")
+    conn.execute("INSERT INTO settings(key,value) VALUES('override:enrollment_level','1')")
+    migrate(conn)
+    assert conn.execute("SELECT COUNT(*) FROM settings WHERE key LIKE 'override:%'"
+                        ).fetchone()[0] == 0
 
 
 def test_enrollment_after_group_start_is_allowed(seeded):
@@ -68,12 +80,12 @@ def test_leaving_is_allowed_in_a_closed_group(seeded):
     seeded.execute("UPDATE enrollments SET status='left', left_on='2026-10-01' WHERE id=1")
 
 
-def test_leaving_is_allowed_after_a_level_override(seeded):
+def test_an_old_enrollment_of_another_level_can_still_leave(seeded):
+    """Enrollments made before 0010 with the director override must still be able to leave."""
     seeded.execute("INSERT INTO levels(name) VALUES('4AM')")
-    sid, rid = add_student(seeded, 2, level=2)
-    seeded.execute("INSERT INTO settings(key,value) VALUES('override:enrollment_level','1')")
+    sid, rid = add_student(seeded, 2)
     enroll(seeded, sid, rid)
-    seeded.execute("DELETE FROM settings WHERE key='override:enrollment_level'")
+    seeded.execute("UPDATE registrations SET level_id=2 WHERE id=?", (rid,))  # as before 0010
     seeded.execute("UPDATE enrollments SET status='left', left_on='2026-10-01' "
                    "WHERE student_id=?", (sid,))
 

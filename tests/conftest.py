@@ -47,6 +47,7 @@ def seeded(conn):
     INSERT INTO users(username,password_hash,role) VALUES('u','x','director');
     INSERT INTO students(student_number,first_name,last_name) VALUES('2026-0001','A','B');
     INSERT INTO teachers(full_name) VALUES('T');
+    INSERT INTO teacher_rates(teacher_id,percentage_bp,valid_from) VALUES(1,6000,'2026-08-01');
     INSERT INTO registrations(student_id,school_year_id,level_id,fee_amount) VALUES(1,1,1,2000);
     INSERT INTO class_groups(school_year_id,level_id,subject_id,name,price,capacity,start_date)
       VALUES(1,1,1,'G1',3000,10,'2026-09-01');

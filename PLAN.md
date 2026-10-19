@@ -462,7 +462,15 @@ Add a `holidays` table or a settings JSON list in this phase. Decide which and a
 
 ## Phase 9: Teacher payouts (Full v1 milestone)
 
-**Note from phase 8:** there are no discounts, so a payout line counts each month at its full price, as section 1 says (trigger `amount must equal the charge amount`). A month refunded in part still counts in full; a month refunded in full and then cancelled no longer counts (open charges only).
+**Status:** done. Migration 0013: `payout_lines` rebuilt with one line per group and rate (a trigger checks each month's rate is the teacher's on its first day); `teacher_payouts` gains who approved and when, the method and who paid; draft → approved → paid, never back, and approving checks the totals are exactly the lines (triggers). Repository and service `payouts` (what is owed up to a date, build a draft, rebuild, delete, the monthly run, stale months, approve, pay with `PE2026-00001`, lines, months per student, history, the day's payouts); payout slip PDF (groups, total, every month student by student, signed by the teacher; BROUILLON, APPROUVÉ or PAYÉ). Sidebar « Paiements enseignants » (director): « Payer jusqu'au », « Préparer les brouillons », what each teacher is owed, payouts with their actions, detail with groups and « Détail par élève »; teacher page: Paiements tab (director); the director's cash of the day counts teachers paid in cash. Seed runs the payouts up to the end of last month. 995 tests green; every trigger message (64) has a failing test; a phase 8 database upgrades and its payouts match an independent recomputation.
+
+**Decisions taken in this phase**
+
+- A payout takes every month not paid to the teacher yet with a first day up to the chosen date (at most the end of the current month), not only that month's: a month renewed late (starting in a period already approved) goes into the next payout instead of being lost. Its period runs from the first day of its oldest month to that date.
+- The teacher of a month is the group's teacher on its first day; the rate is the teacher's on that day (snapshot). One line per group and rate (0013 replaced 0001's one line per group): a rate change, or a late month from before it, gives a second line. Each line is rounded down once.
+- No discounts: a month counts at its full price, paid or not. A month refunded in part still counts in full; a month refunded in full and then cancelled no longer counts (open charges only).
+- One draft per teacher: building again replaces it; a draft can be deleted. Approving locks it as it is (a warning names the months entered since, which go to the next payout). Paying hands over the whole amount, numbered, with its method; the slip opens to be signed. Director only; teacher pay never shows to the desk (the cash of the day counts it for the director only).
+- A teacher without a rate on a month's first day cannot be paid until the rate is added; the monthly run reports it and prepares the others.
 
 **Goal:** pay teachers their percentage correctly and permanently.
 

@@ -17,6 +17,7 @@ from tadris.services import settings
 from tadris.ui.pages.attendance import AttendancePage
 from tadris.ui.pages.groups import GroupsPage
 from tadris.ui.pages.payments_page import PaymentsPage
+from tadris.ui.pages.payouts_page import PayoutsPage
 from tadris.ui.pages.settings import SettingsPage
 from tadris.ui.pages.students import StudentsPage
 from tadris.ui.pages.subscriptions_page import SubscriptionsPage
@@ -99,6 +100,7 @@ class MainWindow(QMainWindow):
             "timetable": TimetablePage,
             "teachers": TeachersPage,
             "attendance": AttendancePage,
+            "payouts": PayoutsPage,
         }
         if key in pages:
             return pages[key](self._conn, self.ctx)

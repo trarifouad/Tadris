@@ -66,6 +66,12 @@ _TRIGGER_MESSAGES = (
     ("payout_line_charges cannot be updated", "db.payout_locked"),
     ("payout is not draft", "db.payout_not_draft"),
     ("payout is locked", "db.payout_locked"),
+    ("rate differs from the teacher rate on the accrual date", "db.payout_rate_mismatch"),
+    ("payout cannot go back to draft", "db.payout_back_to_draft"),
+    ("payout must be a draft to be approved", "db.payout_approve_not_draft"),
+    ("payout totals differ from its lines", "db.payout_totals_mismatch"),
+    ("payout must be approved before it is paid", "db.payout_not_approved"),
+    ("payout paid amount must equal amount due", "db.payout_paid_mismatch"),
     ("accrual date outside payout period", "db.payout_period"),
     ("holiday overlap", "db.holiday_overlap"),
 )

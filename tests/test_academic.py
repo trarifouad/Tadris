@@ -7,15 +7,18 @@ import pytest
 from tadris.core import dates
 from tadris.core.context import UserContext
 from tadris.core.errors import BusinessRuleError, NotFound, PermissionDenied, ValidationError
-from tadris.domain.models import GroupInput, SlotInput, TeacherInput
+from tadris.domain.models import GroupInput, SlotInput, StudentInput, TeacherInput
 from tadris.i18n.fr import t
 from tadris.services import (
     auth,
     catalog,
+    enrollments,
     groups,
+    registrations,
     rooms,
     school_years,
     settings,
+    students,
     teachers,
     timetable,
 )
@@ -446,12 +449,20 @@ def test_teacher_change_keeps_history(conn, director, school, g1):
 def test_same_day_teacher_change_corrects_until_paid(conn, director, school, g1):
     groups.change_teacher(conn, director, g1, school.samia, date(2026, 9, 15))
     assert [p.teacher for p in groups.teacher_history(conn, director, g1)] == ["Samia Rahmani"]
+    # Samia paid for September: one student's month from 15/09, 3 000 DA at her 50 %.
+    student = students.create(conn, director, StudentInput("Amine", "Benali"))
+    registrations.register(conn, director, student, school.level_4am, 0)
+    enrollments.enroll(conn, director, student, g1, enrolled_on=date(2026, 9, 15))
+    charge = conn.execute("SELECT id FROM charges WHERE subscription_id IS NOT NULL").fetchone()[0]
     payout = conn.execute(
         "INSERT INTO teacher_payouts(teacher_id, period_start, period_end, base_amount, "
         "amount_due) VALUES (?, '2026-09-01', '2026-09-30', 3000, 1500)",
         (school.samia,)).lastrowid
-    conn.execute("INSERT INTO payout_lines(payout_id, group_id, revenue_basis, percentage_bp, "
-                 "amount) VALUES (?, ?, 3000, 5000, 1500)", (payout, g1))
+    line = conn.execute("INSERT INTO payout_lines(payout_id, group_id, revenue_basis, "
+                        "percentage_bp, amount) VALUES (?, ?, 3000, 5000, 1500)",
+                        (payout, g1)).lastrowid
+    conn.execute("INSERT INTO payout_line_charges(payout_line_id, charge_id, amount) "
+                 "VALUES (?, ?, 3000)", (line, charge))
     conn.execute("UPDATE teacher_payouts SET status = 'approved' WHERE id = ?", (payout,))
     with pytest.raises(BusinessRuleError) as exc:
         groups.change_teacher(conn, director, g1, school.karim, date(2026, 9, 15))

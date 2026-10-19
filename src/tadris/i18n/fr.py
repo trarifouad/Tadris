@@ -135,6 +135,124 @@ t = {
     "payment.allocations_exceed": "Les montants affectés dépassent le paiement ({amount}).",
     "payment.reason_required": "Indiquez le motif de l'annulation.",
     "payment.already_voided": "Ce paiement est déjà annulé.",
+    "payout_status.draft": "Brouillon",
+    "payout_status.approved": "Approuvé",
+    "payout_status.paid": "Payé",
+    "payout_stamp.draft": "BROUILLON",
+    "payout_stamp.approved": "APPROUVÉ",
+    "payout_stamp.paid": "PAYÉ",
+    "payout_slip.title": "Paiement enseignant",
+    "payout_slip.teacher": "Enseignant",
+    "payout_slip.period": "Période",
+    "payout_slip.period_value": "Mois commencés du {start} au {end}",
+    "payout_slip.status": "Statut",
+    "payout_slip.approved": "Approuvé",
+    "payout_slip.by_on": "par {user} le {date}",
+    "payout_slip.paid": "Versé",
+    "payout_slip.paid_value": "le {date}, en {method}, par {user}",
+    "payout_slip.col.group": "Groupe",
+    "payout_slip.col.students": "Élèves",
+    "payout_slip.col.months": "Mois",
+    "payout_slip.col.revenue": "Recettes",
+    "payout_slip.col.rate": "Taux",
+    "payout_slip.col.amount": "Montant",
+    "payout_slip.col.student": "Élève",
+    "payout_slip.col.from": "Début",
+    "payout_slip.col.price": "Prix",
+    "payout_slip.col.share": "Part",
+    "payout_slip.total": "Total à verser",
+    "payout_slip.detail": "Détail par élève",
+    "payout_slip.note": (
+        "Part de l'enseignant : son taux du premier jour de chaque mois, appliqué au prix "
+        "complet du mois, payé ou non par l'élève. Chaque ligne est arrondie au dinar "
+        "inférieur."
+    ),
+    "payout_slip.signature": "Signature de l'enseignant",
+    "payout.not_found": "Paiement enseignant introuvable.",
+    "payouts.caption": (
+        "Chaque enseignant reçoit son taux du prix complet de chaque mois de ses groupes, payé "
+        "ou non par l'élève. Un paiement prend tous les mois pas encore payés jusqu'à la date "
+        "choisie, même un mois renouvelé en retard."
+    ),
+    "payouts.until": "Payer jusqu'au",
+    "payouts.run": "Préparer les brouillons",
+    "payouts.run_done": "{count} brouillon(s) préparé(s)",
+    "payouts.due_title": "À préparer",
+    "payouts.due_empty": "Aucun mois à payer jusqu'à cette date.",
+    "payouts.has_draft": "Brouillon à refaire",
+    "payouts.prepare": "Préparer le brouillon",
+    "payouts.prepared": "Brouillon préparé pour {teacher}",
+    "payouts.list_title": "Paiements",
+    "payouts.filter.open": "À traiter",
+    "payouts.filter.paid": "Payés",
+    "payouts.filter.all": "Tous",
+    "payouts.empty": "Aucun paiement enseignant.",
+    "payouts.period": "du {start} au {end}",
+    "payouts.rebuild": "Recalculer",
+    "payouts.rebuilt": "Brouillon recalculé : {teacher}, {amount}",
+    "payouts.delete": "Supprimer le brouillon",
+    "payouts.deleted": "Brouillon de {teacher} supprimé",
+    "payouts.confirm_delete_title": "Supprimer le brouillon",
+    "payouts.confirm_delete": (
+        "Supprimer le brouillon de {teacher} ({period}) ? Ses mois restent à payer."
+    ),
+    "payouts.approve": "Approuver",
+    "payouts.approved": "Paiement de {teacher} approuvé et verrouillé",
+    "payouts.confirm_approve_title": "Approuver le paiement",
+    "payouts.confirm_approve": (
+        "Approuver {amount} pour {teacher} ({period}) ? Le paiement sera verrouillé : il ne "
+        "pourra plus être modifié."
+    ),
+    "payouts.stale": (
+        "{count} mois ont été saisis depuis ce brouillon : recalculez-le pour les compter "
+        "(sinon ils iront dans le prochain paiement)."
+    ),
+    "payouts.pay": "Payer",
+    "payouts.paid": "Paiement {number} : {teacher}, {amount} versés",
+    "payouts.print": "Imprimer",
+    "payouts.back": "← Paiements enseignants",
+    "payouts.detail_title": "{teacher} · {amount}",
+    "payouts.detail_period": "Mois commencés {period} · {months} mois · recettes {revenue}",
+    "payouts.tab.groups": "Groupes",
+    "payouts.tab.months": "Détail par élève",
+    "payouts.col.teacher": "Enseignant",
+    "payouts.col.period": "Période",
+    "payouts.col.months": "Mois",
+    "payouts.col.revenue": "Recettes",
+    "payouts.col.amount": "Montant",
+    "payouts.col.status": "Statut",
+    "payouts.col.number": "N°",
+    "payouts.col.draft": "Brouillon",
+    "payouts.col.group": "Groupe",
+    "payouts.col.students": "Élèves",
+    "payouts.col.rate": "Taux",
+    "payouts.col.student": "Élève",
+    "payouts.col.number_student": "N°",
+    "payouts.col.from": "Début",
+    "payouts.col.price": "Prix",
+    "payouts.col.share": "Part",
+    "pay_payout.title": "Payer l'enseignant",
+    "pay_payout.submit": "Verser {amount}",
+    "pay_payout.method": "Payé en",
+    "pay_payout.caption": (
+        "Verser {amount} à {teacher} pour les mois commencés {period}. Le bon s'imprime pour "
+        "être signé par l'enseignant."
+    ),
+    "payout.until_too_late": (
+        "On paie au plus tard jusqu'à la fin du mois en cours ({date})."
+    ),
+    "payout.nothing": "Rien à payer à {teacher} jusqu'au {date} : aucun mois non payé.",
+    "payout.no_rate": (
+        "{teacher} n'a pas de taux le {date}. Ajoutez son taux dans la page Enseignants, puis "
+        "recommencez."
+    ),
+    "payout.zero": "Le taux de {teacher} est de 0 % : il n'y a rien à lui verser.",
+    "payout.same_period": (
+        "Un paiement couvre déjà exactement la période du {start} au {end}. Choisissez une "
+        "autre date de fin (par exemple aujourd'hui)."
+    ),
+    "payout.not_draft": "Ce paiement enseignant n'est plus un brouillon : il est verrouillé.",
+    "payout.not_approved": "Ce paiement enseignant doit d'abord être approuvé.",
     "refund.not_found": "Remboursement introuvable.",
     "refund.charge_not_found": "Ligne à rembourser introuvable.",
     "refund.amount_invalid": "Le montant doit être un nombre entier de dinars supérieur à 0.",
@@ -419,6 +537,12 @@ t = {
     "db.payout_not_draft": "Le paiement enseignant n'est plus un brouillon.",
     "db.payout_locked": "Le paiement enseignant est verrouillé.",
     "db.payout_period": "La date d'imputation est hors de la période de paiement.",
+    "db.payout_rate_mismatch": "Le taux ne correspond pas au taux de l'enseignant au début du mois.",
+    "db.payout_back_to_draft": "Un paiement enseignant approuvé ne redevient pas un brouillon.",
+    "db.payout_approve_not_draft": "Seul un brouillon peut être approuvé.",
+    "db.payout_totals_mismatch": "Les totaux du paiement enseignant ne correspondent pas à ses lignes.",
+    "db.payout_not_approved": "Ce paiement enseignant doit être approuvé avant d'être versé.",
+    "db.payout_paid_mismatch": "Le montant versé doit être le montant dû, avec son numéro.",
     "nav.dashboard": "Tableau de bord",
     "nav.students": "Élèves",
     "nav.groups": "Groupes",
@@ -728,6 +852,10 @@ t = {
     "cash.refunded": (
         "Remboursements versés : {count}, {total}. Espèces à avoir en caisse pour la "
         "journée : {drawer}."
+    ),
+    "cash.teachers_paid": (
+        "Enseignants payés : {count}, {total}. Espèces à avoir en caisse pour la journée : "
+        "{drawer}."
     ),
     "cash.empty": "Aucun paiement reçu ce jour-là.",
     "cash.col.time": "Heure",
@@ -1143,6 +1271,8 @@ t = {
     "teacher_detail.new_rate": "Nouveau taux",
     "teacher_detail.tab.groups": "Groupes",
     "teacher_detail.tab.rates": "Historique des taux",
+    "teacher_detail.tab.payouts": "Paiements",
+    "teacher_detail.payouts_empty": "Aucun paiement pour cet enseignant.",
     "teacher_detail.groups_empty": "Aucun groupe pour cet enseignant.",
     "teacher_detail.confirm_deactivate_title": "Désactiver l'enseignant",
     "teacher_detail.confirm_deactivate": "Désactiver {name} ? Il ne pourra plus recevoir de groupe.",

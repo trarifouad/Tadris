@@ -7,7 +7,7 @@ from tadris.db.connection import connect
 SEED = Path(__file__).resolve().parents[1] / "scripts" / "seed_demo.py"
 
 
-def test_seed_fills_phases_4_to_8(tmp_path, capsys):
+def test_seed_fills_phases_4_to_9(tmp_path, capsys):
     spec = importlib.util.spec_from_file_location("seed_demo", SEED)
     seed = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(seed)
@@ -32,6 +32,9 @@ def test_seed_fills_phases_4_to_8(tmp_path, capsys):
     assert statuses == ["paid", "approved", "pending"]
     assert conn.execute("SELECT number FROM refunds WHERE status = 'paid'").fetchone()[0] == (
         f"RB{date.today().year}-00001")
+    statuses = [row[0] for row in conn.execute("SELECT status FROM teacher_payouts ORDER BY id")]
+    assert statuses and statuses[0] == "paid" and set(statuses[1:]) <= {"approved"}
+    assert conn.execute("SELECT COUNT(*) FROM payout_line_charges").fetchone()[0] > 0
     assert conn.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
     assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
     paid = conn.execute("SELECT COUNT(*) FROM payments").fetchone()[0]

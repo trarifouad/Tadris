@@ -573,6 +573,7 @@ class CashReport:
     day: str
     payments: tuple[Payment, ...]  # every payment of the day, voided ones included
     refunds: tuple["Refund", ...] = ()  # refunds paid out that day
+    payouts: tuple["Payout", ...] = ()  # teachers paid that day (the director's view only)
 
     @property
     def kept(self) -> tuple[Payment, ...]:
@@ -610,9 +611,15 @@ class CashReport:
         return totals
 
     @property
+    def paid_to_teachers(self) -> int:
+        return sum(p.amount_paid for p in self.payouts)
+
+    @property
     def cash_in_drawer(self) -> int:
-        """Cash received minus cash handed back: what the drawer should hold from the day."""
-        return self.by_method()["cash"] - self.refunded_by_method()["cash"]
+        """Cash received minus cash handed back and cash paid to teachers: what the drawer
+        should hold from the day."""
+        cash_out = sum(p.amount_paid for p in self.payouts if p.method == "cash")
+        return self.by_method()["cash"] - self.refunded_by_method()["cash"] - cash_out
 
 
 # ----- refunds -----
@@ -664,3 +671,73 @@ class RefundableCharge:
     @property
     def refundable(self) -> int:
         return max(self.paid - self.refunded - self.reserved, 0)
+
+
+# ----- teacher payouts -----
+
+PAYOUT_STATUSES = ("draft", "approved", "paid")
+
+
+@dataclass(frozen=True)
+class Payout:
+    id: int
+    teacher_id: int
+    teacher: str
+    period_start: str  # the first day of its oldest month
+    period_end: str  # the date it pays up to
+    base_amount: int  # the months' full prices
+    amount_due: int  # the teacher's share
+    amount_paid: int
+    receipt_number: str | None  # PE2026-00001, once paid
+    status: str  # PAYOUT_STATUSES
+    approved_by: str | None
+    approved_at: str | None
+    method: str | None
+    paid_by: str | None
+    paid_at: str | None
+    created_at: str
+    months: int  # subscription months counted
+
+
+@dataclass(frozen=True)
+class PayoutLine:
+    """One group at one rate."""
+
+    id: int
+    group_id: int
+    group_title: str
+    revenue_basis: int
+    percentage_bp: int
+    amount: int
+    months: int
+    students: int
+
+
+@dataclass(frozen=True)
+class PayoutMonth:
+    """One month a payout counts: whose, which group, at what rate."""
+
+    charge_id: int
+    student_number: str
+    student_name: str
+    group_title: str
+    description: str
+    accrual_date: str
+    amount: int  # the month's full price
+    percentage_bp: int
+
+    @property
+    def share(self) -> int:
+        """The teacher's part of this month alone (the line rounds its total once)."""
+        return self.amount * self.percentage_bp // 10000
+
+
+@dataclass(frozen=True)
+class PayoutDue:
+    """What a teacher is owed up to a date, before any draft is made."""
+
+    teacher_id: int
+    teacher: str
+    months: int
+    revenue: int
+    draft_id: int | None  # their draft, if one is waiting

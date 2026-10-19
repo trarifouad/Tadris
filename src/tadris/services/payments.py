@@ -5,7 +5,7 @@ from tadris.core import dates
 from tadris.core.context import UserContext
 from tadris.core.errors import BusinessRuleError, NotFound, ValidationError
 from tadris.core.money import format_dzd
-from tadris.core.permissions import require
+from tadris.core.permissions import allowed, require
 from tadris.core.text import clean
 from tadris.db.errors import atomic
 from tadris.domain.models import PAYMENT_METHODS, CashReport, ChargeDue, Payment, PaymentLine
@@ -13,7 +13,7 @@ from tadris.i18n.fr import t
 from tadris.repositories import contacts as contacts_repo
 from tadris.repositories import payments as repo
 from tadris.repositories import students as students_repo
-from tadris.services import audit, counters, debt, refunds
+from tadris.services import audit, counters, debt, payouts, refunds
 
 # A payment is money received from (or for) a student. It is immutable: a mistake is undone
 # by a void (director only), never by an update or a negative payment. Recording one, in a
@@ -101,13 +101,16 @@ def lines(conn, ctx: UserContext, payment_id: int) -> list[PaymentLine]:
 
 
 def cash_report(conn, ctx: UserContext, day: date) -> CashReport:
-    """The day's payments (totals per method and per cashier count those not voided) and the
-    refunds paid out that day."""
+    """The day's payments (totals per method and per cashier count those not voided), the
+    refunds paid out and, for the director (teacher pay is theirs to see), the teachers paid
+    that day."""
     require(ctx, "report.view")
+    teachers_paid = (tuple(payouts.paid_on(conn, ctx, day)) if allowed(ctx, "payout.view")
+                     else ())
     return CashReport(day=dates.iso(day),
                       payments=tuple(_to_payment(row) for row in repo.on_day(conn,
                                                                               dates.iso(day))),
-                      refunds=tuple(refunds.paid_on(conn, ctx, day)))
+                      refunds=tuple(refunds.paid_on(conn, ctx, day)), payouts=teachers_paid)
 
 
 # ----- planning (pure: the dialog's preview and record() use the same code) -----

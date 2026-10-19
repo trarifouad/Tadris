@@ -20,7 +20,8 @@ from tadris.core.phones import format_phone
 from tadris.core.text import fold
 from tadris.domain.models import Teacher
 from tadris.i18n.fr import t
-from tadris.services import groups, teachers
+from tadris.services import groups, payouts, teachers
+from tadris.ui.payout_dialogs import period_text
 from tadris.ui.teacher_dialogs import RateDialog, TeacherDialog
 from tadris.ui.theme.status import kind_for
 from tadris.ui.widgets.common import (
@@ -33,7 +34,7 @@ from tadris.ui.widgets.common import (
     variant_button,
 )
 from tadris.ui.widgets.forms import HeaderCard, ListDetailPage, ListSection, caption, padded
-from tadris.ui.widgets.tables import CENTER, RIGHT, item
+from tadris.ui.widgets.tables import CENTER, RIGHT, fit_columns, item
 
 SEARCH_DELAY_MS = 250
 STATUS_FILTERS = (("teachers.filter.active", "active"),
@@ -181,9 +182,15 @@ class TeacherDetailView(QWidget):
                                  t["rates.empty"])
         self.tabs = QTabWidget()
         self.tabs.setDocumentMode(True)
+        self.payouts = ListSection([t["payouts.col.period"], t["payouts.col.months"],
+                                    t["payouts.col.amount"], t["payouts.col.status"],
+                                    t["payouts.col.number"]], t["teacher_detail.payouts_empty"])
+        fit_columns(self.payouts.table, stretch=(0,))
         self.tabs.addTab(padded(self.groups), t["teacher_detail.tab.groups"])
         if manages:
             self.tabs.addTab(padded(self.rates), t["teacher_detail.tab.rates"])
+        if allowed(ctx, "payout.view"):
+            self.tabs.addTab(padded(self.payouts), t["teacher_detail.tab.payouts"])
 
         self.error = PageBanner()
         layout = QVBoxLayout(self)
@@ -225,6 +232,14 @@ class TeacherDetailView(QWidget):
                 item(t["rates.current"] if r.valid_to is None else display_date(r.valid_to),
                      align=CENTER),
             ] for r in teachers.rates(self._conn, self._ctx, x.id)])
+        if allowed(self._ctx, "payout.view"):
+            self.payouts.set_rows([[
+                item(period_text(p), item_id=p.id),
+                item(str(p.months), align=RIGHT, mono=True),
+                item(format_dzd(p.amount_due), align=RIGHT, mono=True),
+                item(t[f"payout_status.{p.status}"], kind=kind_for("payout", p.status)),
+                item(p.receipt_number or "—", mono=True),
+            ] for p in payouts.for_teacher(self._conn, self._ctx, x.id)])
 
     def _edit(self) -> None:
         dialog = TeacherDialog(self._conn, self._ctx, self.teacher, parent=self)

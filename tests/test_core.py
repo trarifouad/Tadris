@@ -128,6 +128,7 @@ RECEPTIONIST_DENIED = {
     "student.reactivate",
     "group.manage",
     "academic.manage",
+    "registration.cancel",
     "enrollment.override",
     "payment.void",
     "refund.approve",

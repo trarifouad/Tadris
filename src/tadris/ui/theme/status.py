@@ -6,6 +6,7 @@ STATUS_STYLE = {
     "flag": {"yes": "success", "no": "neutral"},
     "year": {"open": "success", "upcoming": "info", "closed": "neutral"},
     "group": {"active": "success", "upcoming": "info", "closed": "neutral"},
+    "registration": {"active": "success", "cancelled": "neutral"},
     "enrollment": {"trial": "info", "active": "success", "left": "neutral", "switched": "neutral"},
     "subscription": {
         "active": "success", "expiring": "warning", "ended": "neutral", "cancelled": "danger",

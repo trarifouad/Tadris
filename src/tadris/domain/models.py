@@ -235,3 +235,84 @@ class Slot:
     end_time: str
     valid_from: str
     valid_to: str | None
+
+
+# ----- registration and enrollment -----
+
+
+@dataclass(frozen=True)
+class Registration:
+    id: int
+    student_id: int
+    school_year_id: int
+    year_label: str
+    level_id: int
+    level: str
+    fee_amount: int
+    status: str  # 'active' or 'cancelled'
+    registered_at: str
+    live_enrollments: int  # groups the student is in (trial or active)
+    fee_charge_id: int | None  # None when the fee was 0
+    fee_paid: int
+
+    @property
+    def fee_due(self) -> int:
+        """What remains to pay on the fee (0 once cancelled)."""
+        if self.status != "active" or self.fee_charge_id is None:
+            return 0
+        return max(self.fee_amount - self.fee_paid, 0)
+
+
+@dataclass(frozen=True)
+class Enrollment:
+    id: int
+    student_id: int
+    student_number: str
+    student_name: str  # "Last First"
+    group_id: int
+    group_name: str
+    subject: str
+    group_level: str
+    registration_id: int
+    registration_level: str
+    status: str  # 'trial', 'active', 'left' or 'switched'
+    started_as_trial: bool
+    enrolled_on: str
+    left_on: str | None
+    switched_from_id: int | None
+
+    @property
+    def group_title(self) -> str:
+        return f"{self.group_name} · {self.subject} {self.group_level}"
+
+    @property
+    def is_live(self) -> bool:
+        return self.status in ("trial", "active")
+
+    @property
+    def other_level(self) -> bool:
+        """Placed by a director override in a group of another level."""
+        return self.group_level != self.registration_level
+
+
+@dataclass(frozen=True)
+class GroupOption:
+    """A group of the open year, as offered in the "enroll in group" dialog."""
+
+    group: Group
+    same_level: bool  # other levels need the director override
+    already_in: bool
+    # Already in another group of this subject and level: needs the director override too.
+    same_subject: bool = False
+
+    @property
+    def needs_override(self) -> bool:
+        return not self.same_level or self.same_subject
+
+    @property
+    def free(self) -> int:
+        return max(self.group.seats - self.group.enrolled, 0)
+
+    @property
+    def available(self) -> bool:
+        return not self.already_in and self.free > 0

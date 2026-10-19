@@ -201,22 +201,28 @@ def teacher_history(conn, ctx: UserContext, group_id: int) -> list[TeacherPeriod
     ]
 
 
-def release_slots(conn, ctx: UserContext, group_id: int) -> int:
-    """Inside a transaction: free the rooms a closed group was holding."""
-    return timetable.end_group_slots(conn, ctx, group_id)
+def release(conn, ctx: UserContext, group_id: int) -> tuple[int, int]:
+    """Inside a transaction: a group being closed frees its rooms and its students leave it
+    today. Returns (slots ended, students who left)."""
+    from tadris.services import enrollments  # enrollments depends on this module
+
+    left = enrollments.end_for_closed_group(conn, ctx, group_id)
+    return timetable.end_group_slots(conn, ctx, group_id), left
 
 
 def close(conn, ctx: UserContext, group_id: int) -> None:
-    """Closed groups take no new students and their timetable slots end today."""
+    """Closed groups take no new students; their students leave and their timetable slots
+    end today. Reopening brings neither back."""
     require(ctx, "group.manage")
     with atomic(conn):
         row = _require_row(conn, group_id)
         if row["status"] == "closed":
             raise BusinessRuleError(t["group.already_closed"])
         repo.set_status(conn, group_id, "closed")
-        ended = release_slots(conn, ctx, group_id)
+        ended, left = release(conn, ctx, group_id)
         audit.log(conn, ctx, "group.close", "class_groups", group_id,
-                  old={"status": row["status"]}, new={"status": "closed", "slots_ended": ended})
+                  old={"status": row["status"]},
+                  new={"status": "closed", "slots_ended": ended, "students_left": left})
 
 
 def reopen(conn, ctx: UserContext, group_id: int) -> None:

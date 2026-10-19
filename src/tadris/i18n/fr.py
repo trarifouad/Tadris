@@ -29,6 +29,70 @@ t = {
     "student.has_live_enrollments": (
         "Cet élève est encore inscrit dans un groupe. Retirez-le d'abord de ses groupes."
     ),
+    "registration.not_found": "Inscription annuelle introuvable.",
+    "registration.no_open_year": (
+        "Aucune année scolaire n'est ouverte. Ouvrez une année dans Paramètres."
+    ),
+    "registration.student_inactive": "Cet élève est désactivé. Réactivez-le d'abord.",
+    "registration.exists": (
+        "Cet élève a déjà son inscription annuelle {label} ({level}). Pour l'ajouter à un autre "
+        "groupe, utilisez « Inscrire dans un groupe »."
+    ),
+    "registration.fee_invalid": "Le montant des frais d'inscription est invalide.",
+    "registration.fee_description": "Frais d'inscription {label}",
+    "registration.cancelled": "Cette inscription annuelle est annulée.",
+    "registration.already_cancelled": "Cette inscription annuelle est déjà annulée.",
+    "registration.year_closed": "L'année {label} est clôturée : l'inscription ne peut plus changer.",
+    "registration.same_level": "L'élève est déjà inscrit dans ce niveau.",
+    "registration.has_live_enrollments": (
+        "L'élève est encore dans {count} groupe(s) de cette année. Retirez-le d'abord de ses "
+        "groupes."
+    ),
+    "registration.fee_paid": (
+        "Des frais d'inscription ont déjà été payés ({amount}). Remboursez-les avant d'annuler."
+    ),
+    "registration.level_required": "Choisissez le niveau.",
+    "registration.reason_required": "Indiquez le motif de l'annulation.",
+    "enrollment.not_found": "Inscription dans le groupe introuvable.",
+    "enrollment.not_registered": (
+        "Cet élève n'a pas d'inscription annuelle pour l'année {label}. Inscrivez-le d'abord "
+        "pour l'année, puis dans ses groupes."
+    ),
+    "enrollment.group_other_year": "Ce groupe n'est pas de l'année ouverte ({label}).",
+    "enrollment.already_in": "Cet élève est déjà dans le groupe {group}.",
+    "enrollment.trial_used": "Cet élève a déjà eu son essai gratuit : un seul essai par élève.",
+    "enrollment.full": "Le groupe {group} est complet (places : {seats}).",
+    "enrollment.room_full": (
+        "Le groupe {group} est complet : la salle {room} limite le groupe (places : {seats})."
+    ),
+    "enrollment.date_outside": (
+        "La date d'entrée doit être entre le {start} (début du groupe) et le {end} (fin de "
+        "l'année)."
+    ),
+    "enrollment.level_mismatch": (
+        "Le groupe {group} est de niveau {group_level}, l'élève est inscrit en {level}. Seul le "
+        "directeur peut l'y inscrire, avec un motif."
+    ),
+    "enrollment.time_clash": (
+        "Conflit d'horaire : {group} a cours le {day} de {start} à {end}, et l'élève est déjà en "
+        "{other} de {other_start} à {other_end}."
+    ),
+    "enrollment.same_subject": (
+        "L'élève est déjà en {subject} {level} dans le groupe {other}. Pour le déplacer, utilisez "
+        "« Changer de groupe ». Seul le directeur peut l'inscrire dans deux groupes de la même "
+        "matière, avec un motif."
+    ),
+    "enrollment.override_reason_required": "Indiquez le motif de la dérogation.",
+    "enrollment.not_live": "Cet élève n'est plus dans ce groupe.",
+    "enrollment.not_trial": "Cette inscription n'est pas un essai.",
+    "enrollment.same_group": "Choisissez un autre groupe que le groupe actuel.",
+    "enrollment.leave_future": "La date de sortie ne peut pas être dans le futur.",
+    "enrollment.leave_before_entry": (
+        "La date de sortie ne peut pas être avant la date d'entrée ({date})."
+    ),
+    "enrollment.leave_before_attendance": (
+        "Une présence est déjà notée le {date} : la date de sortie ne peut pas être avant."
+    ),
     "percent.invalid": "Pourcentage invalide. Exemple : 60 ou 62,5 (entre 0 et 100).",
     "time.invalid": "Heure invalide. Exemple : 17:30 ou 17h30.",
     "name.required": "Le nom est obligatoire.",
@@ -124,6 +188,14 @@ t = {
         "{teacher} enseigne déjà le {day} de {start} à {end} ({group}). "
         "Choisissez un autre horaire."
     ),
+    "slot.student_busy": (
+        "{student}, élève de ce groupe, a déjà cours le {day} de {start} à {end} ({group}). "
+        "Choisissez un autre horaire."
+    ),
+    "slot.students_busy": (
+        "{student} et {others} autre(s) élève(s) de ce groupe ont déjà cours le {day} de {start} "
+        "à {end} ({group}). Choisissez un autre horaire."
+    ),
     "slot.ended": "Ce créneau est déjà terminé.",
     "slot.outside_hours": (
         "Ce créneau sort des horaires de l'école ({opens} – {closes}). Changez l'horaire, "
@@ -163,6 +235,8 @@ t = {
     "db.level_mismatch": "Le niveau de l'inscription et du groupe diffèrent.",
     "db.group_closed": "Ce groupe est clôturé.",
     "db.group_started": "Le groupe a déjà commencé.",
+    "db.switch_other_student": "Le changement de groupe concerne un autre élève.",
+    "db.left_needs_date": "Une inscription terminée doit avoir une date de sortie.",
     "db.group_full": "Le groupe est complet.",
     "db.capacity_below_enrolled": "La capacité est inférieure aux inscriptions actuelles.",
     "db.group_exceeds_room": "La salle est trop petite pour les élèves inscrits du groupe.",
@@ -287,7 +361,7 @@ t = {
     "student_dialog.duplicates_hint": "Vérifiez avant de continuer.",
     "student_detail.number": "N° {number}",
     "student_detail.born": "Né(e) le {date}",
-    "student_detail.since": "Inscrit(e) le {date}",
+    "student_detail.since": "Fiche créée le {date}",
     "student_detail.deactivate": "Désactiver",
     "student_detail.reactivate": "Réactiver",
     "student_detail.confirm_deactivate_title": "Désactiver l'élève",
@@ -301,6 +375,115 @@ t = {
     "student_detail.tab.attendance": "Présences",
     "student_detail.tab.contacts": "Contacts",
     "student_detail.tab_later": "Cet onglet sera rempli dans une prochaine étape.",
+    "enrollment_status.trial": "Essai",
+    "enrollment_status.active": "Actif",
+    "enrollment_status.left": "Sorti",
+    "enrollment_status.switched": "Changé de groupe",
+    "student_groups.enroll": "Inscrire dans un groupe",
+    "student_groups.confirm_trial": "Confirmer l'essai",
+    "student_groups.switch": "Changer de groupe",
+    "student_groups.leave": "Sortir du groupe",
+    "student_groups.col.group": "Groupe",
+    "student_groups.col.status": "Statut",
+    "student_groups.col.entry": "Entrée",
+    "student_groups.col.exit": "Sortie",
+    "student_groups.col.note": "Remarque",
+    "student_groups.note.other_level": "Autre niveau (inscrit en {level})",
+    "student_groups.note.from": "Vient de {group}",
+    "student_groups.note.after_trial": "Commencé en essai",
+    "student_groups.not_registered": (
+        "Inscrivez d'abord l'élève pour l'année (onglet Inscription), puis dans ses groupes."
+    ),
+    "student_groups.empty": (
+        "Aucun groupe pour l'instant. Cliquez sur « Inscrire dans un groupe ». Un élève peut être "
+        "dans plusieurs groupes."
+    ),
+    "student_groups.enrolled": "{name} inscrit(e) dans {group}",
+    "student_groups.trial_confirmed": "Essai confirmé : {group}",
+    "student_groups.switched": "Changement de groupe : {old} → {new}",
+    "student_groups.left": "Sorti(e) du groupe {group}",
+    "enroll_dialog.title": "Inscrire dans un groupe",
+    "enroll_dialog.submit": "Inscrire",
+    "enroll_dialog.caption": "{name} · choisissez un groupe :",
+    "enroll_dialog.col.group": "Groupe",
+    "enroll_dialog.col.teacher": "Enseignant",
+    "enroll_dialog.col.free": "Places libres",
+    "enroll_dialog.col.note": "Remarque",
+    "enroll_dialog.other_level": "Autre niveau",
+    "enroll_dialog.none": (
+        "Aucun groupe disponible : l'élève est déjà dans tous les groupes de son niveau, ou ils "
+        "sont complets ou clôturés."
+    ),
+    "enroll_dialog.full_hidden": "{count} groupe(s) complet(s) non affiché(s).",
+    "enroll_dialog.date": "Date d'entrée",
+    "enroll_dialog.trial": "Essai gratuit (un seul par élève)",
+    "enroll_dialog.trial_used": "L'essai gratuit de cet élève a déjà été utilisé.",
+    "enroll_dialog.same_subject": "Même matière",
+    "enroll_dialog.reason": "Motif de la dérogation (directeur)",
+    "enroll_dialog.reason_placeholder": "Ex. : rattrapage, niveau adapté",
+    "enroll_dialog.group_required": "Choisissez un groupe dans la liste.",
+    "switch_dialog.title": "Changer de groupe",
+    "switch_dialog.submit": "Changer de groupe",
+    "switch_dialog.caption": (
+        "Groupe actuel : {group}. L'élève le quitte à cette date et entre le même jour dans le "
+        "nouveau groupe (ou à son premier jour s'il n'a pas commencé). Un essai reste un essai."
+    ),
+    "switch_dialog.date": "Date du changement",
+    "leave_dialog.title": "Sortir du groupe",
+    "leave_dialog.submit": "Sortir du groupe",
+    "leave_dialog.caption": "{name} quitte {group}. Sa place est libérée tout de suite.",
+    "leave_dialog.date": "Date de sortie",
+    "leave_dialog.reason": "Motif (facultatif)",
+    "leave_dialog.reason_placeholder": "Ex. : déménagement",
+    "registration_status.active": "Active",
+    "registration_status.cancelled": "Annulée",
+    "registration_tab.register": "Inscrire pour l'année {label}",
+    "registration_tab.change_level": "Changer le niveau",
+    "registration_tab.cancel": "Annuler l'inscription",
+    "registration_tab.title": "Année {label}",
+    "registration_tab.level": "Niveau",
+    "registration_tab.fee": "Frais d'inscription",
+    "registration_tab.due": "Reste à payer",
+    "registration_tab.date": "Inscrit(e) le",
+    "registration_tab.groups": "Groupes",
+    "registration_tab.not_registered": (
+        "Pas encore inscrit(e) pour l'année {label}. L'inscription annuelle vient avant les "
+        "groupes."
+    ),
+    "registration_tab.student_inactive": (
+        "Cet élève est désactivé. Réactivez-le pour l'inscrire."
+    ),
+    "registration_tab.history": "Inscriptions annuelles",
+    "registration_tab.col.year": "Année",
+    "registration_tab.col.level": "Niveau",
+    "registration_tab.col.fee": "Frais",
+    "registration_tab.col.status": "Statut",
+    "registration_tab.col.date": "Date",
+    "registration_tab.registered": "{name} inscrit(e) pour l'année {label}",
+    "registration_tab.level_changed": "Niveau modifié",
+    "registration_tab.cancelled": "Inscription annuelle de {name} annulée",
+    "registration_dialog.title": "Inscription annuelle {label}",
+    "registration_dialog.submit": "Inscrire",
+    "registration_dialog.caption": "{name} · N° {number}",
+    "registration_dialog.level": "Niveau",
+    "registration_dialog.choose_level": "Choisir un niveau…",
+    "registration_dialog.fee": "Frais d'inscription",
+    "registration_dialog.fee_caption": (
+        "Montant par défaut : {fee} (Paramètres → École). Vous pouvez le changer pour cet élève ; "
+        "0 = sans frais."
+    ),
+    "change_level_dialog.title": "Changer le niveau",
+    "change_level_dialog.caption": (
+        "Niveau actuel : {level} ({label}). Possible tant que l'élève n'est dans aucun groupe."
+    ),
+    "cancel_registration_dialog.title": "Annuler l'inscription annuelle",
+    "cancel_registration_dialog.submit": "Annuler l'inscription",
+    "cancel_registration_dialog.caption": (
+        "L'inscription de {name} pour {label} sera annulée, ainsi que ses frais ({fee}). "
+        "L'élève pourra être inscrit à nouveau."
+    ),
+    "cancel_registration_dialog.reason": "Motif",
+    "cancel_registration_dialog.placeholder": "Ex. : erreur de saisie",
     "contacts.add": "Ajouter un contact",
     "contacts.make_main": "Définir comme principal",
     "contacts.unlink": "Retirer",
@@ -375,6 +558,12 @@ t = {
     "school.opens_at": "Ouverture",
     "school.closes_at": "Fermeture",
     "school.saved": "Paramètres de l'école enregistrés",
+    "school.fees": "Inscriptions",
+    "school.fees_caption": (
+        "Montant proposé à chaque inscription annuelle. L'accueil peut le changer au cas par cas ; "
+        "les inscriptions déjà faites gardent leur montant."
+    ),
+    "school.registration_fee": "Frais d'inscription par défaut",
     "settings.tab.years": "Années scolaires",
     "settings.tab.levels": "Niveaux",
     "settings.tab.subjects": "Matières",
@@ -401,7 +590,8 @@ t = {
     "years.closed": "Année clôturée : {label} ({count} groupe(s) clôturé(s))",
     "years.confirm_close_title": "Clôturer l'année",
     "years.confirm_close": (
-        "Clôturer {label} ? Ses {count} groupe(s) seront clôturés et leurs créneaux libérés. "
+        "Clôturer {label} ? Ses {count} groupe(s) seront clôturés, leurs élèves en sortiront "
+        "et leurs créneaux seront libérés. "
         "Les inscriptions ne seront plus possibles dans cette année."
     ),
     "year_dialog.new_title": "Nouvelle année scolaire",
@@ -532,11 +722,29 @@ t = {
     "group_detail.tab.slots": "Créneaux",
     "group_detail.tab.teachers": "Enseignants",
     "group_detail.tab.students": "Élèves",
-    "group_detail.students_later": "La liste des élèves arrive avec les inscriptions (étape 4).",
+    "group_students.summary": (
+        "{enrolled} / {seats} élèves · {free} place(s) libre(s) · {trials} en essai"
+    ),
+    "group_students.show_past": "Afficher les anciens élèves ({count})",
+    "group_students.col.name": "Élève",
+    "group_students.col.number": "N°",
+    "group_students.col.status": "Statut",
+    "group_students.col.entry": "Entrée",
+    "group_students.col.exit": "Sortie",
+    "group_students.col.note": "Remarque",
+    "group_students.note.switched_in": "Changement de groupe",
+    "group_students.empty": (
+        "Aucun élève dans ce groupe. Les élèves s'inscrivent depuis leur fiche, onglet Groupes."
+    ),
+    "group_students.hint": (
+        "Pour inscrire, changer de groupe ou faire sortir un élève, ouvrez sa fiche (Élèves → "
+        "onglet Groupes)."
+    ),
     "group_detail.confirm_close_title": "Clôturer le groupe",
     "group_detail.confirm_close": (
-        "Clôturer {name} ? Il ne recevra plus d'élèves et ses créneaux seront libérés "
-        "à partir d'aujourd'hui."
+        "Clôturer {name} ? Ses {enrolled} élève(s) en sortiront aujourd'hui, il ne recevra "
+        "plus d'élèves et ses créneaux seront libérés. Rouvrir le groupe ne remettra pas les "
+        "élèves."
     ),
     "slots.add": "Ajouter un créneau",
     "slots.empty": "Aucun créneau. Ajoutez le premier avec « Ajouter un créneau ».",

@@ -227,7 +227,7 @@ def test_detail_header_and_tabs(qtbot, conn, director, amine):
         t[f"student_detail.tab.{key}"] for key in
         ("registration", "groups", "subscriptions", "payments", "attendance", "contacts")
     ]
-    assert view.tabs.currentWidget() is view.contacts
+    assert view.tabs.currentWidget() is view.registration
     assert table_rows(view.contacts.table)[0][:3] == [
         "Karim Benali", t["relation.father"], "0661 90 25 47"
     ]

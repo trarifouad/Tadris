@@ -20,6 +20,7 @@ from tadris.domain.models import Group
 from tadris.i18n.fr import t
 from tadris.services import catalog, groups, school_years, timetable
 from tadris.ui.group_dialogs import ChangeTeacherDialog, GroupDialog, SlotDialog, day_name
+from tadris.ui.pages.group_students_tab import GroupStudentsTab
 from tadris.ui.theme.status import kind_for
 from tadris.ui.widgets.common import (
     Badge,
@@ -218,13 +219,13 @@ class GroupDetailView(QWidget):
         self.history = ListSection([
             t["history.col.teacher"], t["history.col.from"], t["history.col.to"],
         ], "")
-        students = caption(t["group_detail.students_later"])
+        self.students = GroupStudentsTab(conn, ctx, group_id)
 
         self.tabs = QTabWidget()
         self.tabs.setDocumentMode(True)
+        self.tabs.addTab(padded(self.students), t["group_detail.tab.students"])
         self.tabs.addTab(padded(self.slots), t["group_detail.tab.slots"])
         self.tabs.addTab(padded(self.history), t["group_detail.tab.teachers"])
-        self.tabs.addTab(padded(students, stretch=True), t["group_detail.tab.students"])
 
         self.error = PageBanner()
         layout = QVBoxLayout(self)
@@ -254,6 +255,7 @@ class GroupDetailView(QWidget):
             self.places.setText(t["group_detail.places"].format(enrolled=g.enrolled,
                                                                 capacity=g.capacity))
         self.starts.setText(t["group_detail.starts"].format(date=display_date(g.start_date)))
+        self.students.show_group(g)
         is_open = g.status != "closed"
         self.edit.setVisible(self.manages and is_open)
         self.change_teacher.setVisible(self.manages and is_open)
@@ -294,7 +296,8 @@ class GroupDetailView(QWidget):
 
     def _close(self) -> None:
         if confirm(self, t["group_detail.confirm_close_title"],
-                   t["group_detail.confirm_close"].format(name=self.group.name),
+                   t["group_detail.confirm_close"].format(
+                       name=self.group.name, enrolled=self.group.enrolled),
                    t["group_detail.close"]):
             self._run(groups.close, t["groups.closed_msg"].format(name=self.group.name))
 

@@ -306,7 +306,10 @@ def test_payout_charge_must_be_in_period(seeded):
 def test_payout_not_draft_blocks_new_lines(seeded):
     seeded.execute("INSERT INTO teacher_payouts(teacher_id,period_start,period_end,base_amount,amount_due) "
                    "VALUES(1,'2026-09-01','2026-09-30',3000,1800)")
+    seeded.execute("INSERT INTO payout_lines(payout_id,group_id,revenue_basis,percentage_bp,amount) "
+                   "VALUES(1,1,3000,6000,1800)")
+    seeded.execute("INSERT INTO payout_line_charges(payout_line_id,charge_id,amount) VALUES(1,1,3000)")
     seeded.execute("UPDATE teacher_payouts SET status='approved' WHERE id=1")
     with pytest.raises(sqlite3.IntegrityError, match="not draft"):
         seeded.execute("INSERT INTO payout_lines(payout_id,group_id,revenue_basis,percentage_bp,amount) "
-                       "VALUES(1,1,3000,6000,1800)")
+                       "VALUES(1,1,3000,5000,1500)")  # another rate: a new line

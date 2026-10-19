@@ -8,6 +8,7 @@ from tadris.core import dates
 from tadris.core.context import UserContext
 from tadris.core.errors import BusinessRuleError, NotFound
 from tadris.core.money import format_dzd
+from tadris.core.percent import format_percent
 from tadris.core.permissions import require
 from tadris.core.text import fold
 from tadris.db.errors import atomic
@@ -18,6 +19,7 @@ from tadris.documents.attendance_sheet import (
     build_session_sheet,
     build_week_sheet,
 )
+from tadris.documents.payout_slip import PayoutSlip, build_payout_slip
 from tadris.documents.pdf import Footer, School
 from tadris.documents.receipt import ReceiptDoc, build_receipt
 from tadris.domain.models import ATTENDANCE_STATUSES
@@ -29,6 +31,7 @@ from tadris.services import (
     debt,
     groups,
     payments,
+    payouts,
     refunds,
     sessions,
     settings,
@@ -43,6 +46,7 @@ SESSION_SHEET = "attendance_session"
 WEEK_SHEET = "attendance_week"
 RECEIPT = "receipt"
 REFUND_SLIP = "refund"
+PAYOUT_SLIP = "payout"
 LETTERS = {"present": "P", "late": "R", "absent": "A", "excused": "E"}
 
 
@@ -244,3 +248,59 @@ def refund_slip_content(conn, ctx: UserContext, refund_id: int) -> ReceiptDoc:
         stamp=t["refund_slip.stamp"], stamp_date=paid_on, voided_note="",
         thanks=t["refund_slip.thanks"], signature=t["refund_slip.signature"],
         footer=_footer(ctx))
+
+
+# ----- teacher payout slips -----
+
+def payout_slip(conn, ctx: UserContext, payout_id: int, out_dir: Path | None = None) -> Path:
+    """A teacher's payout: groups, total, every month counted. Printed again, it says
+    DUPLICATA. A draft prints too (to check it), stamped BROUILLON."""
+    require(ctx, "print.document")
+    slip = payout_slip_content(conn, ctx, payout_id)
+    p = payouts.get(conn, ctx, payout_id)
+    name = re.sub(r"[^a-z0-9]+", "-", fold(p.teacher)).strip("-") or "enseignant"
+    path = build_payout_slip(slip, (out_dir or config.documents_dir())
+                             / f"paiement-enseignant_{name}_{p.period_end}.pdf")
+    _log(conn, ctx, PAYOUT_SLIP, payout_id)
+    return path
+
+
+def payout_slip_content(conn, ctx: UserContext, payout_id: int) -> PayoutSlip:
+    p = payouts.get(conn, ctx, payout_id)
+    details = [
+        (t["payout_slip.teacher"], p.teacher),
+        (t["payout_slip.period"], t["payout_slip.period_value"].format(
+            start=dates.display_date(p.period_start), end=dates.display_date(p.period_end))),
+        (t["payout_slip.status"], t[f"payout_status.{p.status}"]),
+    ]
+    if p.approved_by:
+        details.append((t["payout_slip.approved"], t["payout_slip.by_on"].format(
+            user=p.approved_by, date=dates.display_date(p.approved_at))))
+    if p.status == "paid":
+        details.append((t["payout_slip.paid"], t["payout_slip.paid_value"].format(
+            date=dates.display_date(p.paid_at), method=t[f"payment_method.{p.method}"],
+            user=p.paid_by)))
+    group_rows = [[line.group_title, str(line.students), str(line.months),
+                   format_dzd(line.revenue_basis), format_percent(line.percentage_bp),
+                   format_dzd(line.amount)] for line in payouts.lines(conn, ctx, payout_id)]
+    detail_rows = [[m.student_name, m.group_title, dates.display_date(m.accrual_date),
+                    format_dzd(m.amount), format_percent(m.percentage_bp), format_dzd(m.share)]
+                   for m in payouts.months(conn, ctx, payout_id)]
+    stamp_day = p.paid_at or p.approved_at or p.created_at
+    return PayoutSlip(
+        school=_school(conn), title=t["payout_slip.title"],
+        number=p.receipt_number or t[f"payout_status.{p.status}"].upper(),
+        copy_mark=(t["receipt.duplicate"] if print_log.count(conn, PAYOUT_SLIP, payout_id)
+                   else ""),
+        details=details,
+        group_columns=[t["payout_slip.col.group"], t["payout_slip.col.students"],
+                       t["payout_slip.col.months"], t["payout_slip.col.revenue"],
+                       t["payout_slip.col.rate"], t["payout_slip.col.amount"]],
+        group_rows=group_rows, total_label=t["payout_slip.total"],
+        total=format_dzd(p.amount_due), detail_title=t["payout_slip.detail"],
+        detail_columns=[t["payout_slip.col.student"], t["payout_slip.col.group"],
+                        t["payout_slip.col.from"], t["payout_slip.col.price"],
+                        t["payout_slip.col.rate"], t["payout_slip.col.share"]],
+        detail_rows=detail_rows, note=t["payout_slip.note"],
+        stamp=t[f"payout_stamp.{p.status}"], stamp_date=dates.display_date(stamp_day),
+        signature=t["payout_slip.signature"], footer=_footer(ctx))

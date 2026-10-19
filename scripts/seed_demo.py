@@ -3,7 +3,8 @@ subjects, rooms, teachers, groups and a weekly timetable), then register most st
 year and place them in groups (some on trial, a few switched or gone), add holidays, cancel a
 session with its makeup, set a substitute and take today's attendance, then take payments
 (most paid, some in part, a few in advance, one voided) and refunds (paid out, approved,
-pending), through the services.
+pending), and pay the teachers up to the end of last month (one paid, the others approved),
+through the services.
 
 Usage: python scripts/seed_demo.py PATH.db
 The path is required so the real database is never seeded by accident. Creates the director
@@ -37,6 +38,7 @@ from tadris.services import (
     groups,
     holidays,
     payments,
+    payouts,
     refunds,
     registrations,
     rooms,
@@ -264,6 +266,20 @@ def seed_refunds(conn, director, desk, rng: random.Random) -> int:
     return asked
 
 
+def seed_payouts(conn, director) -> int:
+    """The monthly run up to the end of last month: the first teacher paid in cash, the
+    others approved. Returns how many payouts. Skipped once any exists."""
+    if conn.execute("SELECT 1 FROM teacher_payouts LIMIT 1").fetchone() is not None:
+        return 0
+    until = date.today().replace(day=1) - timedelta(days=1)
+    built, _refused = payouts.run(conn, director, until)
+    for index, payout_id in enumerate(built):
+        payouts.approve(conn, director, payout_id)
+        if index == 0:
+            payouts.mark_paid(conn, director, payout_id, "cash")
+    return len(built)
+
+
 def main(path: Path) -> None:
     rng = random.Random(2026)
     path.parent.mkdir(parents=True, exist_ok=True)  # e.g. data/, which git does not keep
@@ -302,10 +318,11 @@ def main(path: Path) -> None:
     desk = auth.login(conn, "accueil", "password2")
     paid = seed_payments(conn, director, desk, rng)
     asked = seed_refunds(conn, director, desk, rng)
+    teachers_paid = seed_payouts(conn, director)
     conn.close()
     print(f"{created} students created in {path}: {registered} registered for the year, "
           f"{placed} placed in groups, {marked} attendance line(s) taken today, "
-          f"{paid} payment(s) received, {asked} refund(s)")
+          f"{paid} payment(s) received, {asked} refund(s), {teachers_paid} teacher payout(s)")
 
 
 if __name__ == "__main__":

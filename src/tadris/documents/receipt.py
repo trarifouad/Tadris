@@ -77,7 +77,7 @@ class Stamp(Flowable):
         c.restoreState()
 
 
-def _number_box(receipt: ReceiptDoc) -> Table:
+def number_box(receipt) -> Table:
     number = style(12, align=1)
     number.fontName = MONO
     rows = [[Paragraph(escape(receipt.number), number)]]
@@ -93,14 +93,16 @@ def _number_box(receipt: ReceiptDoc) -> Table:
     return box
 
 
-def _header(receipt: ReceiptDoc, usable: float) -> Table:
+def header_table(receipt, usable: float) -> Table:
+    """School, title and the number box. `receipt`: anything with school, title, number and
+    copy_mark (a receipt, a refund slip, a payout slip)."""
     school = receipt.school
     left = [Paragraph(escape(school.name), style(14, bold=True))]
     contact = " · ".join(part for part in (school.address, school.phone) if part)
     if contact:
         left.append(Paragraph(escape(contact), style(8.5, color=MUTED)))
     left += [Spacer(1, 4 * mm), Paragraph(escape(receipt.title), style(16, bold=True))]
-    header = Table([[left, _number_box(receipt)]], colWidths=[usable - 48 * mm, 48 * mm])
+    header = Table([[left, number_box(receipt)]], colWidths=[usable - 48 * mm, 48 * mm])
     header.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("ALIGN", (1, 0), (1, 0), "RIGHT"),
@@ -112,7 +114,7 @@ def _header(receipt: ReceiptDoc, usable: float) -> Table:
     return header
 
 
-def _details(receipt: ReceiptDoc, usable: float) -> Table:
+def details_table(receipt, usable: float) -> Table:
     rows = [[Paragraph(escape(label), style(9, color=MUTED)),
              Paragraph(escape(value), style(10))] for label, value in receipt.details]
     table = Table(rows, colWidths=[34 * mm, usable - 34 * mm])
@@ -148,8 +150,9 @@ def _lines(receipt: ReceiptDoc, usable: float) -> Table:
     return table
 
 
-def _signature(receipt: ReceiptDoc, usable: float) -> Table:
-    """The stamp on the left; on the right, a line to sign on with its label under it."""
+def signature_table(receipt, usable: float) -> Table:
+    """The stamp on the left; on the right, a line to sign on with its label under it.
+    `receipt`: anything with stamp, stamp_date and signature."""
     stamp = Stamp(receipt.stamp, receipt.stamp_date)
     sign = Table([[Paragraph(escape(receipt.signature), style(9, color=MUTED, align=1))]],
                  colWidths=[70 * mm])
@@ -170,12 +173,12 @@ def build_receipt(receipt: ReceiptDoc, path: Path) -> Path:
                             topMargin=MARGIN, bottomMargin=16 * mm,
                             title=f"{receipt.title} {receipt.number}")
     usable = A4[0] - 2 * MARGIN
-    story = [_header(receipt, usable), Spacer(1, 5 * mm), _details(receipt, usable),
+    story = [header_table(receipt, usable), Spacer(1, 5 * mm), details_table(receipt, usable),
              Spacer(1, 6 * mm)]
     if receipt.voided_note:
         story += [Paragraph(escape(receipt.voided_note), style(10.5, bold=True)),
                   Spacer(1, 4 * mm)]
-    story += [_lines(receipt, usable), Spacer(1, 10 * mm), _signature(receipt, usable),
+    story += [_lines(receipt, usable), Spacer(1, 10 * mm), signature_table(receipt, usable),
               Spacer(1, 8 * mm), Paragraph(escape(receipt.thanks), style(9, color=MUTED,
                                                                           align=1))]
     doc.build(story, onFirstPage=receipt.footer.draw, onLaterPages=receipt.footer.draw)

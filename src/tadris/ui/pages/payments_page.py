@@ -129,6 +129,8 @@ class CashView(QWidget):
         self.voided.setWordWrap(True)
         self.refunded = caption()
         self.refunded.setWordWrap(True)
+        self.teachers_paid = caption()
+        self.teachers_paid.setWordWrap(True)
         self.list = ListSection([t["cash.col.time"], t["cash.col.receipt"],
                                  t["cash.col.student"], t["cash.col.amount"],
                                  t["cash.col.method"], t["cash.col.cashier"],
@@ -145,6 +147,7 @@ class CashView(QWidget):
         layout.addWidget(self.by_cashier)
         layout.addWidget(self.voided)
         layout.addWidget(self.refunded)
+        layout.addWidget(self.teachers_paid)
         layout.addSpacing(4)
         layout.addWidget(self.list, 1)
 
@@ -172,6 +175,10 @@ class CashView(QWidget):
             count=len(report.refunds), total=format_dzd(report.refunded),
             drawer=format_dzd(report.cash_in_drawer)))
         self.refunded.setVisible(bool(report.refunds))
+        self.teachers_paid.setText(t["cash.teachers_paid"].format(
+            count=len(report.payouts), total=format_dzd(report.paid_to_teachers),
+            drawer=format_dzd(report.cash_in_drawer)))
+        self.teachers_paid.setVisible(bool(report.payouts))
         self._students = {p.id: p.student_id for p in report.payments}
         self.list.set_rows([self._cells(p) for p in report.payments])
 

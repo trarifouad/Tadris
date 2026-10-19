@@ -1,5 +1,6 @@
 """Fill a database with demo students, contacts and the school structure (year, levels,
-subjects, rooms, teachers, groups and a weekly timetable), through the services.
+subjects, rooms, teachers, groups and a weekly timetable), then register most students for the
+year and place them in groups (some on trial, a few switched or gone), through the services.
 
 Usage: python scripts/seed_demo.py PATH.db
 The path is required so the real database is never seeded by accident. Creates the director
@@ -27,9 +28,12 @@ from tadris.services import (
     auth,
     catalog,
     contacts,
+    enrollments,
     groups,
+    registrations,
     rooms,
     school_years,
+    settings,
     students,
     teachers,
     timetable,
@@ -100,6 +104,48 @@ def seed_school(conn, director, rng: random.Random) -> None:
                 continue
 
 
+REGISTRATION_FEE = 1500
+
+
+def seed_enrollments(conn, director, rng: random.Random) -> tuple[int, int]:
+    """Register about 85% of the active students and put each in one or two groups of their
+    level. Returns (registrations, enrollments). Full groups are skipped, as at the desk."""
+    if registrations.default_fee(conn) == 0:
+        settings.set_value(conn, director, "defaults.registration_fee", REGISTRATION_FEE)
+    by_level: dict[int, list[int]] = {}
+    for g in groups.search(conn, director):
+        if g.status != "closed":
+            by_level.setdefault(g.level_id, []).append(g.id)
+    registered = placed = 0
+    for row in students.search(conn, director, status="active"):
+        if rng.random() > 0.85 or registrations.current(conn, director, row.id) is not None:
+            continue
+        level_id = rng.choice(list(by_level))
+        registrations.register(conn, director, row.id, level_id)
+        registered += 1
+        wanted = rng.sample(by_level[level_id], k=min(len(by_level[level_id]), rng.choice((1, 2))))
+        for i, group_id in enumerate(wanted):
+            trial = i == 0 and rng.random() < 0.15
+            try:
+                enrollment_id = enrollments.enroll(conn, director, row.id, group_id, trial=trial)
+            except BusinessRuleError:
+                continue
+            placed += 1
+            luck = rng.random()
+            if trial and luck < 0.5:
+                enrollments.confirm_trial(conn, director, enrollment_id)
+            elif luck < 0.12:
+                enrollments.leave(conn, director, enrollment_id, reason="Démo : départ")
+            elif luck < 0.30:
+                others = [g for g in by_level[level_id] if g not in wanted]
+                if others:
+                    try:
+                        enrollments.switch(conn, director, enrollment_id, rng.choice(others))
+                    except BusinessRuleError:
+                        pass
+    return registered, placed
+
+
 def main(path: Path) -> None:
     rng = random.Random(2026)
     conn = connect(path)
@@ -132,8 +178,10 @@ def main(path: Path) -> None:
             created += 1
             if rng.random() < 0.1:
                 students.deactivate(conn, director, student_id)
+    registered, placed = seed_enrollments(conn, director, rng)
     conn.close()
-    print(f"{created} students created in {path}")
+    print(f"{created} students created in {path}: {registered} registered for the year, "
+          f"{placed} placed in groups")
 
 
 if __name__ == "__main__":

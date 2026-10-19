@@ -18,7 +18,10 @@ def money_edit(amount: int | None = None) -> QLineEdit:
     return edit
 
 
-def read_money(edit: QLineEdit) -> int:
+def read_money(edit: QLineEdit, empty: int | None = None) -> int:
+    """The amount typed; `empty` (when given) is the value of a blank field."""
+    if empty is not None and not edit.text().strip():
+        return empty
     return parse_dzd(edit.text())
 
 

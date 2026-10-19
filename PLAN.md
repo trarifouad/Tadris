@@ -233,7 +233,21 @@ ui/first_run.py        create the director account and school name on first star
 
 ## Phase 4: Registration and enrollment
 
-**Goal:** a student is registered for the year and placed in groups.
+**Status:** done. Migration 0009 reworks the enrollment triggers. Services and repositories for registrations (register, change level, cancel, fee charge) and enrollments (enroll, trial, confirm, leave, switch, director override for another level); closing a group or a year makes its students leave. Student page: Inscription tab and Groupes tab with their dialogs; group page: Élèves tab with seats, trials and past students; Paramètres → École: default registration fee. `TADRIS_DB` opens another database file (a copy) for manual tests; `scripts/manual/` holds the manual check scripts; the seed script registers and places students. 661 tests green.
+
+**Decisions taken in this phase**
+
+- Joining a group that already started is normal and needs no override (migration 0009 drops the 'group already started' rule and the `override:enrollment_start` key). The entry date lies between the group's start and the end of the year; it defaults to today, or to the group's first day if it has not started.
+- An enrollment update re-checks placement only when student, group or registration change, and seats only when an enrollment becomes live again: leaving, switching or confirming a trial works in a closed or full group and after a level override. A left or switched enrollment needs `left_on`; a switch points to an enrollment of the same student (0009).
+- Registration: one per student and year, in the open year only, for an active student and an active level. The fee is a snapshot: the default (`defaults.registration_fee`, École tab) or typed at the desk, both audited; a fee above 0 creates the registration charge, due on the registration day. `registered_at` comes from the service clock.
+- Change level: both roles, while the student is in no group of the year. Cancel: director only (`registration.cancel`), with a reason; refused while the student is in a group or once part of the fee was paid; the open fee charge is cancelled. Registering again reuses the row (unique per year) with a new fee charge.
+- A student may be in several groups under one registration, never twice at once in the same group. Other level: director only, with a mandatory reason; the override key is set and cleared inside the same transaction (also when the enrollment fails) and the audit entry records the reason.
+- One subject once: a second group of the same subject and level is refused at the desk with a hint to « Changer de groupe »; the director may allow it with a reason (audited as `overrides: ["same_subject"]`). Switching within a subject needs nothing.
+- One place at a time: a student cannot be in two groups whose running or future slots meet (same day, overlapping hours, from the entry date). Refused for everyone on enroll and switch (the group being left does not count), and when a slot is added or moved; the message names the student and the other group.
+- One free trial per student, ever. Confirming keeps the seat. A switched trial stays a trial in the new group without using the trial again.
+- Leaving: today by default, backdated at most to the entry date or the last recorded attendance, never in the future (the seat is freed at once). Switch: the old enrollment ends on the switch date, the new one starts that day (or on the new group's first day).
+- Closing a group or a year makes its live students leave that day (`groups.release`); reopening does not bring them back. The confirmation says how many students leave.
+- Money effect of a mid-month join or a switch: decided with subscriptions in phase 5 (phase 4 creates no subscription).
 
 **Flow**
 
@@ -592,8 +606,8 @@ Add a `holidays` table or a settings JSON list in this phase. Decide which and a
 
 | Needed before | Question | Default proposal |
 |---|---|---|
-| 4 | Mid-month join: full or prorated first subscription | Full price starting at the enrollment date |
-| 4 | Group switch mid-month: money effect | New subscription from the switch date, old one cancelled, difference handled as adjustment, director approves |
+| 5 | Mid-month join: full or prorated first subscription | Full price starting at the enrollment date (moved from phase 4: no subscription exists before phase 5) |
+| 5 | Group switch mid-month: money effect | New subscription from the switch date, old one cancelled, difference handled as adjustment, director approves (moved from phase 4) |
 | 5 | Non-renewed student: still allowed in class? | Warning on the attendance screen, no hard block |
 | 3 / 6 | Timetable slot validity | **Decided:** half-open `[valid_from, valid_to)`, same as rates and subscriptions. Adjacent periods that share a boundary date do not overlap. |
 | 6 | Holidays storage | `holidays` table with date and label |

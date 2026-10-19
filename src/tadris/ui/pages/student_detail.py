@@ -18,14 +18,15 @@ from tadris.domain.models import StudentContact
 from tadris.i18n.fr import t
 from tadris.services import contacts, students
 from tadris.ui.contact_dialog import ContactDialog
+from tadris.ui.pages.registration_tab import RegistrationTab
+from tadris.ui.pages.student_groups_tab import StudentGroupsTab
 from tadris.ui.student_dialog import StudentDialog
 from tadris.ui.theme.status import kind_for
 from tadris.ui.widgets.common import Badge, ask, confirm, primary_button, toast, variant_button
 from tadris.ui.widgets.tables import ID_ROLE, fill, item, ruled_table, selected_id
 
-# Tabs filled by later phases: registration (4), groups (4), subscriptions (5),
-# payments (7), attendance (6).
-LATER_TABS = ("registration", "groups", "subscriptions", "payments", "attendance")
+# Tabs filled by later phases: subscriptions (5), payments (7), attendance (6).
+LATER_TABS = ("subscriptions", "payments", "attendance")
 
 
 class StudentDetailView(QWidget):
@@ -93,13 +94,19 @@ class StudentDetailView(QWidget):
 
         self.tabs = QTabWidget()
         self.tabs.setDocumentMode(True)
+        self.registration = RegistrationTab(conn, ctx, student_id)
+        self.groups = StudentGroupsTab(conn, ctx, student_id)
+        # Each tab shows what the other changes: groups count, who may enroll.
+        self.registration.changed.connect(self.groups.refresh)
+        self.groups.changed.connect(self.registration.refresh)
+        self.tabs.addTab(self.registration, t["student_detail.tab.registration"])
+        self.tabs.addTab(self.groups, t["student_detail.tab.groups"])
         for key in LATER_TABS:
             self.tabs.addTab(_later_tab(), t[f"student_detail.tab.{key}"])
         self.contacts = ContactsTab(conn, ctx, student_id)
         self.contacts.changed.connect(self.refresh)
         self.tabs.addTab(self.contacts, t["student_detail.tab.contacts"])
-        # Contacts is the only tab with content until phase 4.
-        self.tabs.setCurrentWidget(self.contacts)
+        self.tabs.setCurrentWidget(self.registration)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 14, 24, 24)
@@ -154,6 +161,8 @@ class StudentDetailView(QWidget):
             return
         self.error.hide()
         self.refresh()
+        self.registration.refresh()  # an inactive student cannot be registered or enrolled
+        self.groups.refresh()
         toast(self, t[message_key].format(name=self.student.full_name))
 
 

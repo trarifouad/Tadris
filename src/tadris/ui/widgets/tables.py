@@ -64,6 +64,16 @@ def ruled_table(headers: list[str], sortable: bool = False) -> QTableWidget:
     return table
 
 
+def fit_columns(table: QTableWidget, stretch: tuple[int, ...] = (0,)) -> None:
+    """Columns fit their content, except `stretch` ones, which share the rest of the width
+    (long group names stay readable next to short dates and badges)."""
+    header = table.horizontalHeader()
+    for column in range(table.columnCount()):
+        mode = (QHeaderView.ResizeMode.Stretch if column in stretch
+                else QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(column, mode)
+
+
 def fill(table: QTableWidget, rows: list[list[QTableWidgetItem]]) -> None:
     """Replace the rows, keeping the user's sort column and order."""
     sorting = table.isSortingEnabled()

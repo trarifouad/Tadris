@@ -143,6 +143,46 @@ def group_clash(conn, group_id, weekday, start_time, end_time, valid_from, valid
     ).fetchone()
 
 
+# ----- students: one student cannot attend two groups at the same time -----
+
+_LIVE = "('trial', 'active')"
+
+
+def student_busy(conn, student_id, group_id, weekday, start_time, end_time, valid_from,
+                 valid_to, today: str):
+    """A slot of another group the student is in (trial or active), at the same time."""
+    return conn.execute(
+        f"""
+        SELECT {_COLUMNS} {_FROM}
+          JOIN enrollments e ON e.group_id = s.group_id AND e.student_id = :student
+                            AND e.status IN {_LIVE}
+         WHERE s.group_id <> :group AND {_CLASH} LIMIT 1
+        """,
+        {"student": student_id, "group": group_id, "on": today,
+         **_window(weekday, start_time, end_time, valid_from, valid_to, None)},
+    ).fetchone()
+
+
+def students_busy(conn, group_id, weekday, start_time, end_time, valid_from, valid_to,
+                  today: str) -> list:
+    """For a slot of the group: the slots of other groups where one of its students (trial or
+    active) is also enrolled at the same time, with that student's name."""
+    return conn.execute(
+        f"""
+        SELECT {_COLUMNS}, mine.student_id, st.last_name || ' ' || st.first_name AS student
+          {_FROM}
+          JOIN enrollments other ON other.group_id = s.group_id AND other.status IN {_LIVE}
+          JOIN enrollments mine ON mine.student_id = other.student_id AND mine.group_id = :group
+                               AND mine.status IN {_LIVE}
+          JOIN students st ON st.id = mine.student_id
+         WHERE s.group_id <> :group AND {_CLASH}
+         ORDER BY fold(st.last_name), fold(st.first_name)
+        """,
+        {"group": group_id, "on": today,
+         **_window(weekday, start_time, end_time, valid_from, valid_to, None)},
+    ).fetchall()
+
+
 def teacher_clash(conn, teacher_id, group_id, weekday, start_time, end_time, valid_from,
                   valid_to, exclude_id):
     """A slot of another open group that the teacher teaches at the same time, on a day of

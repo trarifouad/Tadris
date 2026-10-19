@@ -140,8 +140,8 @@ def open_year(conn, ctx: UserContext, year_id: int) -> None:
 
 
 def close(conn, ctx: UserContext, year_id: int) -> int:
-    """Close the year and its groups (their timetable slots end today). Returns the number
-    of groups closed."""
+    """Close the year and its groups (their students leave and their timetable slots end
+    today). Returns the number of groups closed."""
     from tadris.services import groups  # groups depends on this module
 
     require(ctx, "academic.manage")
@@ -151,7 +151,7 @@ def close(conn, ctx: UserContext, year_id: int) -> int:
             raise BusinessRuleError(t["year.not_open"])
         closed = repo.close_groups(conn, year_id)
         for group_id in closed:
-            groups.release_slots(conn, ctx, group_id)
+            groups.release(conn, ctx, group_id)
         repo.set_status(conn, year_id, "closed")
         audit.log(conn, ctx, "school_year.close", "school_years", year_id,
                   old={"status": "open"}, new={"status": "closed", "groups_closed": closed})

@@ -17,7 +17,8 @@ from tadris.services import rooms as rooms_service
 # here first so the message can name the clash; the triggers stay the last line of defense
 # for rooms and groups. Teacher clashes (one teacher, two groups, same time) are a service
 # rule that follows the teacher history: a teacher is busy in a group only during their
-# period there.
+# period there. Student clashes too: a student of the group may not have another of their
+# groups at the same time.
 
 WEEKDAYS = range(1, 8)
 
@@ -78,6 +79,19 @@ def check_clashes(conn, group, room, weekday: int, start: str, end: str, valid_f
         check_teacher_free(conn, period["teacher_id"], group["id"], weekday, start, end,
                            max(valid_from, period["valid_from"]),
                            _earliest(valid_to, period["valid_to"]), exclude_id)
+    check_students_free(conn, group["id"], weekday, start, end, valid_from, valid_to)
+
+
+def check_students_free(conn, group_id: int, weekday: int, start: str, end: str,
+                        valid_from: str, valid_to: str | None) -> None:
+    """No student of the group may have another of their groups at the same time."""
+    busy = repo.students_busy(conn, group_id, weekday, start, end, valid_from, valid_to,
+                              _today())
+    if not busy:
+        return
+    others = len({row["student_id"] for row in busy}) - 1
+    key = "slot.students_busy" if others else "slot.student_busy"
+    raise _busy(key, busy[0], student=busy[0]["student"], others=others)
 
 
 def _earliest(a: str | None, b: str | None) -> str | None:

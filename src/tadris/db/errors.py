@@ -27,7 +27,9 @@ _TRIGGER_MESSAGES = (
     ("registration school year differs from group", "db.year_mismatch"),
     ("registration level differs from group level", "db.level_mismatch"),
     ("group is closed", "db.group_closed"),
-    ("group already started", "db.group_started"),
+    ("group already started", "db.group_started"),  # dropped in 0009
+    ("switched enrollment belongs to another student", "db.switch_other_student"),
+    ("left enrollment needs a leaving date", "db.left_needs_date"),
     ("group is full", "db.group_full"),
     ("capacity below current enrollment", "db.capacity_below_enrolled"),
     ("group capacity exceeds room capacity", "db.group_exceeds_room"),

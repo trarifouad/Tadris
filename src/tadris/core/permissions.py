@@ -19,6 +19,8 @@ ACTIONS: dict[str, frozenset[str]] = {
     "group.manage": DIRECTOR_ONLY,
     "timetable.view": BOTH,
     "timetable.manage": BOTH,
+    "registration.create": BOTH,
+    "registration.cancel": DIRECTOR_ONLY,
     "enrollment.create": BOTH,
     "enrollment.update": BOTH,
     "enrollment.override": DIRECTOR_ONLY,

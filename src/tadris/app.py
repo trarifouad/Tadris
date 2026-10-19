@@ -3,7 +3,7 @@ import sys
 
 from PySide6.QtWidgets import QApplication, QDialog
 
-from tadris.config import db_path
+from tadris.config import db_override, db_path
 from tadris.db.connection import connect
 from tadris.db.migrate import migrate
 from tadris.i18n.fr import t
@@ -28,6 +28,10 @@ def main() -> int:
     load_fonts()
     apply_theme(app)
 
+    override = db_override()
+    if override is not None and not override.exists():
+        print(f"TADRIS_DB : base introuvable ({override})", file=sys.stderr)
+        return 1
     conn = connect(db_path())
     migrate(conn)
 
@@ -36,5 +40,7 @@ def main() -> int:
         return 0
 
     window = MainWindow(conn, dialog.ctx)
+    if override is not None:  # never mistake a test copy for the real school
+        window.setWindowTitle(f"{window.windowTitle()} · {override.name}")
     window.show()
     return app.exec()

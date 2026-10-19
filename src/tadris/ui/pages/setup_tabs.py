@@ -12,8 +12,9 @@ from PySide6.QtWidgets import (
 from tadris.core.context import UserContext
 from tadris.core.dates import display_date
 from tadris.core.errors import BusinessRuleError
+from tadris.core.money import format_dzd
 from tadris.i18n.fr import t
-from tadris.services import catalog, rooms, school_years, settings
+from tadris.services import catalog, registrations, rooms, school_years, settings
 from tadris.ui.setup_dialogs import NameDialog, RoomDialog, YearDialog
 from tadris.ui.theme.status import kind_for
 from tadris.ui.widgets.common import (
@@ -26,7 +27,7 @@ from tadris.ui.widgets.common import (
     variant_button,
 )
 from tadris.ui.widgets.forms import ListSection, row
-from tadris.ui.widgets.inputs import time_combo
+from tadris.ui.widgets.inputs import money_edit, read_money, time_combo
 from tadris.ui.widgets.tables import CENTER, RIGHT, item
 
 
@@ -287,6 +288,12 @@ class SchoolTab(QWidget):
         hours_caption = QLabel(t["school.hours_caption"])
         hours_caption.setObjectName("caption")
         hours_caption.setWordWrap(True)
+        self.registration_fee = money_edit()
+        fees_title = QLabel(t["school.fees"])
+        fees_title.setObjectName("sectionTitle")
+        fees_caption = QLabel(t["school.fees_caption"])
+        fees_caption.setObjectName("caption")
+        fees_caption.setWordWrap(True)
         self.save = primary_button(t["action.save"])
         self.save.setDefault(False)
         self.save.clicked.connect(self._save)
@@ -301,6 +308,11 @@ class SchoolTab(QWidget):
         form.addWidget(hours_caption)
         form.addLayout(row(labeled(t["school.opens_at"], self.opens_at, required=True),
                            labeled(t["school.closes_at"], self.closes_at, required=True)))
+        form.addSpacing(4)
+        form.addWidget(fees_title)
+        form.addWidget(fees_caption)
+        form.addLayout(row(labeled(t["school.registration_fee"], self.registration_fee),
+                           QWidget()))
         actions = QHBoxLayout()
         actions.addStretch()
         actions.addWidget(self.save)
@@ -325,12 +337,14 @@ class SchoolTab(QWidget):
         opens_at, closes_at = settings.school_hours(self._conn)
         self.opens_at.setCurrentText(opens_at)
         self.closes_at.setCurrentText(closes_at)
+        self.registration_fee.setText(format_dzd(registrations.default_fee(self._conn)))
 
     def _save(self) -> None:
         try:
             settings.save_school(self._conn, self._ctx, self.name.text(), self.phone.text(),
                                  self.address.text(), self.opens_at.currentText(),
-                                 self.closes_at.currentText())
+                                 self.closes_at.currentText(),
+                                 read_money(self.registration_fee, empty=0))
         except BusinessRuleError as exc:
             self.error.show_error(exc.message)
             return

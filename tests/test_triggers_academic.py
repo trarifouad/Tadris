@@ -47,10 +47,94 @@ def test_enrollment_level_director_override(seeded):
     enroll(seeded, sid, rid)
 
 
-def test_enrollment_after_group_start(seeded):
+def test_enrollment_after_group_start_is_allowed(seeded):
     sid, rid = add_student(seeded, 2)
-    with pytest.raises(sqlite3.IntegrityError, match="already started"):
-        enroll(seeded, sid, rid, on="2026-10-05")
+    enroll(seeded, sid, rid, on="2026-10-05")
+
+
+def test_migration_removes_the_start_override_key(conn):
+    from tadris.db.migrate import migrate
+
+    conn.execute("PRAGMA user_version = 8")
+    conn.execute("INSERT INTO settings(key,value) VALUES('override:enrollment_start','1')")
+    conn.executescript("DROP TRIGGER trg_enrollment_status_upd;")  # re-run 0009 on top of 8
+    migrate(conn)
+    assert conn.execute("SELECT COUNT(*) FROM settings WHERE key LIKE 'override:%'"
+                        ).fetchone()[0] == 0
+
+
+def test_leaving_is_allowed_in_a_closed_group(seeded):
+    seeded.execute("UPDATE class_groups SET status='closed' WHERE id=1")
+    seeded.execute("UPDATE enrollments SET status='left', left_on='2026-10-01' WHERE id=1")
+
+
+def test_leaving_is_allowed_after_a_level_override(seeded):
+    seeded.execute("INSERT INTO levels(name) VALUES('4AM')")
+    sid, rid = add_student(seeded, 2, level=2)
+    seeded.execute("INSERT INTO settings(key,value) VALUES('override:enrollment_level','1')")
+    enroll(seeded, sid, rid)
+    seeded.execute("DELETE FROM settings WHERE key='override:enrollment_level'")
+    seeded.execute("UPDATE enrollments SET status='left', left_on='2026-10-01' "
+                   "WHERE student_id=?", (sid,))
+
+
+def test_confirming_a_trial_keeps_its_seat_in_a_full_group(seeded):
+    seeded.execute("UPDATE class_groups SET capacity=1 WHERE id=1")
+    seeded.execute("UPDATE enrollments SET status='trial', started_as_trial=1 WHERE id=1")
+    seeded.execute("UPDATE enrollments SET status='active' WHERE id=1")
+
+
+def test_confirming_a_trial_in_a_full_room(seeded):
+    add_room(seeded, cap=1)
+    add_slot(seeded)
+    seeded.execute("UPDATE enrollments SET status='trial', started_as_trial=1 WHERE id=1")
+    seeded.execute("UPDATE enrollments SET status='active' WHERE id=1")
+
+
+def test_back_to_active_in_a_full_room_is_refused(seeded):
+    add_room(seeded, cap=1)
+    add_slot(seeded)
+    sid, rid = add_student(seeded, 2)
+    seeded.execute(
+        "INSERT INTO enrollments(student_id,group_id,registration_id,enrolled_on,left_on,status) "
+        "VALUES(?,1,?,'2026-09-01','2026-09-15','left')", (sid, rid))
+    with pytest.raises(sqlite3.IntegrityError, match="room is full"):
+        seeded.execute("UPDATE enrollments SET status='active', left_on=NULL "
+                       "WHERE student_id=?", (sid,))
+
+
+def test_back_to_active_in_a_closed_group_is_refused(seeded):
+    seeded.execute("UPDATE enrollments SET status='left', left_on='2026-10-01' WHERE id=1")
+    seeded.execute("UPDATE class_groups SET status='closed' WHERE id=1")
+    with pytest.raises(sqlite3.IntegrityError, match="closed"):
+        seeded.execute("UPDATE enrollments SET status='active', left_on=NULL WHERE id=1")
+
+
+@pytest.mark.parametrize("status", ["left", "switched"])
+def test_ended_enrollment_needs_a_leaving_date(seeded, status):
+    with pytest.raises(sqlite3.IntegrityError, match="leaving date"):
+        seeded.execute("UPDATE enrollments SET status=? WHERE id=1", (status,))
+    sid, rid = add_student(seeded, 2)
+    with pytest.raises(sqlite3.IntegrityError, match="leaving date"):
+        seeded.execute(
+            "INSERT INTO enrollments(student_id,group_id,registration_id,enrolled_on,status) "
+            "VALUES(?,1,?,'2026-09-01',?)", (sid, rid, status))
+
+
+def test_switch_points_to_the_same_student(seeded):
+    seeded.execute(
+        "INSERT INTO class_groups(school_year_id,level_id,subject_id,name,price,capacity,start_date) "
+        "VALUES(1,1,1,'G2',3000,10,'2026-09-01')"
+    )
+    seeded.execute("UPDATE enrollments SET status='switched', left_on='2026-10-01' WHERE id=1")
+    sid, rid = add_student(seeded, 2)
+    with pytest.raises(sqlite3.IntegrityError, match="another student"):
+        seeded.execute(
+            "INSERT INTO enrollments(student_id,group_id,registration_id,enrolled_on,"
+            "switched_from_id) VALUES(?,2,?,'2026-10-01',1)", (sid, rid))
+    seeded.execute(
+        "INSERT INTO enrollments(student_id,group_id,registration_id,enrolled_on,"
+        "switched_from_id) VALUES(1,2,1,'2026-10-01',1)")
 
 
 def test_group_full(seeded):
@@ -64,9 +148,9 @@ def test_enrollment_update_respects_capacity(seeded):
     seeded.execute("UPDATE class_groups SET capacity=1 WHERE id=1")
     sid, rid = add_student(seeded, 2)
     seeded.execute(
-        "INSERT INTO enrollments(student_id,group_id,registration_id,enrolled_on,status) "
-        "VALUES(?,1,?,?,'left')",
-        (sid, rid, "2026-09-01"),
+        "INSERT INTO enrollments(student_id,group_id,registration_id,enrolled_on,left_on,status) "
+        "VALUES(?,1,?,?,?,'left')",
+        (sid, rid, "2026-09-01", "2026-09-15"),
     )
     with pytest.raises(sqlite3.IntegrityError, match="full"):
         seeded.execute("UPDATE enrollments SET status='active' WHERE student_id=?", (sid,))

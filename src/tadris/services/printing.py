@@ -6,7 +6,7 @@ from pathlib import Path
 from tadris import config
 from tadris.core import dates
 from tadris.core.context import UserContext
-from tadris.core.errors import NotFound
+from tadris.core.errors import BusinessRuleError, NotFound
 from tadris.core.money import format_dzd
 from tadris.core.permissions import require
 from tadris.core.text import fold
@@ -24,7 +24,16 @@ from tadris.domain.models import ATTENDANCE_STATUSES
 from tadris.i18n.fr import t
 from tadris.repositories import payments as payments_repo
 from tadris.repositories import print_log
-from tadris.services import attendance, debt, groups, payments, sessions, settings
+from tadris.services import (
+    attendance,
+    debt,
+    groups,
+    payments,
+    refunds,
+    sessions,
+    settings,
+    students,
+)
 
 # Printed documents are PDF files written to config.documents_dir() (next to the database)
 # and opened in the system viewer, where they are printed. Every document made is written to
@@ -33,6 +42,7 @@ from tadris.services import attendance, debt, groups, payments, sessions, settin
 SESSION_SHEET = "attendance_session"
 WEEK_SHEET = "attendance_week"
 RECEIPT = "receipt"
+REFUND_SLIP = "refund"
 LETTERS = {"present": "P", "late": "R", "absent": "A", "excused": "E"}
 
 
@@ -194,3 +204,43 @@ def receipt_content(conn, ctx: UserContext, receipt_id: int) -> ReceiptDoc:
         stamp=t["receipt.stamp_voided"] if p.voided else t["receipt.stamp_paid"],
         stamp_date=paid_on, voided_note=voided_note, thanks=t["receipt.thanks"],
         signature=t["receipt.signature"], footer=_footer(ctx))
+
+
+# ----- refund slips -----
+
+def refund_slip(conn, ctx: UserContext, refund_id: int, out_dir: Path | None = None) -> Path:
+    """The slip of a refund paid out, signed by whoever takes the money. Printed again, it
+    says DUPLICATA."""
+    require(ctx, "print.document")
+    doc = refund_slip_content(conn, ctx, refund_id)
+    path = build_receipt(doc, (out_dir or config.documents_dir())
+                         / f"remboursement_{doc.number}.pdf")
+    _log(conn, ctx, REFUND_SLIP, refund_id)
+    return path
+
+
+def refund_slip_content(conn, ctx: UserContext, refund_id: int) -> ReceiptDoc:
+    r = refunds.get(conn, ctx, refund_id)
+    if r.status != "paid":
+        raise BusinessRuleError(t["refund.not_paid_yet"])
+    student = students.get(conn, ctx, r.student_id)
+    paid_on = dates.display_date(r.paid_out_at)
+    details = [
+        (t["receipt.date"], f"{paid_on} {r.paid_out_at[11:16]}"),
+        (t["receipt.student"], t["receipt.student_value"].format(
+            name=student.full_name, number=student.student_number)),
+        (t["refund_slip.method"], t[f"payment_method.{r.method}"]),
+        (t["refund_slip.reason"], r.reason),
+        (t["refund_slip.approved_by"], r.decided_by or "—"),
+        (t["refund_slip.paid_out_by"], r.paid_out_by or "—"),
+    ]
+    return ReceiptDoc(
+        school=_school(conn), title=t["refund_slip.title"], number=r.number,
+        copy_mark=(t["receipt.duplicate"] if print_log.count(conn, REFUND_SLIP, refund_id)
+                   else ""),
+        details=details, columns=(t["receipt.col.item"], t["receipt.col.amount"]),
+        lines=[(r.description, format_dzd(r.refunded_amount))],
+        totals=[(t["refund_slip.total"], format_dzd(r.refunded_amount))],
+        stamp=t["refund_slip.stamp"], stamp_date=paid_on, voided_note="",
+        thanks=t["refund_slip.thanks"], signature=t["refund_slip.signature"],
+        footer=_footer(ctx))

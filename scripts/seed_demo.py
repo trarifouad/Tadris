@@ -2,7 +2,8 @@
 subjects, rooms, teachers, groups and a weekly timetable), then register most students for the
 year and place them in groups (some on trial, a few switched or gone), add holidays, cancel a
 session with its makeup, set a substitute and take today's attendance, then take payments
-(most paid, some in part, a few in advance, one voided), through the services.
+(most paid, some in part, a few in advance, one voided) and refunds (paid out, approved,
+pending), through the services.
 
 Usage: python scripts/seed_demo.py PATH.db
 The path is required so the real database is never seeded by accident. Creates the director
@@ -36,6 +37,7 @@ from tadris.services import (
     groups,
     holidays,
     payments,
+    refunds,
     registrations,
     rooms,
     school_years,
@@ -243,8 +245,28 @@ def seed_payments(conn, director, desk, rng: random.Random) -> int:
     return len(taken)
 
 
+def seed_refunds(conn, director, desk, rng: random.Random) -> int:
+    """Three refunds of 1 000 DA: paid out, approved, pending. Returns how many. Skipped once
+    any exists."""
+    if conn.execute("SELECT 1 FROM refunds LIMIT 1").fetchone() is not None:
+        return 0
+    asked = 0
+    paid = [option for row in students.search(conn, director)
+            for option in refunds.options(conn, director, row.id) if option.refundable >= 1000]
+    rng.shuffle(paid)
+    for step, option in zip(("paid", "approved", "pending"), paid):
+        refund_id = refunds.request(conn, desk, option.charge_id, 1000, "Démo : départ")
+        if step in ("paid", "approved"):
+            refunds.approve(conn, director, refund_id)
+        if step == "paid":
+            refunds.pay_out(conn, desk, refund_id, "cash")
+        asked += 1
+    return asked
+
+
 def main(path: Path) -> None:
     rng = random.Random(2026)
+    path.parent.mkdir(parents=True, exist_ok=True)  # e.g. data/, which git does not keep
     conn = connect(path)
     migrate(conn)
     if auth.user_count(conn) == 0:
@@ -277,11 +299,13 @@ def main(path: Path) -> None:
                 students.deactivate(conn, director, student_id)
     registered, placed = seed_enrollments(conn, director, rng)
     marked = seed_sessions(conn, director, rng)
-    paid = seed_payments(conn, director, auth.login(conn, "accueil", "password2"), rng)
+    desk = auth.login(conn, "accueil", "password2")
+    paid = seed_payments(conn, director, desk, rng)
+    asked = seed_refunds(conn, director, desk, rng)
     conn.close()
     print(f"{created} students created in {path}: {registered} registered for the year, "
           f"{placed} placed in groups, {marked} attendance line(s) taken today, "
-          f"{paid} payment(s) received")
+          f"{paid} payment(s) received, {asked} refund(s)")
 
 
 if __name__ == "__main__":

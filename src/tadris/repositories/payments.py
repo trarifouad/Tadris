@@ -3,8 +3,7 @@ charges they pay.
 
 A charge belongs to a student through its registration (the fee) or its subscription's
 enrollment (a month). What was paid on a charge is the sum of its allocations from payments
-not voided; an adjustment (balance_entries, phase 8) linked to a charge lowers it too. Rows
-here are never updated or deleted (triggers): a void is a new row.
+not voided. Rows here are never updated or deleted (triggers): a void is a new row.
 """
 
 # The student of a charge, whatever its parent.
@@ -20,13 +19,10 @@ _CHARGE_PAID = """
                  AND NOT EXISTS (SELECT 1 FROM payment_voids v
                                   WHERE v.payment_id = pa.payment_id)), 0)
 """
-_CHARGE_ADJUSTED = """
-    COALESCE((SELECT SUM(b.amount) FROM balance_entries b WHERE b.charge_id = c.id), 0)
-"""
 _CHARGE_COLUMNS = f"""
     c.id, ({_CHARGE_STUDENT}) AS student_id, c.registration_id, c.subscription_id,
     c.description, c.amount, c.due_date, c.status,
-    {_CHARGE_PAID} AS paid, {_CHARGE_ADJUSTED} AS adjusted,
+    {_CHARGE_PAID} AS paid,
     (SELECT e.group_id FROM subscriptions s JOIN enrollments e ON e.id = s.enrollment_id
       WHERE s.id = c.subscription_id) AS group_id
 """
@@ -45,16 +41,6 @@ def open_charges(conn, student_id: int | None = None) -> list:
 def charge(conn, charge_id: int):
     return conn.execute(f"SELECT {_CHARGE_COLUMNS} FROM charges c WHERE c.id = ?",
                         (charge_id,)).fetchone()
-
-
-def unlinked_adjustments(conn, student_id: int | None = None) -> list:
-    """Adjustments not tied to a charge, summed per student (rows: student_id, total)."""
-    return conn.execute(
-        "SELECT student_id, SUM(amount) AS total FROM balance_entries "
-        "WHERE charge_id IS NULL AND (:student IS NULL OR student_id = :student) "
-        "GROUP BY student_id",
-        {"student": student_id},
-    ).fetchall()
 
 
 # ----- payments -----

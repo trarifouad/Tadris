@@ -100,7 +100,8 @@ class SubscriptionsTab(QWidget):
         s = self.selected()
         self.renew.setEnabled(s is not None and s.id in self._latest
                               and s.enrollment_status == "active")
-        self.cancel.setEnabled(s is not None and s.status != "cancelled" and not s.paid
+        # Money paid and not refunded keeps the month (refund it first).
+        self.cancel.setEnabled(s is not None and s.status != "cancelled" and not s.kept
                                and not s.in_payout)
 
     def _done(self, message: str, select: int | None = None) -> None:

@@ -19,7 +19,8 @@ from tadris.services import audit
 # changes it. Each student has their own cycle: the first month starts on the entry date.
 # Renewal is done by the desk: the next month starts when the previous one ends, or later
 # after a gap, never earlier. A trial has no subscription. Cancelling (director only) is
-# refused once the month was paid in part or counted in a teacher payout.
+# refused while money paid on the month is kept (paid and not refunded) or once it was counted
+# in a teacher payout.
 
 EXPIRING_DAYS = 7
 
@@ -55,7 +56,7 @@ def _to_subscription(row) -> Subscription:
         group_title=_title(row), renewal_of_id=row["renewal_of_id"], price=row["price"],
         start_date=row["start_date"], end_date=row["end_date"], status=row["status"],
         state=state_of(row), charge_id=row["charge_id"], paid=row["paid"],
-        in_payout=bool(row["in_payout"]),
+        in_payout=bool(row["in_payout"]), refunded=row["refunded"],
     )
 
 
@@ -181,8 +182,9 @@ def cancel(conn, ctx: UserContext, subscription_id: int, reason: str) -> None:
             raise BusinessRuleError(t["subscription.already_cancelled"])
         if row["in_payout"]:
             raise BusinessRuleError(t["subscription.in_payout"])
-        if row["paid"]:
-            raise BusinessRuleError(t["subscription.paid"].format(amount=format_dzd(row["paid"])))
+        kept = row["paid"] - row["refunded"]
+        if kept:
+            raise BusinessRuleError(t["subscription.paid"].format(amount=format_dzd(kept)))
         if row["charge_id"] is not None and row["charge_status"] == "open":
             repo.cancel_charge(conn, row["charge_id"])
         repo.set_status(conn, subscription_id, "cancelled")

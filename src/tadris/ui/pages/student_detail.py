@@ -19,6 +19,7 @@ from tadris.i18n.fr import t
 from tadris.services import contacts, students
 from tadris.ui.contact_dialog import ContactDialog
 from tadris.ui.pages.payments_tab import PaymentsTab
+from tadris.ui.pages.refunds_tab import RefundsTab
 from tadris.ui.pages.registration_tab import RegistrationTab
 from tadris.ui.pages.student_attendance_tab import StudentAttendanceTab
 from tadris.ui.pages.student_groups_tab import StudentGroupsTab
@@ -98,6 +99,7 @@ class StudentDetailView(QWidget):
         self.groups = StudentGroupsTab(conn, ctx, student_id)
         self.subscriptions = SubscriptionsTab(conn, ctx, student_id)
         self.payments = PaymentsTab(conn, ctx, student_id)
+        self.refunds = RefundsTab(conn, ctx, student_id)
         # Each tab shows what the others change: groups count, who may enroll, the months
         # an enrollment, a confirmed trial or a switch creates.
         self.registration.changed.connect(self.groups.refresh)
@@ -108,10 +110,17 @@ class StudentDetailView(QWidget):
             tab.changed.connect(self.payments.refresh)
         self.payments.changed.connect(self.registration.refresh)
         self.payments.changed.connect(self.subscriptions.refresh)
+        # Payments change what can be refunded; a refund lets a month or a registration be
+        # cancelled.
+        for tab in (self.registration, self.subscriptions):
+            self.refunds.changed.connect(tab.refresh)
+        for tab in (self.groups, self.subscriptions, self.payments):
+            tab.changed.connect(self.refunds.refresh)
         self.tabs.addTab(self.registration, t["student_detail.tab.registration"])
         self.tabs.addTab(self.groups, t["student_detail.tab.groups"])
         self.tabs.addTab(self.subscriptions, t["student_detail.tab.subscriptions"])
         self.tabs.addTab(self.payments, t["student_detail.tab.payments"])
+        self.tabs.addTab(self.refunds, t["student_detail.tab.refunds"])
         self.attendance = StudentAttendanceTab(conn, ctx, student_id)
         self.tabs.addTab(self.attendance, t["student_detail.tab.attendance"])
         self.contacts = ContactsTab(conn, ctx, student_id)

@@ -253,7 +253,8 @@ class Registration:
     registered_at: str
     live_enrollments: int  # groups the student is in (trial or active)
     fee_charge_id: int | None  # None when the fee was 0
-    fee_paid: int
+    fee_paid: int  # by payments not voided
+    fee_refunded: int = 0  # handed back (phase 8)
 
     @property
     def fee_due(self) -> int:
@@ -261,6 +262,11 @@ class Registration:
         if self.status != "active" or self.fee_charge_id is None:
             return 0
         return max(self.fee_amount - self.fee_paid, 0)
+
+    @property
+    def fee_kept(self) -> int:
+        """Paid and not handed back: what stops a cancellation."""
+        return self.fee_paid - self.fee_refunded
 
 
 @dataclass(frozen=True)
@@ -338,8 +344,9 @@ class Subscription:
     status: str  # stored: 'active', 'ended' or 'cancelled'
     state: str  # display: 'upcoming', 'active', 'expiring', 'ended' or 'cancelled'
     charge_id: int | None  # None for a free group
-    paid: int
+    paid: int  # by payments not voided
     in_payout: bool
+    refunded: int = 0  # handed back (phase 8)
 
     @property
     def due(self) -> int:
@@ -347,6 +354,11 @@ class Subscription:
         if self.status == "cancelled" or self.charge_id is None:
             return 0
         return max(self.price - self.paid, 0)
+
+    @property
+    def kept(self) -> int:
+        """Paid and not handed back: what stops a cancellation."""
+        return self.paid - self.refunded
 
 
 @dataclass(frozen=True)
@@ -463,24 +475,22 @@ class ChargeDue:
     amount: int
     due_date: str
     paid: int  # allocations of payments not voided
-    adjusted: int  # adjustments linked to the charge (phase 8); positive lowers it
     group_id: int | None  # the month's group; None for the fee
 
     @property
     def due(self) -> int:
-        return max(self.amount - self.paid - self.adjusted, 0)
+        return max(self.amount - self.paid, 0)
 
 
 @dataclass(frozen=True)
 class Debt:
-    """What a student owes on `as_of`. Never stored: derived from charges, payments and
-    adjustments each time."""
+    """What a student owes on `as_of`. Never stored: derived from charges and payments each
+    time."""
 
     student_id: int
     as_of: str  # 'YYYY-MM-DD'
     charges: tuple[ChargeDue, ...]  # oldest due first, each with due > 0
     credit: int  # money received and not allocated to a charge yet
-    adjustments: int = 0  # adjustments not linked to a charge; positive lowers the debt
 
     @property
     def due(self) -> int:
@@ -495,12 +505,12 @@ class Debt:
     @property
     def balance(self) -> int:
         """Above 0: the student owes it; below 0: the school owes it (credit)."""
-        return self.due - self.credit - self.adjustments
+        return self.due - self.credit
 
     @property
     def owed_now(self) -> int:
         """What is late now, after the credit: what the debtors list shows."""
-        return max(self.overdue - self.credit - self.adjustments, 0)
+        return max(self.overdue - self.credit, 0)
 
     @property
     def oldest_overdue(self) -> str | None:
@@ -562,6 +572,7 @@ class CashReport:
 
     day: str
     payments: tuple[Payment, ...]  # every payment of the day, voided ones included
+    refunds: tuple["Refund", ...] = ()  # refunds paid out that day
 
     @property
     def kept(self) -> tuple[Payment, ...]:
@@ -587,3 +598,69 @@ class CashReport:
         for p in self.kept:
             totals[p.cashier] = totals.get(p.cashier, 0) + p.amount
         return dict(sorted(totals.items()))
+
+    @property
+    def refunded(self) -> int:
+        return sum(r.refunded_amount for r in self.refunds)
+
+    def refunded_by_method(self) -> dict[str, int]:
+        totals = dict.fromkeys(PAYMENT_METHODS, 0)
+        for r in self.refunds:
+            totals[r.method] += r.refunded_amount
+        return totals
+
+    @property
+    def cash_in_drawer(self) -> int:
+        """Cash received minus cash handed back: what the drawer should hold from the day."""
+        return self.by_method()["cash"] - self.refunded_by_method()["cash"]
+
+
+# ----- refunds -----
+
+REFUND_STATUSES = ("pending", "approved", "paid", "rejected")
+
+
+@dataclass(frozen=True)
+class Refund:
+    id: int
+    charge_id: int
+    subscription_id: int | None  # None: the registration fee
+    student_id: int
+    description: str  # the charge's
+    amount_computed: int  # the suggestion when asked
+    amount_final: int
+    refunded_amount: int  # what was handed back (once paid)
+    reason: str
+    status: str  # REFUND_STATUSES
+    requested_by: str | None
+    decided_by: str | None
+    decided_at: str | None
+    number: str | None  # RB2026-00001, once paid
+    method: str | None
+    paid_out_by: str | None
+    paid_out_at: str | None
+    created_at: str
+
+    @property
+    def open(self) -> bool:
+        """Still waiting: for the director's decision or for the money to go out."""
+        return self.status in ("pending", "approved")
+
+
+@dataclass(frozen=True)
+class RefundableCharge:
+    """A charge the student paid something on, with what can still be handed back."""
+
+    charge_id: int
+    subscription_id: int | None
+    description: str
+    amount: int
+    status: str  # the charge's: 'open' or 'cancelled'
+    paid: int
+    refunded: int
+    reserved: int  # asked or approved, not paid out yet
+    suggestion: int  # computed: what was paid for the days not used
+
+    @property
+    def refundable(self) -> int:
+        return max(self.paid - self.refunded - self.reserved, 0)

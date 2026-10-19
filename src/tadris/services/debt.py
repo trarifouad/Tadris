@@ -12,7 +12,8 @@ from tadris.repositories import students as students_repo
 from tadris.services import settings
 
 # Debt is derived, never stored: open charges, minus what payments not voided allocated to
-# them, minus adjustments; money received and not allocated yet is the student's credit.
+# them; money received and not allocated yet is the student's credit. There are no remises:
+# a student owes the full price of each month and fee.
 # Cancelling a charge is refused once something was paid on it, so allocations of valid
 # payments only sit on open charges. A charge is late from its due date (a month from its
 # first day, the fee from the registration day); months renewed ahead are owed, not late.
@@ -26,24 +27,20 @@ def to_charge(row) -> ChargeDue:
     return ChargeDue(
         id=row["id"], kind="registration" if row["registration_id"] is not None
         else "subscription", description=row["description"], amount=row["amount"],
-        due_date=row["due_date"], paid=row["paid"], adjusted=row["adjusted"],
-        group_id=row["group_id"],
+        due_date=row["due_date"], paid=row["paid"], group_id=row["group_id"],
     )
 
 
-def _build(student_id: int, charge_rows, credit_rows, adjustment: int, on: str) -> Debt:
+def _build(student_id: int, charge_rows, credit_rows, on: str) -> Debt:
     charges = tuple(c for c in (to_charge(row) for row in charge_rows) if c.due > 0)
     credit = sum(row["amount"] - row["allocated"] for row in credit_rows)
-    return Debt(student_id=student_id, as_of=on, charges=charges, credit=credit,
-                adjustments=adjustment)
+    return Debt(student_id=student_id, as_of=on, charges=charges, credit=credit)
 
 
 def compute(conn, student_id: int) -> Debt:
     """The debt, without a permission check: for services, inside their transaction."""
-    adjustments = repo.unlinked_adjustments(conn, student_id)
     return _build(student_id, repo.open_charges(conn, student_id),
-                  repo.with_credit(conn, student_id),
-                  adjustments[0]["total"] if adjustments else 0, _today())
+                  repo.with_credit(conn, student_id), _today())
 
 
 def for_student(conn, ctx: UserContext, student_id: int) -> Debt:
@@ -66,7 +63,6 @@ def debtors(conn, ctx: UserContext, group_id: int | None = None, min_amount: int
     credits: dict[int, list] = {}
     for row in repo.with_credit(conn):
         credits.setdefault(row["student_id"], []).append(row)
-    adjustments = {row["student_id"]: row["total"] for row in repo.unlinked_adjustments(conn)}
     in_group = None
     if group_id is not None:
         in_group = {row["student_id"] for row in repo.live_groups(conn)
@@ -76,8 +72,7 @@ def debtors(conn, ctx: UserContext, group_id: int | None = None, min_amount: int
     for student_id, rows in charges.items():
         if in_group is not None and student_id not in in_group:
             continue
-        debt = _build(student_id, rows, credits.get(student_id, []),
-                      adjustments.get(student_id, 0), on)
+        debt = _build(student_id, rows, credits.get(student_id, []), on)
         if debt.owed_now <= 0 or debt.owed_now < min_amount:
             continue
         if _days_late(debt, on) < min_days:

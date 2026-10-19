@@ -13,8 +13,9 @@ from tadris.repositories import groups as groups_repo
 from tadris.repositories import registrations as registrations_repo
 from tadris.repositories import school_years as years_repo
 from tadris.repositories import students as students_repo
+from tadris.repositories import subscriptions as subscriptions_repo
 from tadris.repositories import timetable as timetable_repo
-from tadris.services import audit, groups
+from tadris.services import audit, groups, subscriptions
 
 # An enrollment places a registered student in a group of the open year. A student may be in
 # several groups under one registration, never twice at once in the same group. Joining a
@@ -22,6 +23,9 @@ from tadris.services import audit, groups
 # year. One free trial per student, ever. A student follows the groups of one level, that of
 # their registration, and cannot attend two groups at the same time: both refused for
 # everyone. A second group of the same subject needs the director with an audited reason.
+# The first month (subscription) is created here, in the same transaction: from the entry
+# date when enrolled as active, from the confirmation when a trial is confirmed, and after a
+# switch from the end of the month running in the old group.
 
 LIVE = ("trial", "active")
 
@@ -111,6 +115,8 @@ def enroll(conn, ctx: UserContext, student_id: int, group_id: int, trial: bool =
         enrollment_id, entry = _place(conn, ctx, student_id, group_id, enrolled_on,
                                       "trial" if trial else "active", trial, override_reason)
         audit.log(conn, ctx, "enrollment.create", "enrollments", enrollment_id, new=entry)
+        if not trial:
+            subscriptions.create_in(conn, ctx, enrollment_id, entry["enrolled_on"])
         return enrollment_id
 
 
@@ -233,7 +239,8 @@ def _end_date(conn, row, on: date | None) -> str:
 
 
 def confirm_trial(conn, ctx: UserContext, enrollment_id: int) -> None:
-    """The trial becomes a regular enrollment and keeps its seat."""
+    """The trial becomes a regular enrollment and keeps its seat. Its first month starts
+    today, or on the entry date if later: the trial days are free."""
     require(ctx, "enrollment.update")
     with atomic(conn):
         row = _require_live(conn, enrollment_id)
@@ -242,6 +249,7 @@ def confirm_trial(conn, ctx: UserContext, enrollment_id: int) -> None:
         repo.set_status(conn, enrollment_id, "active")
         audit.log(conn, ctx, "enrollment.confirm_trial", "enrollments", enrollment_id,
                   old={"status": "trial"}, new={"status": "active"})
+        subscriptions.create_in(conn, ctx, enrollment_id, max(_today(), row["enrolled_on"]))
 
 
 def leave(conn, ctx: UserContext, enrollment_id: int, left_on: date | None = None,
@@ -261,7 +269,9 @@ def switch(conn, ctx: UserContext, enrollment_id: int, group_id: int, on: date |
            override_reason: str | None = None) -> int:
     """Move the student to another group: the old enrollment ends as 'switched' on `on`, the new
     one points to it and starts that day (or on the new group's first day if later). A trial
-    stays a trial without using the student's one trial again. Returns the new id."""
+    stays a trial without using the student's one trial again. The month running in the old
+    group stays there; the first month in the new group starts when it ends. Returns the new
+    id."""
     require(ctx, "enrollment.update")
     with atomic(conn):
         old = _require_live(conn, enrollment_id)
@@ -277,7 +287,20 @@ def switch(conn, ctx: UserContext, enrollment_id: int, group_id: int, on: date |
                   old={"enrollment_id": enrollment_id, "group_id": old["group_id"],
                        "status": old["status"], "left_on": end},
                   new={**entry, "switched_from_id": enrollment_id})
+        if old["status"] == "active":
+            _first_month_after_switch(conn, ctx, enrollment_id, new_id, entry["enrolled_on"])
         return new_id
+
+
+def _first_month_after_switch(conn, ctx: UserContext, old_id: int, new_id: int,
+                              entry_on: str) -> None:
+    """The old group keeps its running month: the new group's first month starts when that
+    month ends (on the entry date when none runs). Past the end of the year, no month."""
+    running = subscriptions_repo.latest(conn, old_id)
+    start = entry_on if running is None else max(entry_on, running["end_date"])
+    year_end = groups_repo.get(conn, repo.get(conn, new_id)["group_id"], _today())["year_end"]
+    if start <= year_end:
+        subscriptions.create_in(conn, ctx, new_id, start)
 
 
 def end_for_closed_group(conn, ctx: UserContext, group_id: int) -> int:

@@ -316,3 +316,47 @@ class GroupOption:
     @property
     def available(self) -> bool:
         return not self.already_in and self.free > 0
+
+
+# ----- subscriptions -----
+
+
+@dataclass(frozen=True)
+class Subscription:
+    id: int
+    enrollment_id: int
+    enrollment_status: str  # 'trial', 'active', 'left' or 'switched'
+    student_id: int
+    student_number: str
+    student_name: str  # "Last First"
+    group_id: int
+    group_title: str
+    renewal_of_id: int | None
+    price: int
+    start_date: str
+    end_date: str  # the day after the last day (half-open period)
+    status: str  # stored: 'active', 'ended' or 'cancelled'
+    state: str  # display: 'upcoming', 'active', 'expiring', 'ended' or 'cancelled'
+    charge_id: int | None  # None for a free group
+    paid: int
+    in_payout: bool
+
+    @property
+    def due(self) -> int:
+        """What remains to pay (0 once cancelled or for a free group)."""
+        if self.status == "cancelled" or self.charge_id is None:
+            return 0
+        return max(self.price - self.paid, 0)
+
+
+@dataclass(frozen=True)
+class MissingSubscription:
+    """A student in a group (not on trial) with no subscription left."""
+
+    enrollment_id: int
+    student_id: int
+    student_number: str
+    student_name: str
+    group_id: int
+    group_title: str
+    enrolled_on: str

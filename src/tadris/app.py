@@ -7,7 +7,7 @@ from tadris.config import db_override, db_path
 from tadris.db.connection import connect
 from tadris.db.migrate import migrate
 from tadris.i18n.fr import t
-from tadris.services import auth
+from tadris.services import auth, subscriptions
 from tadris.ui.first_run import FirstRunDialog
 from tadris.ui.login_dialog import LoginDialog
 from tadris.ui.main_window import MainWindow
@@ -34,6 +34,7 @@ def main() -> int:
         return 1
     conn = connect(db_path())
     migrate(conn)
+    subscriptions.mark_ended(conn)  # months whose last day has passed
 
     dialog = FirstRunDialog(conn) if auth.user_count(conn) == 0 else LoginDialog(conn)
     if dialog.exec() != QDialog.DialogCode.Accepted:

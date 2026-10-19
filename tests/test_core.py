@@ -130,6 +130,7 @@ RECEPTIONIST_DENIED = {
     "academic.manage",
     "registration.cancel",
     "enrollment.override",
+    "subscription.cancel",
     "payment.void",
     "refund.approve",
     "refund.reject",

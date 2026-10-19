@@ -70,8 +70,9 @@ t = {
         "l'année)."
     ),
     "enrollment.level_mismatch": (
-        "Le groupe {group} est de niveau {group_level}, l'élève est inscrit en {level}. Seul le "
-        "directeur peut l'y inscrire, avec un motif."
+        "Le groupe {group} est de niveau {group_level}, l'élève est inscrit en {level}. Un élève "
+        "ne suit que des groupes de son niveau. Pour changer de niveau, retirez-le de ses groupes "
+        "puis utilisez « Changer le niveau » (onglet Inscription)."
     ),
     "enrollment.time_clash": (
         "Conflit d'horaire : {group} a cours le {day} de {start} à {end}, et l'élève est déjà en "
@@ -409,10 +410,9 @@ t = {
     "enroll_dialog.col.teacher": "Enseignant",
     "enroll_dialog.col.free": "Places libres",
     "enroll_dialog.col.note": "Remarque",
-    "enroll_dialog.other_level": "Autre niveau",
     "enroll_dialog.none": (
         "Aucun groupe disponible : l'élève est déjà dans tous les groupes de son niveau, ou ils "
-        "sont complets ou clôturés."
+        "sont complets ou clôturés. Seuls les groupes du niveau de l'élève sont proposés."
     ),
     "enroll_dialog.full_hidden": "{count} groupe(s) complet(s) non affiché(s).",
     "enroll_dialog.date": "Date d'entrée",

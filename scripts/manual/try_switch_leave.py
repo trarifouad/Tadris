@@ -58,8 +58,8 @@ print("\n--- Changement de groupe ---")
 l_enr = enrollments.enroll(conn, desk, lina, g_a, trial=True)
 attempt("7. Lina vers le même groupe", lambda: enrollments.switch(conn, desk, l_enr, g_a))
 attempt("8. Lina vers Essai complet", lambda: enrollments.switch(conn, desk, l_enr, g_full))
-attempt("9. Accueil : Lina vers un autre niveau",
-        lambda: enrollments.switch(conn, desk, l_enr, g_other))
+attempt("9. Directeur : Lina vers un autre niveau",
+        lambda: enrollments.switch(conn, director, l_enr, g_other, override_reason="x"))
 attempt("10. Lina vers Essai B (reste en essai)",
         lambda: enrollments.switch(conn, desk, l_enr, g_b))
 show(lina, "Lina")

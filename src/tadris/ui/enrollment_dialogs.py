@@ -29,9 +29,9 @@ VISIBLE_ROWS = 6
 
 def offered(conn, ctx: UserContext, student_id: int,
             exclude_group: int | None = None) -> tuple[list[GroupOption], int]:
-    """The groups the user may pick for the student, and how many full ones were left out.
-    Groups of another level, or of a subject the student already has, are offered to the
-    director only (they need the override). exclude_group: the group a switch leaves."""
+    """The groups the user may pick for the student (their level only), and how many full
+    ones were left out. A group of a subject the student already has is offered to the
+    director only (it needs the override). exclude_group: the group a switch leaves."""
     can_override = allowed(ctx, "enrollment.override")
     picked, full = [], 0
     for option in enrollments.options(conn, ctx, student_id, leaving_group_id=exclude_group):
@@ -66,9 +66,7 @@ class GroupPicker(QWidget):
 
     @staticmethod
     def _cells(o: GroupOption) -> list:
-        if not o.same_level:
-            note = item(t["enroll_dialog.other_level"], kind="warning")
-        elif o.same_subject:
+        if o.same_subject:
             note = item(t["enroll_dialog.same_subject"], kind="warning")
         else:
             note = item("")

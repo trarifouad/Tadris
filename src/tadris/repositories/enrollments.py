@@ -120,17 +120,3 @@ def last_attendance_date(conn, enrollment_id: int) -> str | None:
         (enrollment_id,),
     ).fetchone()
     return row[0]
-
-
-# ----- director overrides: set and cleared inside the enrollment's transaction -----
-
-def set_override(conn, key: str) -> None:
-    conn.execute(
-        "INSERT INTO settings(key, value) VALUES (?, '1') "
-        "ON CONFLICT(key) DO UPDATE SET value = '1'",
-        (key,),
-    )
-
-
-def clear_override(conn, key: str) -> None:
-    conn.execute("DELETE FROM settings WHERE key = ?", (key,))

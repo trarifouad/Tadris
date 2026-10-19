@@ -376,6 +376,8 @@ Add a `holidays` table or a settings JSON list in this phase. Decide which and a
 
 ## Phase 7: Payments and receipts (MVP milestone)
 
+**Status:** done. No schema change (the 0001 tables and 0003 triggers already guard payments). Repository `payments`; services `debt` (derived per charge and in total: owed, late, credit; debtors list; warning) and `payments` (record: the credit pays the oldest charges first, then the new money oldest due first or on the lines chosen, receipt `R2026-00001` from the year's counter, all in one transaction with audit; void, director only; cash report); receipt PDF (A4, PAYÉ or ANNULÉ stamp as a grey outline, DUPLICATA on a reprint). Student page: Paiements tab (what is left to pay, history, receipt printed on payment, void); payment dialog (preview, chosen lines, payer, "Encaisser 2 500 DA"); sidebar: Paiements page (late payers with group, amount and days filters; cash of the day per method and cashier). Debt warning in the enroll, switch, renew and payment dialogs above a threshold set in Paramètres → École (never a block). Seed takes payments. Phase 0–7 review: every trigger message now has a failing test (`test_triggers_last_line.py`; 54 of 54 fire), old databases (phase 3, phase 6) upgrade and keep working. 897 tests green.
+
 **Goal:** receive money, print receipts, know each student's debt.
 
 **Services**
@@ -630,9 +632,9 @@ Add a `holidays` table or a settings JSON list in this phase. Decide which and a
 | 6 | Non-renewed student: still allowed in class? | **Decided:** « Mois non renouvelé » badge on the attendance screen, no block |
 | 3 / 6 | Timetable slot validity | **Decided:** half-open `[valid_from, valid_to)`, same as rates and subscriptions. Adjacent periods that share a boundary date do not overlap. |
 | 6 | Holidays storage | **Decided:** `holidays` table of periods (start, end included, label) |
-| 7 | Receipt paper | A4 first, thermal later |
-| 7 | Overpayment | Keep as credit on the student |
-| 7 | Debt limit | Warning at a configurable amount, director override |
+| 7 | Receipt paper | **Decided:** A4 first, thermal later |
+| 7 | Overpayment | **Decided:** kept as credit; it pays the oldest charges first when the next payment is recorded |
+| 7 | Debt limit | **Decided:** a warning in the enroll, switch, renew and payment dialogs once the late debt reaches the threshold in Paramètres (0 = off); never a block, so no override |
 | 11 | SMS provider | Decide after testing a real modem or phone gateway |
 | 13 | Arabic RTL in v1 | French only until after the pilot |
 

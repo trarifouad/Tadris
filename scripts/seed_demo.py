@@ -1,7 +1,8 @@
 """Fill a database with demo students, contacts and the school structure (year, levels,
 subjects, rooms, teachers, groups and a weekly timetable), then register most students for the
 year and place them in groups (some on trial, a few switched or gone), add holidays, cancel a
-session with its makeup, set a substitute and take today's attendance, through the services.
+session with its makeup, set a substitute and take today's attendance, then take payments
+(most paid, some in part, a few in advance, one voided), through the services.
 
 Usage: python scripts/seed_demo.py PATH.db
 The path is required so the real database is never seeded by accident. Creates the director
@@ -30,9 +31,11 @@ from tadris.services import (
     auth,
     catalog,
     contacts,
+    debt,
     enrollments,
     groups,
     holidays,
+    payments,
     registrations,
     rooms,
     school_years,
@@ -205,6 +208,41 @@ def seed_sessions(conn, director, rng: random.Random) -> int:
     return marked
 
 
+DEBT_WARNING = 10_000
+METHODS = ["cash"] * 8 + ["transfer", "cheque"]
+
+
+def seed_payments(conn, director, desk, rng: random.Random) -> int:
+    """At the desk today: about 55% of the students pay what is late, 20% pay part of it,
+    5% pay a month in advance, the rest owe (the debtors list has rows); the director voids
+    one payment. Returns how many payments were taken. Skipped once payments exist."""
+    if conn.execute("SELECT 1 FROM payments LIMIT 1").fetchone() is not None:
+        return 0
+    if debt.warning_threshold(conn) == 0:
+        settings.set_value(conn, director, "defaults.max_debt_warning", DEBT_WARNING)
+    taken = []
+    for row in students.search(conn, director):
+        owed = debt.for_student(conn, director, row.id).owed_now
+        if owed <= 0:
+            continue
+        luck = rng.random()
+        if luck < 0.55:
+            amount = owed
+        elif luck < 0.75:
+            amount = max(owed // 2 // 100 * 100, 100)
+        elif luck < 0.80:
+            amount = owed + 3000
+        else:
+            continue
+        main = next((c.contact_id for c in contacts.list_for_student(conn, director, row.id)
+                     if c.is_main), None)
+        cashier = desk if rng.random() < 0.8 else director
+        taken.append(payments.record(conn, cashier, row.id, amount, rng.choice(METHODS), main))
+    if taken:
+        payments.void(conn, director, rng.choice(taken), "Démo : erreur de montant")
+    return len(taken)
+
+
 def main(path: Path) -> None:
     rng = random.Random(2026)
     conn = connect(path)
@@ -239,9 +277,11 @@ def main(path: Path) -> None:
                 students.deactivate(conn, director, student_id)
     registered, placed = seed_enrollments(conn, director, rng)
     marked = seed_sessions(conn, director, rng)
+    paid = seed_payments(conn, director, auth.login(conn, "accueil", "password2"), rng)
     conn.close()
     print(f"{created} students created in {path}: {registered} registered for the year, "
-          f"{placed} placed in groups, {marked} attendance line(s) taken today")
+          f"{placed} placed in groups, {marked} attendance line(s) taken today, "
+          f"{paid} payment(s) received")
 
 
 if __name__ == "__main__":

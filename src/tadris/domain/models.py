@@ -446,3 +446,144 @@ class AttendanceSummary:
     @property
     def total(self) -> int:
         return self.present + self.late + self.absent + self.excused
+
+
+# ----- payments and debt -----
+
+PAYMENT_METHODS = ("cash", "transfer", "cheque", "other")
+
+
+@dataclass(frozen=True)
+class ChargeDue:
+    """An open charge with something left to pay."""
+
+    id: int
+    kind: str  # 'registration' (the fee) or 'subscription' (a month)
+    description: str
+    amount: int
+    due_date: str
+    paid: int  # allocations of payments not voided
+    adjusted: int  # adjustments linked to the charge (phase 8); positive lowers it
+    group_id: int | None  # the month's group; None for the fee
+
+    @property
+    def due(self) -> int:
+        return max(self.amount - self.paid - self.adjusted, 0)
+
+
+@dataclass(frozen=True)
+class Debt:
+    """What a student owes on `as_of`. Never stored: derived from charges, payments and
+    adjustments each time."""
+
+    student_id: int
+    as_of: str  # 'YYYY-MM-DD'
+    charges: tuple[ChargeDue, ...]  # oldest due first, each with due > 0
+    credit: int  # money received and not allocated to a charge yet
+    adjustments: int = 0  # adjustments not linked to a charge; positive lowers the debt
+
+    @property
+    def due(self) -> int:
+        """Left to pay on every open charge, months to come included."""
+        return sum(c.due for c in self.charges)
+
+    @property
+    def overdue(self) -> int:
+        """Left to pay on charges already due (due date today or before)."""
+        return sum(c.due for c in self.charges if c.due_date <= self.as_of)
+
+    @property
+    def balance(self) -> int:
+        """Above 0: the student owes it; below 0: the school owes it (credit)."""
+        return self.due - self.credit - self.adjustments
+
+    @property
+    def owed_now(self) -> int:
+        """What is late now, after the credit: what the debtors list shows."""
+        return max(self.overdue - self.credit - self.adjustments, 0)
+
+    @property
+    def oldest_overdue(self) -> str | None:
+        late = [c.due_date for c in self.charges if c.due_date <= self.as_of]
+        return min(late) if late else None
+
+
+@dataclass(frozen=True)
+class Payment:
+    id: int
+    student_id: int
+    student_number: str
+    student_name: str  # "Last First"
+    payer_contact_id: int | None
+    payer_name: str | None
+    amount: int
+    method: str  # PAYMENT_METHODS
+    paid_at: str  # 'YYYY-MM-DDTHH:MM:SS'
+    cashier: str
+    receipt_id: int | None
+    receipt_number: str | None
+    allocated: int
+    voided: bool
+    void_reason: str | None
+    voided_at: str | None
+    voided_by: str | None
+
+    @property
+    def unallocated(self) -> int:
+        """The part kept as credit (0 once voided)."""
+        return 0 if self.voided else self.amount - self.allocated
+
+
+@dataclass(frozen=True)
+class PaymentLine:
+    """What a payment paid on one charge."""
+
+    charge_id: int
+    description: str
+    due_date: str
+    amount: int
+
+
+@dataclass(frozen=True)
+class Debtor:
+    student_id: int
+    student_number: str
+    student_name: str
+    owed_now: int
+    due: int  # months to come included
+    credit: int
+    oldest_overdue: str | None
+    days_overdue: int
+
+
+@dataclass(frozen=True)
+class CashReport:
+    """Money received on one day: payments not voided count; voided ones are listed apart."""
+
+    day: str
+    payments: tuple[Payment, ...]  # every payment of the day, voided ones included
+
+    @property
+    def kept(self) -> tuple[Payment, ...]:
+        return tuple(p for p in self.payments if not p.voided)
+
+    @property
+    def total(self) -> int:
+        return sum(p.amount for p in self.kept)
+
+    @property
+    def voided(self) -> tuple[Payment, ...]:
+        return tuple(p for p in self.payments if p.voided)
+
+    def by_method(self) -> dict[str, int]:
+        """Every method, 0 included, in PAYMENT_METHODS order."""
+        totals = dict.fromkeys(PAYMENT_METHODS, 0)
+        for p in self.kept:
+            totals[p.method] += p.amount
+        return totals
+
+    def by_cashier(self) -> dict[str, int]:
+        totals: dict[str, int] = {}
+        for p in self.kept:
+            totals[p.cashier] = totals.get(p.cashier, 0) + p.amount
+        return dict(sorted(totals.items()))

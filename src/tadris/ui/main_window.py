@@ -16,6 +16,7 @@ from tadris.i18n.fr import t
 from tadris.services import settings
 from tadris.ui.pages.attendance import AttendancePage
 from tadris.ui.pages.groups import GroupsPage
+from tadris.ui.pages.payments_page import PaymentsPage
 from tadris.ui.pages.settings import SettingsPage
 from tadris.ui.pages.students import StudentsPage
 from tadris.ui.pages.subscriptions_page import SubscriptionsPage
@@ -103,8 +104,9 @@ class MainWindow(QMainWindow):
             return pages[key](self._conn, self.ctx)
         if key == "settings":
             return SettingsPage(self._conn, self.ctx)
-        if key == "subscriptions":
-            page = SubscriptionsPage(self._conn, self.ctx)
+        if key in ("subscriptions", "payments"):
+            page_class = SubscriptionsPage if key == "subscriptions" else PaymentsPage
+            page = page_class(self._conn, self.ctx)
             page.open_student.connect(self.open_student)
             return page
         return PlaceholderPage(label)

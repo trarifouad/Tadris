@@ -142,8 +142,10 @@ def student_list(conn, status: str | None, year_id: int | None, group_id: int | 
 # ----- audit log -----
 
 def audit_entries(conn, first: str, last: str, user_id: int | None, system_only: bool,
-                  action_prefix: str | None, entity_id: int | None, limit: int) -> list:
-    """Latest first. user_id None and system_only: entries written by the app itself."""
+                  action_prefix: str | None, entity_id: int | None, limit: int,
+                  with_system: bool = True) -> list:
+    """Latest first. system_only: only the entries written by the app itself; with_system
+    False: none of them."""
     return conn.execute(
         """
         SELECT a.id, a.created_at, u.username, a.action, a.entity_name, a.entity_id,
@@ -153,13 +155,15 @@ def audit_entries(conn, first: str, last: str, user_id: int | None, system_only:
          WHERE substr(a.created_at, 1, 10) BETWEEN :first AND :last
            AND (:user IS NULL OR a.user_id = :user)
            AND (:system = 0 OR a.user_id IS NULL)
+           AND (:with_system = 1 OR a.user_id IS NOT NULL)
            AND (:prefix IS NULL OR a.action = :prefix OR a.action LIKE :prefix || '.%')
            AND (:entity IS NULL OR a.entity_id = :entity)
          ORDER BY a.id DESC
          LIMIT :limit
         """,
         {"first": first, "last": last, "user": user_id, "system": int(system_only),
-         "prefix": action_prefix, "entity": entity_id, "limit": limit},
+         "prefix": action_prefix, "entity": entity_id, "limit": limit,
+         "with_system": int(with_system)},
     ).fetchall()
 
 

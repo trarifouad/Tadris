@@ -19,7 +19,7 @@ from tadris.domain.models import (
 from tadris.i18n.fr import t
 from tadris.repositories import reports as repo
 from tadris.repositories import school_years as years_repo
-from tadris.services import debt, groups, payouts, sessions, subscriptions, teachers
+from tadris.services import debt, groups, journal, payouts, sessions, subscriptions, teachers
 
 # The dashboard and the reports only read. Each report is a ReportTable of raw values (amounts
 # in DA, rates in basis points, ISO dates): the screen, the PDF and the Excel file show the same
@@ -411,8 +411,10 @@ def family_label(family: str) -> str:
 
 def audit_log(conn, ctx: UserContext, first: date, last: date, user_id: int | None = None,
               system_only: bool = False, family: str | None = None,
-              entity_id: int | None = None) -> list[AuditEntry]:
-    """Latest first, at most AUDIT_LIMIT entries."""
+              entity_id: int | None = None, with_system: bool = True) -> list[AuditEntry]:
+    """Latest first, at most AUDIT_LIMIT entries. with_system False leaves out what the app
+    did by itself (backups, sessions prepared, months ended), unless system_only asks for
+    exactly that."""
     require(ctx, "audit.view")
     _check_range(first, last)
     return [AuditEntry(id=row["id"], created_at=row["created_at"], user=row["username"],
@@ -420,29 +422,27 @@ def audit_log(conn, ctx: UserContext, first: date, last: date, user_id: int | No
                        entity_id=row["entity_id"], old_value=row["old_value"],
                        new_value=row["new_value"])
             for row in repo.audit_entries(conn, _iso(first), _iso(last), user_id, system_only,
-                                          family, entity_id, AUDIT_LIMIT)]
+                                          family, entity_id, AUDIT_LIMIT,
+                                          with_system or system_only)]
 
 
-def audit_detail(entry: AuditEntry, width: int = 120) -> str:
-    """The values recorded, on one line."""
-    parts = []
-    if entry.old_value:
-        parts.append(t["audit.before"].format(value=entry.old_value))
-    if entry.new_value:
-        parts.append(t["audit.after"].format(value=entry.new_value))
-    text = " · ".join(parts)
-    return text if len(text) <= width else text[:width - 1] + "…"
+def audit_lines(conn, ctx: UserContext, entry: AuditEntry) -> list[str]:
+    """What the entry recorded, one « Clé : valeur » per line, for the detail under the
+    Journal."""
+    require(ctx, "audit.view")
+    return journal.lines(entry.old_value, entry.new_value, journal.load_names(conn))
 
 
-def audit_table(entries: list[AuditEntry], first: date, last: date) -> ReportTable:
+def audit_table(conn, entries: list[AuditEntry], first: date, last: date) -> ReportTable:
+    names = journal.load_names(conn)
     return ReportTable(
         key="journal", title=t["report.audit.title"], period=_period(first, last),
         columns=(ReportColumn(t["report.col.when"], "datetime"),
                  ReportColumn(t["report.col.user"]), ReportColumn(t["report.col.action"]),
-                 ReportColumn(t["report.col.entity"]),
-                 ReportColumn(t["report.col.entity_id"], "number"),
-                 ReportColumn(t["report.col.detail"])),
-        rows=tuple((e.created_at, e.user or t["audit.system"], e.action, e.entity_name,
-                    e.entity_id, audit_detail(e, 300)) for e in entries),
+                 ReportColumn(t["report.col.entity"]), ReportColumn(t["report.col.detail"])),
+        rows=tuple((e.created_at, e.user or t["audit.system"], journal.action_label(e.action),
+                    journal.entity_label(e.entity_name, e.entity_id, names),
+                    journal.summary(e.old_value, e.new_value, names))
+                   for e in entries),
         note=(t["report.audit.limit"].format(limit=AUDIT_LIMIT)
               if len(entries) >= AUDIT_LIMIT else ""))

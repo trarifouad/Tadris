@@ -4,6 +4,7 @@ from PySide6.QtCore import Qt
 from tadris.i18n.fr import t
 from tadris.services import auth
 from tadris.ui.login_dialog import LoginDialog
+from tadris.ui.main_window import MainWindow
 from tadris.ui.theme import apply_theme, load_fonts
 
 
@@ -82,3 +83,71 @@ def test_the_button_still_logs_in(qtbot, login):
     login.password.setText("password1")
     qtbot.mouseClick(login.submit, Qt.MouseButton.LeftButton)
     assert login.ctx is not None
+
+
+# ----- back to the page a link came from -----
+
+@pytest.fixture
+def window(qtbot, conn, director):
+    w = MainWindow(conn, director)
+    qtbot.addWidget(w)
+    w.show()
+    return w
+
+
+def current(window) -> str:
+    return next(key for key, button in window.nav_buttons.items() if button.isChecked())
+
+
+def test_no_back_button_from_the_sidebar(window):
+    window.nav_buttons["groups"].click()
+    window.nav_buttons["students"].click()
+    assert window.back_bar.isHidden()
+
+
+def test_see_all_can_go_back_to_the_dashboard(qtbot, window):
+    assert current(window) == "dashboard"
+    window.go_to("groups")
+    assert current(window) == "groups"
+    assert window.back_bar.isVisible()
+    assert window.back_button.text() == "← Retour : Tableau de bord"
+    qtbot.mouseClick(window.back_button, Qt.MouseButton.LeftButton)
+    assert current(window) == "dashboard"
+    assert window.back_bar.isHidden()
+
+
+def test_links_stack_and_unwind(window):
+    window.go_to("payments")
+    window.go_to("reports")
+    assert window.back_button.text() == "← Retour : Paiements"
+    window.back()
+    assert current(window) == "payments"
+    assert window.back_button.text() == "← Retour : Tableau de bord"
+    window.back()
+    assert current(window) == "dashboard" and window.back_bar.isHidden()
+    window.back()  # nothing left: stays
+    assert current(window) == "dashboard"
+
+
+def test_a_sidebar_click_forgets_the_way_back(window):
+    window.go_to("groups")
+    window.nav_buttons["teachers"].click()
+    assert window.back_bar.isHidden()
+
+
+def test_alt_left_goes_back(qtbot, window):
+    window.go_to("groups")
+    qtbot.keyClick(window, Qt.Key.Key_Left, Qt.KeyboardModifier.AltModifier)
+    assert current(window) == "dashboard"
+
+
+def test_a_student_opened_from_the_dashboard_can_go_back(conn, director, window):
+    from tadris.domain.models import StudentInput
+    from tadris.services import students
+
+    student = students.create(conn, director, StudentInput("Amine", "Benali"))
+    window.open_student(student)
+    assert current(window) == "students"
+    assert window.back_button.text() == "← Retour : Tableau de bord"
+    window.back()
+    assert current(window) == "dashboard"

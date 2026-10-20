@@ -1,13 +1,14 @@
 import os
 import sys
 
-from PySide6.QtWidgets import QApplication, QDialog
+from PySide6.QtCore import QTimer
+from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
 
-from tadris.config import db_override, db_path
+from tadris.config import backup_dir, db_override, db_path
 from tadris.db.connection import connect
-from tadris.db.migrate import migrate
+from tadris.db.migrate import has_pending, migrate
 from tadris.i18n.fr import t
-from tadris.services import auth, sessions, subscriptions
+from tadris.services import auth, backup, sessions, subscriptions
 from tadris.ui.first_run import FirstRunDialog
 from tadris.ui.login_dialog import LoginDialog
 from tadris.ui.main_window import MainWindow
@@ -19,6 +20,20 @@ def _choose_linux_platform() -> None:
     # 'antialiasing' key it reads. XWayland (xcb) works. An explicit QT_QPA_PLATFORM wins.
     if sys.platform.startswith("linux"):
         os.environ.setdefault("QT_QPA_PLATFORM", "xcb")
+
+
+DAILY_CHECK_MS = 60 * 60 * 1000  # the app may stay open past midnight
+
+
+def _backup(take, parent=None, warning: str = "backup.warning") -> bool:
+    """Run a backup; on failure warn the user (never block the desk). True if it worked."""
+    try:
+        take()
+    except backup.BackupFailed as exc:
+        QMessageBox.warning(parent, t["backup.warning_title"],
+                            t[warning].format(error=exc.message))
+        return False
+    return True
 
 
 def main() -> int:
@@ -33,7 +48,12 @@ def main() -> int:
         print(f"TADRIS_DB : base introuvable ({override})", file=sys.stderr)
         return 1
     conn = connect(db_path())
+    folder = backup_dir()
+    if has_pending(conn) and not _backup(lambda: backup.take(conn, folder),
+                                         warning="backup.before_migration"):
+        return 1  # never migrate a database without a copy taken just before
     migrate(conn)
+    _backup(lambda: backup.daily(conn, folder))
     subscriptions.mark_ended(conn)  # months whose last day has passed
     sessions.generate_at_start(conn)  # the next 14 days from the timetable
 
@@ -45,4 +65,9 @@ def main() -> int:
     if override is not None:  # never mistake a test copy for the real school
         window.setWindowTitle(f"{window.windowTitle()} · {override.name}")
     window.show()
-    return app.exec()
+    timer = QTimer(window)
+    timer.timeout.connect(lambda: _backup(lambda: backup.daily(conn, folder), window))
+    timer.start(DAILY_CHECK_MS)
+    code = app.exec()
+    _backup(lambda: backup.take(conn, folder))  # the day's work, on close
+    return code

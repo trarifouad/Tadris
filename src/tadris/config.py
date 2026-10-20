@@ -30,6 +30,7 @@ def documents_dir() -> Path:
 
 
 def backup_dir() -> Path:
-    p = data_dir() / "backups"
-    p.mkdir(exist_ok=True)
+    """Backups of the database in use, next to it: a test copy never mixes with the school's."""
+    p = db_path().parent / "backups"
+    p.mkdir(parents=True, exist_ok=True)
     return p

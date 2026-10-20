@@ -741,3 +741,16 @@ class PayoutDue:
     months: int
     revenue: int
     draft_id: int | None  # their draft, if one is waiting
+
+
+@dataclass(frozen=True)
+class Backup:
+    id: int
+    file_path: str
+    size_bytes: int | None
+    checksum: str | None  # sha256 of the file, hex
+    type: str  # auto | manual
+    status: str  # running | done | failed | verified
+    created_at: str
+    completed_at: str | None
+    verified_at: str | None

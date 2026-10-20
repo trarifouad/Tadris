@@ -28,13 +28,55 @@ _CHARGE_COLUMNS = f"""
 """
 
 
+# One student's charges: the fee of their registrations, the months of their enrollments.
+_STUDENT_CHARGES = """
+    SELECT c2.id FROM charges c2
+      JOIN registrations r ON r.id = c2.registration_id
+     WHERE r.student_id = :student
+    UNION ALL
+    SELECT c3.id FROM charges c3
+      JOIN subscriptions s ON s.id = c3.subscription_id
+      JOIN enrollments e ON e.id = s.enrollment_id
+     WHERE e.student_id = :student
+"""
+# What payments not voided paid on each charge, summed once for all of them.
+_PAID_BY_CHARGE = """
+    SELECT pa.charge_id, SUM(pa.amount) AS paid
+      FROM payment_allocations pa
+     WHERE NOT EXISTS (SELECT 1 FROM payment_voids v WHERE v.payment_id = pa.payment_id)
+     GROUP BY pa.charge_id
+"""
+
+
 def open_charges(conn, student_id: int | None = None) -> list:
-    """Open charges, oldest due first (the order payments pay them in); one student's, or
-    everyone's for the debtors list."""
+    """Open charges with something left to pay, oldest due first (the order payments pay
+    them in); one student's, or everyone's for the debtors list. A charge paid in full is
+    left out in SQL: the history of paid months grows every month, what is owed does not.
+    Everyone's sums the allocations once for all charges; one student's reads only theirs."""
+    if student_id is not None:
+        return conn.execute(
+            f"""
+            SELECT * FROM (SELECT {_CHARGE_COLUMNS} FROM charges c
+                            WHERE c.status = 'open'
+                              AND c.id IN ({_STUDENT_CHARGES}))
+             WHERE paid < amount
+             ORDER BY due_date, id
+            """,
+            {"student": student_id},
+        ).fetchall()
     return conn.execute(
-        f"SELECT * FROM (SELECT {_CHARGE_COLUMNS} FROM charges c WHERE c.status = 'open') "
-        "WHERE (:student IS NULL OR student_id = :student) ORDER BY due_date, id",
-        {"student": student_id},
+        f"""
+        SELECT c.id, ({_CHARGE_STUDENT}) AS student_id, c.registration_id,
+               c.subscription_id, c.description, c.amount, c.due_date, c.status,
+               COALESCE(p.paid, 0) AS paid,
+               (SELECT e.group_id FROM subscriptions s
+                  JOIN enrollments e ON e.id = s.enrollment_id
+                 WHERE s.id = c.subscription_id) AS group_id
+          FROM charges c
+          LEFT JOIN ({_PAID_BY_CHARGE}) p ON p.charge_id = c.id
+         WHERE c.status = 'open' AND COALESCE(p.paid, 0) < c.amount
+         ORDER BY c.due_date, c.id
+        """
     ).fetchall()
 
 

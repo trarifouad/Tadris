@@ -87,8 +87,9 @@ def summarize(statuses) -> AttendanceSummary:
                              absent=counts["absent"], excused=counts["excused"])
 
 
-def for_student(conn, ctx: UserContext, student_id: int) -> list[AttendanceRecord]:
-    """Latest first."""
+def for_student(conn, ctx: UserContext, student_id: int, limit: int | None = None,
+                offset: int = 0) -> list[AttendanceRecord]:
+    """Latest first; limit/offset: one page (a student marks about 300 a year)."""
     require(ctx, "student.view")
     return [
         AttendanceRecord(session_id=row["session_id"], date=row["date"],
@@ -96,5 +97,13 @@ def for_student(conn, ctx: UserContext, student_id: int) -> list[AttendanceRecor
                          group_id=row["group_id"],
                          group_title=f"{row['group_name']} · {row['subject']} {row['level']}",
                          status=row["status"])
-        for row in repo.for_student(conn, student_id)
+        for row in repo.for_student(conn, student_id, limit, offset)
     ]
+
+
+def summary_for_student(conn, ctx: UserContext, student_id: int) -> AttendanceSummary:
+    """The counts over the student's whole history, counted by the database."""
+    require(ctx, "student.view")
+    counts = repo.counts_for_student(conn, student_id)
+    return AttendanceSummary(**{status: counts.get(status, 0)
+                                for status in ("present", "late", "absent", "excused")})

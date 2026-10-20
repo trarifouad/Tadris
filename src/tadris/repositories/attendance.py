@@ -60,8 +60,8 @@ def mark_held(conn, session_id: int) -> None:
     )
 
 
-def for_student(conn, student_id: int) -> list:
-    """The student's recorded attendance, latest first."""
+def for_student(conn, student_id: int, limit: int | None = None, offset: int = 0) -> list:
+    """The student's recorded attendance, latest first; limit/offset: one page of it."""
     return conn.execute(
         """
         SELECT a.session_id, s.date, s.start_time, s.end_time, g.name AS group_name,
@@ -73,7 +73,17 @@ def for_student(conn, student_id: int) -> list:
           JOIN subjects sb ON sb.id = g.subject_id
           JOIN levels l ON l.id = g.level_id
          WHERE e.student_id = ?
-         ORDER BY s.date DESC, s.start_time DESC
+         ORDER BY s.date DESC, s.start_time DESC, a.session_id DESC
+         LIMIT ? OFFSET ?
         """,
-        (student_id,),
+        (student_id, -1 if limit is None else limit, offset),
     ).fetchall()
+
+
+def counts_for_student(conn, student_id: int) -> dict[str, int]:
+    """{status: marks} over the student's whole history."""
+    return dict(conn.execute(
+        "SELECT a.status, COUNT(*) FROM attendances a "
+        "JOIN enrollments e ON e.id = a.enrollment_id WHERE e.student_id = ? "
+        "GROUP BY a.status", (student_id,)).fetchall())
+

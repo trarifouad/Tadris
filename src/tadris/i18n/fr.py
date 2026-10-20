@@ -613,6 +613,8 @@ t = {
     "students.col.phone": "Téléphone",
     "students.col.status": "Statut",
     "students.count": "{count} élève(s)",
+    "students.count_part": "{shown} affichés sur {count} élève(s) : faites défiler pour voir "
+                           "les suivants",
     "students.empty": "Aucun élève pour l'instant. Cliquez sur « Nouvel élève » pour inscrire le premier.",
     "students.no_match": "Aucun élève ne correspond à cette recherche.",
     "students.created": "Élève créé : {name} ({number})",

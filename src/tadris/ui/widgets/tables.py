@@ -1,6 +1,7 @@
+from collections.abc import Callable
 from contextlib import contextmanager
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QObject, Qt, QTimer
 from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import QAbstractItemView, QHeaderView, QTableWidget, QTableWidgetItem
 
@@ -119,3 +120,51 @@ def selected_id(table: QTableWidget) -> int | None:
     if not rows:
         return None
     return table.item(rows[0].row(), 0).data(ID_ROLE)
+
+
+PAGE_SIZE = 100  # rows a long list shows first, then this many more as it is scrolled
+MORE_AHEAD_ROWS = 10  # the next page is loaded this many rows before the end
+
+
+class MoreOnScroll(QObject):
+    """A long list shows its first page; the next one is loaded once the table is scrolled
+    near its end (or does not fill its height yet). load_more() adds rows and returns
+    whether more are left. It runs once the current event is over: the scroll range also
+    changes while a page is going in, and a page must never land in another."""
+
+    def __init__(self, table: QTableWidget, load_more: Callable[[], bool]):
+        super().__init__(table)
+        self._table = table
+        self._load_more = load_more
+        self.more_left = False
+        self._soon = QTimer(self)
+        self._soon.setSingleShot(True)
+        self._soon.setInterval(0)
+        self._soon.timeout.connect(self._check)
+        bar = table.verticalScrollBar()
+        bar.valueChanged.connect(lambda _v: self._soon.start())
+        bar.rangeChanged.connect(lambda _a, _b: self._soon.start())
+
+    def reset(self, more_left: bool) -> None:
+        """A new first page is shown: are there more rows after it?"""
+        self.more_left = more_left
+        self._soon.start()
+
+    def rows_below(self) -> float:
+        """Rows under the last one on screen (the scroll bar counts rows, or pixels in
+        per-pixel mode)."""
+        table = self._table
+        row = table.verticalHeader().defaultSectionSize()
+        top = table.verticalScrollBar().value()
+        if table.verticalScrollMode() == QAbstractItemView.ScrollMode.ScrollPerPixel:
+            top /= row
+        return table.rowCount() - top - table.viewport().height() / row
+
+    def _check(self) -> None:
+        if not self.more_left or not self._table.isVisible():  # hidden: no layout yet
+            return
+        if self.rows_below() > MORE_AHEAD_ROWS:
+            return
+        self.more_left = self._load_more()
+        if self.more_left:
+            self._soon.start()  # still short of the end (a tall window): one more

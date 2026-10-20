@@ -21,9 +21,21 @@ from tadris.ui.student_dialog import StudentDialog
 from tadris.ui.theme.status import kind_for
 from tadris.ui.widgets.common import ask, primary_button, toast
 from tadris.ui.widgets.forms import ListDetailPage
-from tadris.ui.widgets.tables import CENTER, ID_ROLE, fill, item, ruled_table
+from tadris.ui.widgets.tables import (
+    CENTER,
+    ID_ROLE,
+    PAGE_SIZE,
+    MoreOnScroll,
+    fill,
+    frozen_columns,
+    item,
+    ruled_table,
+)
 
 SEARCH_DELAY_MS = 250
+# The database order behind each column of the list (repositories/students.ORDERS).
+COLUMN_ORDERS = ("number", "last_name", "first_name", "birth_date", "contact", "phone",
+                 "status")
 STATUS_FILTERS = (("students.filter.active", "active"),
                   ("students.filter.inactive", "inactive"),
                   ("students.filter.all", None))
@@ -93,9 +105,15 @@ class StudentListView(QWidget):
             t["students.col.phone"],
             t["students.col.status"],
         ], sortable=True)
-        self.table.setSortingEnabled(True)
-        self.table.sortByColumn(1, Qt.SortOrder.AscendingOrder)
+        # Sorted by the database, not by the table: the list is read a page at a time, and
+        # a click on a column must order every student, not the ones loaded.
+        header = self.table.horizontalHeader()
+        header.setSortIndicator(1, Qt.SortOrder.AscendingOrder)
+        header.sortIndicatorChanged.connect(lambda _c, _o: self.refresh())
         self.table.activated.connect(self._open_row)
+        self._shown = 0
+        self._total = 0
+        self.pager = MoreOnScroll(self.table, self._load_more)
         self.empty = QLabel()
         self.empty.setObjectName("emptyState")
         self.empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -115,15 +133,47 @@ class StudentListView(QWidget):
         self.refresh()
 
     def refresh(self) -> None:
+        """The first page of what the search and the status match, in the column's order;
+        the next pages come as the list is scrolled."""
         self._debounce.stop()
-        found = students.search(self._conn, self._ctx, self.search.text(),
-                                self.status.currentData())
+        self._total = students.count(self._conn, self._ctx, self.search.text(),
+                                     self.status.currentData())
+        found = self._page(0)
+        self._shown = len(found)
         fill(self.table, [self._cells(s) for s in found])
         filtered = bool(self.search.text().strip()) or self.status.currentIndex() != 0
         self.empty.setText(t["students.no_match" if filtered else "students.empty"])
         self.empty.setVisible(not found)
         self.table.setVisible(bool(found))
-        self.count.setText(t["students.count"].format(count=len(found)))
+        self._update_count()
+        self.pager.reset(self._shown < self._total)
+
+    def _page(self, offset: int) -> list[StudentListItem]:
+        header = self.table.horizontalHeader()
+        return students.search(
+            self._conn, self._ctx, self.search.text(), self.status.currentData(),
+            order=COLUMN_ORDERS[header.sortIndicatorSection()],
+            descending=header.sortIndicatorOrder() == Qt.SortOrder.DescendingOrder,
+            limit=PAGE_SIZE, offset=offset)
+
+    def _load_more(self) -> bool:
+        shown = set(self.student_ids())
+        page = [s for s in self._page(self._shown) if s.id not in shown]  # added meanwhile
+        if page:
+            start = self.table.rowCount()
+            with frozen_columns(self.table):
+                self.table.setRowCount(start + len(page))
+                for r, student in enumerate(page, start):
+                    for c, cell in enumerate(self._cells(student)):
+                        self.table.setItem(r, c, cell)
+        self._shown += PAGE_SIZE
+        self._update_count()
+        return self._shown < self._total
+
+    def _update_count(self) -> None:
+        rows = self.table.rowCount() if self._total else 0
+        self.count.setText(t["students.count"].format(count=self._total) if rows >= self._total
+                           else t["students.count_part"].format(shown=rows, count=self._total))
 
     @staticmethod
     def _cells(s: StudentListItem) -> list:

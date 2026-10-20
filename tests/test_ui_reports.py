@@ -297,8 +297,9 @@ def test_audit_tab(qtbot, conn, director, desk, school):
     assert {row[2] for row in texts(view.table)} == {"Paiement enregistré", "Paiement annulé"}
     view.table.selectRow(0)
     detail = view.detail.toPlainText()
-    assert detail.startswith(texts(view.table)[0][2] + " · Paiement n° ")
-    assert "Montant : " in detail and "{" not in detail
+    assert detail.startswith(texts(view.table)[0][2] + " par ")  # « Paiement … par accueil »
+    assert " à " in detail and "Paiement n° " in detail
+    assert "Montant" in detail and "{" not in detail
 
     view.user.setCurrentIndex(view.user.findData(desk.user_id))
     assert view.table.rowCount() == 0 and view.empty.isVisibleTo(view)
@@ -307,6 +308,19 @@ def test_audit_tab(qtbot, conn, director, desk, school):
     view.entity.setText("abc")
     view.entity.editingFinished.emit()
     assert view.banner.text() == t["report.entity_invalid"]
+
+
+def test_journal_detail_card():
+    from tadris.services.journal import Field
+    from tadris.ui.pages.reports import detail_html
+
+    html = detail_html("Remboursement approuvé par directeur", "le 18/10/2026 à 10:00",
+                       [Field("Statut", "Approuvé", before="En attente"),
+                        Field("Motif", "<départ>")])
+    assert "<b>Approuvé</b>" in html and "En attente" in html
+    assert "&lt;départ&gt;" in html  # what was typed is escaped
+    empty = detail_html("Déconnexion par kadam", "le 18/10/2026 à 15:30", [])
+    assert "Aucun autre détail enregistré." in empty
 
 
 def test_redrawing_the_dashboard_many_times_is_safe(qtbot, conn, director):

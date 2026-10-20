@@ -463,11 +463,22 @@ def test_the_journal_shows_what_people_did(conn, director, school):
     assert "backup" in reports.audit_families(conn, director)
 
 
-def test_audit_lines_show_changes(conn, director, school):
+def test_audit_fields_show_changes(conn, director, school):
+    from tadris.services.journal import Field
+
     approved = reports.audit_log(conn, director, date(2020, 1, 1), date(2030, 1, 1),
                                  family="refund.approve")[0]
-    assert reports.audit_lines(conn, director, approved) == [
-        "Statut : En attente → Approuvé", "Montant accordé : 1 000 DA"]
+    assert reports.audit_fields(conn, director, approved) == [
+        Field("Statut", "Approuvé", before="En attente"),
+        Field("Montant accordé", "1 000 DA")]
+
+
+def test_audit_fields_do_not_repeat_the_item(conn, director, desk, school):
+    created = reports.audit_log(conn, director, date(2020, 1, 1), date(2030, 1, 1),
+                                family="user.create")[0]
+    # « Utilisateur : accueil » is the item already: only the role is left.
+    assert [(f.label, f.value) for f in reports.audit_fields(conn, director, created)] == [
+        ("Rôle", "Réceptionniste")]
 
 
 # ----- exports -----

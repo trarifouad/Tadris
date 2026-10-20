@@ -422,11 +422,13 @@ def audit_log(conn, ctx: UserContext, first: date, last: date, user_id: int | No
                                           entity_id, AUDIT_LIMIT)]
 
 
-def audit_lines(conn, ctx: UserContext, entry: AuditEntry) -> list[str]:
-    """What the entry recorded, one « Clé : valeur » per line, for the detail under the
-    Journal."""
+def audit_fields(conn, ctx: UserContext, entry: AuditEntry) -> list[journal.Field]:
+    """What the entry recorded, for the detail under the Journal (without the item's own
+    name, shown above it)."""
     require(ctx, "audit.view")
-    return journal.lines(entry.old_value, entry.new_value, journal.load_names(conn))
+    names = journal.load_names(conn)
+    item = names.get(entry.entity_name, entry.entity_id)
+    return journal.fields(entry.old_value, entry.new_value, names, skip=item)
 
 
 def audit_table(conn, entries: list[AuditEntry], first: date, last: date) -> ReportTable:

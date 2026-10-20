@@ -3,6 +3,7 @@
 director's. A double-click on a student row opens the student."""
 
 from datetime import date, timedelta
+from html import escape
 
 from PySide6.QtCore import Signal
 from PySide6.QtGui import QFont
@@ -11,9 +12,9 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QPlainTextEdit,
     QPushButton,
     QTabWidget,
+    QTextBrowser,
     QVBoxLayout,
     QWidget,
 )
@@ -26,6 +27,7 @@ from tadris.core.permissions import allowed
 from tadris.domain.models import AuditEntry, ReportTable
 from tadris.i18n.fr import t
 from tadris.services import groups, printing, reports, school_years
+from tadris.ui.theme import tokens
 from tadris.ui.widgets import common
 from tadris.ui.widgets.common import PageBanner, labeled, toast
 from tadris.ui.widgets.date_edit import DateLineEdit
@@ -347,9 +349,9 @@ class AuditTab(ReportView):
         self.entity = QLineEdit()
         self.entity.setPlaceholderText(t["report.filter.any"])
         self.entries: list[AuditEntry] = []
-        self.detail = QPlainTextEdit()
-        self.detail.setReadOnly(True)
-        self.detail.setMaximumHeight(150)
+        self.detail = QTextBrowser()
+        self.detail.setObjectName("journalDetail")
+        self.detail.setMaximumHeight(170)
         self.detail.setPlaceholderText(t["report.audit.pick"])
         filters = _filters(
             labeled(t["report.filter.from"], self.first),
@@ -404,12 +406,36 @@ class AuditTab(ReportView):
             self.detail.clear()
             return
         entry = self.entries[index]
-        row = self.report.rows[index]
-        heading = t["report.audit.heading"].format(
-            action=row[2], entity=row[3], user=row[1],
-            when=display("datetime", entry.created_at))
-        self.detail.setPlainText("\n".join(
-            [heading] + reports.audit_lines(self._conn, self._ctx, entry)))
+        _when, user, action, item, _summary = self.report.rows[index]
+        self.detail.setHtml(detail_html(
+            t["report.audit.by"].format(action=action, user=user) if entry.user
+            else t["report.audit.by_app"].format(action=action),
+            t["report.audit.when"].format(date=display("date", entry.created_at),
+                                          time=entry.created_at[11:16], item=item),
+            reports.audit_fields(self._conn, self._ctx, entry)))
+
+
+def detail_html(title: str, meta: str, fields) -> str:
+    """The selected Journal entry as a small card: a title in bold (« Paiement annulé par
+    directeur »), when and on what in grey, then each value on its own row, a changed one
+    as « avant → après » with the new value in bold."""
+    colors = tokens()
+    rows = []
+    for f in fields:
+        if f.before is not None:
+            value = (f'<span style="color:{colors["muted"]}">{escape(f.before)}</span>'
+                     f'&nbsp;&nbsp;→&nbsp;&nbsp;<b>{escape(f.value)}</b>')
+        else:
+            value = escape(f.value)
+        rows.append(f'<tr><td style="color:{colors["muted"]}; padding:3px 28px 3px 0">'
+                    f'{escape(f.label)}</td><td style="padding:3px 0">{value}</td></tr>')
+    body = (f'<table cellspacing="0" cellpadding="0" style="margin-top:10px">'
+            f'{"".join(rows)}</table>' if rows else
+            f'<p style="color:{colors["muted"]}; margin-top:10px">'
+            f'{escape(t["report.audit.nothing"])}</p>')
+    return (f'<div style="font-size:15px; font-weight:600">{escape(title)}</div>'
+            f'<div style="color:{colors["muted"]}; margin-top:2px">{escape(meta)}</div>'
+            f'{body}')
 
 
 # (key, tab label, permissions needed, tab class)

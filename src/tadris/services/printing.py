@@ -22,12 +22,15 @@ from tadris.documents.attendance_sheet import (
 from tadris.documents.payout_slip import PayoutSlip, build_payout_slip
 from tadris.documents.pdf import Footer, School
 from tadris.documents.receipt import ReceiptDoc, build_receipt
-from tadris.domain.models import ATTENDANCE_STATUSES
+from tadris.documents.report_pdf import ReportDoc, build_report
+from tadris.documents.report_xlsx import build_report_xlsx
+from tadris.domain.models import ATTENDANCE_STATUSES, ReportTable
 from tadris.i18n.fr import t
 from tadris.repositories import payments as payments_repo
 from tadris.repositories import print_log
 from tadris.services import (
     attendance,
+    audit,
     debt,
     groups,
     payments,
@@ -304,3 +307,35 @@ def payout_slip_content(conn, ctx: UserContext, payout_id: int) -> PayoutSlip:
         detail_rows=detail_rows, note=t["payout_slip.note"],
         stamp=t[f"payout_stamp.{p.status}"], stamp_date=dates.display_date(stamp_day),
         signature=t["payout_slip.signature"], footer=_footer(ctx))
+
+
+# ----- reports -----
+
+def _report_file(report: ReportTable, extension: str, out_dir: Path | None) -> Path:
+    stamp = f"{dates.iso(dates.today())}_{datetime.now():%H%M%S}"
+    return (out_dir or config.documents_dir()) / f"rapport_{report.key}_{stamp}.{extension}"
+
+
+def _log_export(conn, ctx: UserContext, report: ReportTable, extension: str) -> None:
+    """Reports have no id for print_log: an export goes to the audit log (a student list
+    or the audit log leaving the app is worth knowing)."""
+    with atomic(conn):
+        audit.log(conn, ctx, "report.export", "reports", None,
+                  new={"report": report.key, "format": extension, "rows": len(report.rows),
+                       "period": report.period})
+
+
+def report_pdf(conn, ctx: UserContext, report: ReportTable, out_dir: Path | None = None) -> Path:
+    require(ctx, "print.document")
+    path = build_report(ReportDoc(school=_school(conn), table=report, footer=_footer(ctx)),
+                        _report_file(report, "pdf", out_dir))
+    _log_export(conn, ctx, report, "pdf")
+    return path
+
+
+def report_xlsx(conn, ctx: UserContext, report: ReportTable,
+                out_dir: Path | None = None) -> Path:
+    require(ctx, "print.document")
+    path = build_report_xlsx(report, _school(conn).name, _report_file(report, "xlsx", out_dir))
+    _log_export(conn, ctx, report, "xlsx")
+    return path

@@ -42,6 +42,7 @@ ACTIONS: dict[str, frozenset[str]] = {
     "teacher.view": BOTH,
     "teacher.manage": DIRECTOR_ONLY,
     "report.view": BOTH,
+    "report.finance": DIRECTOR_ONLY,  # revenue, teacher summary, the dashboard's money
     "sms.view": BOTH,
     "sms.manage": DIRECTOR_ONLY,
     "settings.view": DIRECTOR_ONLY,

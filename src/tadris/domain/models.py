@@ -754,3 +754,103 @@ class Backup:
     created_at: str
     completed_at: str | None
     verified_at: str | None
+
+
+# ----- reports and dashboard -----
+
+# How a report column's raw values are shown: 'text' (str), 'number' (int), 'money' (int DA),
+# 'percent' (int basis points, 6000 = 60 %), 'date' ('YYYY-MM-DD'), 'datetime'
+# ('YYYY-MM-DDTHH:MM:SS'). None shows as « — ».
+REPORT_KINDS = ("text", "number", "money", "percent", "date", "datetime")
+
+
+@dataclass(frozen=True)
+class ReportColumn:
+    label: str
+    kind: str = "text"
+
+
+@dataclass(frozen=True)
+class ReportTable:
+    """One report as rows of raw values: the screen, the PDF and the Excel file all show this,
+    so their totals cannot differ."""
+
+    key: str  # 'revenue_month', 'debtors_age', ...: the file name
+    title: str
+    period: str  # « Année 2026-2027 », « Du 01/10/2026 au 18/10/2026 »
+    columns: tuple[ReportColumn, ...]
+    rows: tuple[tuple, ...]
+    total: tuple | None = None  # same length as columns; the first cell is its label
+    note: str = ""
+    row_ids: tuple[int | None, ...] = ()  # a student id per row, when a row opens one
+
+
+@dataclass(frozen=True)
+class DashboardSession:
+    id: int
+    start_time: str
+    end_time: str
+    group_title: str
+    room: str
+    teacher: str
+    status: str
+
+
+@dataclass(frozen=True)
+class GroupFill:
+    group_id: int
+    title: str
+    enrolled: int
+    seats: int
+
+    @property
+    def rate_bp(self) -> int:
+        return self.enrolled * 10000 // self.seats if self.seats else 0
+
+
+@dataclass(frozen=True)
+class Dashboard:
+    today: str
+    now: str  # 'HH:MM'
+    sessions: tuple[DashboardSession, ...]  # today's, cancelled ones included
+    ending: tuple[Subscription, ...]  # months ending within 7 days
+    lapsed: int  # months over and not renewed
+    debt_total: int  # late, after credit, every student
+    debtors: int
+    top_debtors: tuple[Debtor, ...]
+    groups: tuple[GroupFill, ...]  # running groups, fullest first
+    # This month's money; None when the user may not see it (receptionist).
+    charged: int | None = None  # months and fees starting this month
+    settled: int | None = None  # paid on those
+    collected: int | None = None  # payments received this month, not voided
+    refunded: int | None = None  # handed back this month
+
+    @property
+    def sessions_left(self) -> tuple[DashboardSession, ...]:
+        """Still to come today (or under way), not cancelled."""
+        return tuple(s for s in self.sessions
+                     if s.status != "cancelled" and s.end_time > self.now)
+
+    @property
+    def sessions_held(self) -> int:
+        return sum(1 for s in self.sessions if s.status != "cancelled")
+
+    @property
+    def seats(self) -> int:
+        return sum(g.seats for g in self.groups)
+
+    @property
+    def enrolled(self) -> int:
+        return sum(g.enrolled for g in self.groups)
+
+
+@dataclass(frozen=True)
+class AuditEntry:
+    id: int
+    created_at: str
+    user: str | None  # None: the app itself
+    action: str
+    entity_name: str
+    entity_id: int | None
+    old_value: str | None
+    new_value: str | None

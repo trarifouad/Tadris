@@ -1,0 +1,479 @@
+"""Rapports (sidebar): one tab per report, each with its filters, the table, its total and
+« PDF » / « Excel ». The tabs follow the user's rights; money and the audit log are the
+director's. A double-click on a student row opens the student."""
+
+import json
+from datetime import date, timedelta
+
+from PySide6.QtCore import Signal
+from PySide6.QtGui import QFont
+from PySide6.QtWidgets import (
+    QComboBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPlainTextEdit,
+    QPushButton,
+    QTabWidget,
+    QVBoxLayout,
+    QWidget,
+)
+
+from tadris.core import dates
+from tadris.core.cells import display
+from tadris.core.context import UserContext
+from tadris.core.errors import BusinessRuleError, ValidationError
+from tadris.core.permissions import allowed
+from tadris.domain.models import AuditEntry, ReportTable
+from tadris.i18n.fr import t
+from tadris.services import groups, printing, reports, school_years
+from tadris.ui.widgets import common
+from tadris.ui.widgets.common import PageBanner, labeled, toast
+from tadris.ui.widgets.date_edit import DateLineEdit
+from tadris.ui.widgets.forms import caption, padded
+from tadris.ui.widgets.inputs import fill_combo, id_combo
+from tadris.ui.widgets.tables import ID_ROLE, LEFT, RIGHT, fill, fit_columns, item, ruled_table
+
+NUMERIC = ("number", "money", "percent")
+MONO = ("number", "money", "percent", "date", "datetime")
+
+
+class ReportView(QWidget):
+    """A report on screen: period, table with its total row, note, and the exports.
+    load() returns the ReportTable to show; a BusinessRuleError shows in the banner."""
+
+    open_student = Signal(int)
+    row_selected = Signal(int)  # the row's index, -1 for none (or the total)
+
+    def __init__(self, conn, ctx: UserContext, load, filters: QHBoxLayout | None = None,
+                 stretch: tuple[int, ...] | None = None):
+        super().__init__()
+        self._stretch = stretch
+        self._conn = conn
+        self._ctx = ctx
+        self._load = load
+        self.report: ReportTable | None = None
+        self.banner = PageBanner()
+        self.period = QLabel()
+        self.period.setObjectName("sectionTitle")
+        self.pdf = QPushButton(t["report.pdf"])
+        self.excel = QPushButton(t["report.excel"])
+        for button in (self.pdf, self.excel):
+            button.setAutoDefault(False)
+        self.pdf.clicked.connect(lambda: self.export("pdf"))
+        self.excel.clicked.connect(lambda: self.export("xlsx"))
+        toolbar = QHBoxLayout()
+        toolbar.setSpacing(8)
+        toolbar.addWidget(self.period)
+        toolbar.addStretch()
+        toolbar.addWidget(self.pdf)
+        toolbar.addWidget(self.excel)
+        self.table = ruled_table([])
+        self.table.activated.connect(self._activated)
+        self.table.itemSelectionChanged.connect(self._selected)
+        self.empty = QLabel(t["report.empty"])
+        self.empty.setObjectName("emptyState")
+        self.empty.setWordWrap(True)
+        self.note = caption()
+        self.note.setWordWrap(True)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(10)
+        if filters is not None:
+            layout.addLayout(filters)
+        layout.addWidget(self.banner)
+        layout.addLayout(toolbar)
+        layout.addWidget(self.table, 1)
+        layout.addWidget(self.empty)
+        layout.addWidget(self.note)
+
+    def refresh(self) -> None:
+        try:
+            report = self._load()
+        except BusinessRuleError as exc:
+            self.banner.show_error(exc.message)
+            return
+        self.banner.clear_error()
+        self.show_report(report)
+
+    def show_report(self, report: ReportTable) -> None:
+        self.report = report
+        self.period.setText(report.period)
+        self.table.setColumnCount(len(report.columns))
+        self.table.setHorizontalHeaderLabels([c.label for c in report.columns])
+        rows = [self._cells(values, report.row_ids[i] if report.row_ids else None)
+                for i, values in enumerate(report.rows)]
+        if report.total is not None:
+            rows.append(self._cells(report.total, None, bold=True))
+        fill(self.table, rows)
+        # The others fit their content; by default the first text column takes the rest.
+        fit_columns(self.table, stretch=self._stretch or (next(
+            (i for i, c in enumerate(report.columns) if c.kind == "text"), 0),))
+        for index, column in enumerate(report.columns):
+            align = RIGHT if column.kind in NUMERIC else LEFT
+            self.table.horizontalHeaderItem(index).setTextAlignment(align)
+        self.table.setVisible(bool(report.rows))
+        self.empty.setVisible(not report.rows)
+        self.note.setText(report.note)
+        self.note.setVisible(bool(report.note))
+        self.pdf.setEnabled(allowed(self._ctx, "print.document"))
+        self.excel.setEnabled(allowed(self._ctx, "print.document"))
+
+    def _cells(self, values: tuple, row_id: int | None, bold: bool = False) -> list:
+        out = []
+        for index, (column, value) in enumerate(zip(self.report.columns, values, strict=True)):
+            text = "" if bold and value is None else display(column.kind, value)
+            cell = item(text, align=RIGHT if column.kind in NUMERIC else LEFT,
+                        mono=column.kind in MONO, item_id=row_id if index == 0 else None)
+            if bold:
+                font = cell.font()
+                font.setWeight(QFont.Weight.DemiBold)
+                cell.setFont(font)
+            out.append(cell)
+        return out
+
+    def rows_shown(self) -> list[list[str]]:
+        return [[self.table.item(r, c).text() for c in range(self.table.columnCount())]
+                for r in range(self.table.rowCount())]
+
+    def export(self, extension: str):
+        if self.report is None:
+            return None
+        build = printing.report_pdf if extension == "pdf" else printing.report_xlsx
+        try:
+            path = build(self._conn, self._ctx, self.report)
+        except (BusinessRuleError, OSError) as exc:
+            self.banner.show_error(getattr(exc, "message", str(exc)))
+            return None
+        common.open_document(path)
+        toast(self, t["report.exported"].format(file=path.name))
+        return path
+
+    def _row(self) -> int:
+        rows = self.table.selectionModel().selectedRows()
+        if not rows or self.report is None or rows[0].row() >= len(self.report.rows):
+            return -1
+        return rows[0].row()
+
+    def _selected(self) -> None:
+        self.row_selected.emit(self._row())
+
+    def _activated(self, index) -> None:
+        student_id = self.table.item(index.row(), 0).data(ID_ROLE)
+        if student_id is not None:
+            self.open_student.emit(student_id)
+
+
+def _filters(*widgets: QWidget) -> QHBoxLayout:
+    row = QHBoxLayout()
+    row.setSpacing(12)
+    for widget in widgets:
+        row.addWidget(widget, 1)
+    row.addStretch(max(1, 5 - len(widgets)))
+    return row
+
+
+def _choices(items: list[tuple[str, object]], selected=None) -> QComboBox:
+    combo = QComboBox()
+    combo.blockSignals(True)
+    for label, value in items:
+        combo.addItem(label, value)
+    if selected is not None:
+        combo.setCurrentIndex(max(combo.findData(selected), 0))
+    combo.blockSignals(False)
+    return combo
+
+
+def _date_field(value: date) -> DateLineEdit:
+    field = DateLineEdit()
+    field.set_value(value)
+    return field
+
+
+def _read_range(first: DateLineEdit, last: DateLineEdit) -> tuple[date, date]:
+    start, end = first.value(), last.value()
+    if start is None or end is None:
+        raise ValidationError(t["date.invalid"])
+    return start, end
+
+
+class YearFilter:
+    """The school years, the open one first selected."""
+
+    def __init__(self, conn, ctx: UserContext):
+        years = school_years.list_years(conn, ctx)
+        current = school_years.current(conn, ctx)
+        self.combo = id_combo([(y.label, y.id) for y in years],
+                              current.id if current else None)
+
+    def value(self) -> int:
+        if self.combo.currentData() is None:
+            raise ValidationError(t["report.no_year"])
+        return self.combo.currentData()
+
+
+def _group_items(conn, ctx: UserContext, label_key: str) -> list[tuple[str, int | None]]:
+    return [(t[label_key], None)] + [(g.title, g.id) for g in groups.search(conn, ctx)
+                                     if g.status != "closed"]
+
+
+# ----- the tabs -----
+
+class RevenueTab(ReportView):
+    def __init__(self, conn, ctx: UserContext):
+        self.year = YearFilter(conn, ctx)
+        self.view = _choices([(t["report.view.month"], "month"),
+                              (t["report.view.group"], "group")])
+        self.month = QComboBox()
+        self.month_box = labeled(t["report.filter.month"], self.month)
+        super().__init__(conn, ctx, self._report, _filters(
+            labeled(t["report.filter.year"], self.year.combo),
+            labeled(t["report.filter.view"], self.view), self.month_box))
+        self.year.combo.currentIndexChanged.connect(lambda _i: self._year_changed())
+        self.view.currentIndexChanged.connect(lambda _i: self.refresh())
+        self.month.currentIndexChanged.connect(lambda _i: self.refresh())
+        self._year_changed()
+
+    def _year_changed(self) -> None:
+        months: list[tuple[str, object]] = [(t["report.whole_year"], None)]
+        year_id = self.year.combo.currentData()
+        if year_id is not None:
+            year = school_years.get(self._conn, self._ctx, year_id)
+            # ISO text, not a date: Qt would hand a QDate back.
+            months += [(reports.month_label(m), dates.iso(m)) for m in reports.year_months(
+                date.fromisoformat(year.start_date), date.fromisoformat(year.end_date))]
+        self.month.blockSignals(True)
+        self.month.clear()
+        for label, value in months:
+            self.month.addItem(label, value)
+        self.month.blockSignals(False)
+        self.refresh()
+
+    def _report(self) -> ReportTable:
+        by_group = self.view.currentData() == "group"
+        self.month_box.setVisible(by_group)
+        if by_group:
+            month = self.month.currentData()
+            return reports.revenue_by_group(self._conn, self._ctx, self.year.value(),
+                                            date.fromisoformat(month) if month else None)
+        return reports.revenue_by_month(self._conn, self._ctx, self.year.value())
+
+
+class DebtorsTab(ReportView):
+    def __init__(self, conn, ctx: UserContext):
+        self.group = id_combo(_group_items(conn, ctx, "report.all_groups"))
+        super().__init__(conn, ctx, lambda: reports.debtors_by_age(
+            self._conn, self._ctx, self.group.currentData()),
+            _filters(labeled(t["report.filter.group"], self.group)))
+        self.group.currentIndexChanged.connect(lambda _i: self.refresh())
+
+    def load_filters(self) -> None:
+        fill_combo(self.group, _group_items(self._conn, self._ctx, "report.all_groups"),
+                   self.group.currentData())
+
+
+class AttendanceTab(ReportView):
+    def __init__(self, conn, ctx: UserContext):
+        today = dates.today()
+        self.first = _date_field(today.replace(day=1))
+        self.last = _date_field(today)
+        self.view = _choices([(t["report.view.group"], "group"),
+                              (t["report.view.student"], "student")])
+        self.group = id_combo(_group_items(conn, ctx, "report.all_groups"))
+        self.group_box = labeled(t["report.filter.group"], self.group)
+        super().__init__(conn, ctx, self._report, _filters(
+            labeled(t["report.filter.from"], self.first),
+            labeled(t["report.filter.to"], self.last),
+            labeled(t["report.filter.view"], self.view), self.group_box))
+        for field in (self.first, self.last):
+            field.textChanged.connect(lambda _text: self._dates_changed())
+        self.view.currentIndexChanged.connect(lambda _i: self.refresh())
+        self.group.currentIndexChanged.connect(lambda _i: self.refresh())
+
+    def _dates_changed(self) -> None:
+        if self.first.value() is not None and self.last.value() is not None:
+            self.refresh()
+
+    def load_filters(self) -> None:
+        fill_combo(self.group, _group_items(self._conn, self._ctx, "report.all_groups"),
+                   self.group.currentData())
+
+    def _report(self) -> ReportTable:
+        first, last = _read_range(self.first, self.last)
+        by_student = self.view.currentData() == "student"
+        self.group_box.setVisible(by_student)
+        if by_student:
+            return reports.attendance_by_student(self._conn, self._ctx, first, last,
+                                                 self.group.currentData())
+        return reports.attendance_by_group(self._conn, self._ctx, first, last)
+
+
+class TeachersTab(ReportView):
+    def __init__(self, conn, ctx: UserContext):
+        self.year = YearFilter(conn, ctx)
+        super().__init__(conn, ctx, lambda: reports.teachers_summary(
+            self._conn, self._ctx, self.year.value()),
+            _filters(labeled(t["report.filter.year"], self.year.combo)))
+        self.year.combo.currentIndexChanged.connect(lambda _i: self.refresh())
+
+
+class StudentsTab(ReportView):
+    def __init__(self, conn, ctx: UserContext):
+        self.status = _choices([(t["report.status.active"], "active"),
+                                (t["report.status.inactive"], "inactive"),
+                                (t["report.status.all"], None)])
+        self.group = id_combo(_group_items(conn, ctx, "report.all_groups"))
+        super().__init__(conn, ctx, lambda: reports.student_list(
+            self._conn, self._ctx, self.status.currentData(), self.group.currentData()),
+            _filters(labeled(t["report.filter.status"], self.status),
+                     labeled(t["report.filter.group"], self.group)), stretch=(5,))
+        self.status.currentIndexChanged.connect(lambda _i: self.refresh())
+        self.group.currentIndexChanged.connect(lambda _i: self.refresh())
+
+    def load_filters(self) -> None:
+        fill_combo(self.group, _group_items(self._conn, self._ctx, "report.all_groups"),
+                   self.group.currentData())
+
+
+SYSTEM = -1  # the user filter's « Système » choice
+
+
+class AuditTab(ReportView):
+    """The audit log: filters, the entries (latest first) and, under them, what the selected
+    entry recorded."""
+
+    def __init__(self, conn, ctx: UserContext):
+        today = dates.today()
+        self.first = _date_field(today - timedelta(days=7))
+        self.last = _date_field(today)
+        self.user = QComboBox()
+        self.family = QComboBox()
+        self.entity = QLineEdit()
+        self.entity.setPlaceholderText(t["report.filter.any"])
+        self.entries: list[AuditEntry] = []
+        self.detail = QPlainTextEdit()
+        self.detail.setReadOnly(True)
+        self.detail.setMaximumHeight(130)
+        self.detail.setPlaceholderText(t["report.audit.pick"])
+        super().__init__(conn, ctx, self._report, _filters(
+            labeled(t["report.filter.from"], self.first),
+            labeled(t["report.filter.to"], self.last),
+            labeled(t["report.filter.user"], self.user),
+            labeled(t["report.filter.family"], self.family),
+            labeled(t["report.filter.entity"], self.entity)), stretch=(5,))
+        self.layout().addWidget(self.detail)
+        self.load_filters()
+        for field in (self.first, self.last):
+            field.textChanged.connect(lambda _text: self._dates_changed())
+        self.user.currentIndexChanged.connect(lambda _i: self.refresh())
+        self.family.currentIndexChanged.connect(lambda _i: self.refresh())
+        self.entity.editingFinished.connect(self.refresh)
+        self.row_selected.connect(self._show_detail)
+
+    def load_filters(self) -> None:
+        fill_combo(self.user, [(t["report.all_users"], None), (t["audit.system"], SYSTEM)]
+                   + [(name, user_id) for user_id, name
+                      in reports.audit_users(self._conn, self._ctx)],
+                   self.user.currentData())
+        self.family.blockSignals(True)
+        chosen = self.family.currentData()
+        self.family.clear()
+        self.family.addItem(t["report.all_families"], None)
+        for family in sorted(reports.audit_families(self._conn, self._ctx),
+                             key=lambda f: reports.family_label(f).casefold()):
+            self.family.addItem(reports.family_label(family), family)
+        self.family.setCurrentIndex(max(self.family.findData(chosen), 0))
+        self.family.blockSignals(False)
+
+    def _dates_changed(self) -> None:
+        if self.first.value() is not None and self.last.value() is not None:
+            self.refresh()
+
+    def _report(self) -> ReportTable:
+        first, last = _read_range(self.first, self.last)
+        text = self.entity.text().strip()
+        if text and not text.isdigit():
+            raise ValidationError(t["report.entity_invalid"])
+        user = self.user.currentData()
+        self.entries = reports.audit_log(
+            self._conn, self._ctx, first, last,
+            user_id=None if user in (None, SYSTEM) else user, system_only=user == SYSTEM,
+            family=self.family.currentData(), entity_id=int(text) if text else None)
+        self.detail.clear()
+        return reports.audit_table(self.entries, first, last)
+
+    def _show_detail(self, index: int) -> None:
+        if index < 0 or index >= len(self.entries):
+            self.detail.clear()
+            return
+        entry = self.entries[index]
+        lines = [t["report.audit.heading"].format(
+            action=entry.action, entity=entry.entity_name,
+            id=entry.entity_id if entry.entity_id is not None else "—",
+            user=entry.user or t["audit.system"],
+            when=display("datetime", entry.created_at))]
+        for key, value in ((t["report.audit.old"], entry.old_value),
+                           (t["report.audit.new"], entry.new_value)):
+            if value:
+                lines.append(f"{key} {_pretty(value)}")
+        self.detail.setPlainText("\n".join(lines))
+
+
+def _pretty(value: str) -> str:
+    try:
+        return json.dumps(json.loads(value), ensure_ascii=False, indent=1)
+    except ValueError:
+        return value
+
+
+# (key, tab label, permissions needed, tab class)
+TABS = (
+    ("revenue", "report.tab.revenue", ("report.finance",), RevenueTab),
+    ("debtors", "report.tab.debtors", ("payment.record",), DebtorsTab),
+    ("attendance", "report.tab.attendance", ("session.view",), AttendanceTab),
+    ("teachers", "report.tab.teachers", ("report.finance", "payout.view"), TeachersTab),
+    ("students", "report.tab.students", ("student.view",), StudentsTab),
+    ("audit", "report.tab.audit", ("audit.view",), AuditTab),
+)
+
+
+class ReportsPage(QWidget):
+    open_student = Signal(int)
+
+    def __init__(self, conn, ctx: UserContext):
+        super().__init__()
+        self.setObjectName("page")
+        title = QLabel(t["reports_page.title"])
+        title.setObjectName("pageTitle")
+        intro = QLabel(t["reports_page.caption"])
+        intro.setObjectName("caption")
+        intro.setWordWrap(True)
+        self.tabs = QTabWidget()
+        self.tabs.setDocumentMode(True)
+        self.views: dict[str, ReportView] = {}
+        for key, label, rights, view_class in TABS:
+            if all(allowed(ctx, right) for right in rights):
+                view = view_class(conn, ctx)
+                view.open_student.connect(self.open_student.emit)
+                self.views[key] = view
+                self.tabs.addTab(padded(view), t[label])
+        self.tabs.currentChanged.connect(lambda _i: self.refresh())
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 20, 24, 24)
+        layout.setSpacing(12)
+        layout.addWidget(title)
+        layout.addWidget(intro)
+        layout.addWidget(self.tabs, 1)
+        self.refresh()
+
+    def _current(self) -> ReportView:
+        return list(self.views.values())[self.tabs.currentIndex()]
+
+    def refresh(self) -> None:
+        """Only the tab on screen loads; the others load when chosen."""
+        if not self.views:
+            return
+        view = self._current()
+        if hasattr(view, "load_filters"):
+            view.load_filters()
+        view.refresh()

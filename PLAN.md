@@ -597,6 +597,8 @@ Add a `holidays` table or a settings JSON list in this phase. Decide which and a
 
 **Time:** 1 week. The basic backup (tasks 1 and 2) is done right after phase 7.
 
+**Basic backup: done** (after phase 9, before phase 10). No schema change (the 0001 `backups` table). Service `backup` and repository `backups`: a copy with SQLite's online backup API, written as `.part` then renamed, switched to a single self-contained file; sha256 and size recorded; verified (read-only open, `PRAGMA integrity_check`, checksum) to `verified`, else `failed` with a `backup.failed` audit entry. Taken once a day at start (and by an hourly timer if the app stays open past midnight), on close, and before any migration of an existing database (if that copy fails the app stops instead of migrating). A failure warns and never blocks the desk. Backups go in `backups/` next to the database in use, so a `TADRIS_DB` test copy never mixes with the school's. 1010 tests green. Still to do in this phase: retention (task 3), a second location (4), restore (5), the settings and About screens (6, 7).
+
 ---
 
 ## Phase 13: Packaging and pilot

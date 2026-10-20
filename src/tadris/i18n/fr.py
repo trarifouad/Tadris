@@ -1422,4 +1422,15 @@ t = {
     ),
     "timetable.nothing": "Ajoutez d'abord des salles et des groupes.",
     "timetable.hint": "Double-cliquez sur une case vide pour ajouter un créneau.",
+    "backup.not_found": "Sauvegarde introuvable.",
+    "backup.failed": "La sauvegarde de la base a échoué ({path}).",
+    "backup.warning_title": "Sauvegarde",
+    "backup.warning": (
+        "{error}\n\nL'application continue, mais vos données ne sont pas sauvegardées. "
+        "Vérifiez l'espace disque et les droits du dossier, puis redémarrez l'application."
+    ),
+    "backup.before_migration": (
+        "{error}\n\nCette version doit mettre à jour la base, ce qu'elle ne fait jamais sans "
+        "copie. Vérifiez l'espace disque et les droits du dossier, puis relancez l'application."
+    ),
 }

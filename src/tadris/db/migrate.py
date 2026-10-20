@@ -10,13 +10,25 @@ def current_version(conn: sqlite3.Connection) -> int:
     return conn.execute("PRAGMA user_version").fetchone()[0]
 
 
-def migrate(conn: sqlite3.Connection) -> int:
-    files = sorted(
+def _files() -> list[tuple[int, Path]]:
+    return sorted(
         (int(m.group(1)), f)
         for f in MIGRATIONS_DIR.glob("*.sql")
         if (m := _NAME.match(f.name))
     )
-    for version, file in files:
+
+
+def latest_version() -> int:
+    return max((version for version, _ in _files()), default=0)
+
+
+def has_pending(conn: sqlite3.Connection) -> bool:
+    """An existing database (version 1 or more) that a migration is about to change."""
+    return 0 < current_version(conn) < latest_version()
+
+
+def migrate(conn: sqlite3.Connection) -> int:
+    for version, file in _files():
         if version <= current_version(conn):
             continue
         sql = file.read_text(encoding="utf-8")

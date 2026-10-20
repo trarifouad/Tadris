@@ -1,0 +1,84 @@
+import pytest
+from PySide6.QtCore import Qt
+
+from tadris.i18n.fr import t
+from tadris.services import auth
+from tadris.ui.login_dialog import LoginDialog
+from tadris.ui.theme import apply_theme, load_fonts
+
+
+@pytest.fixture(autouse=True)
+def theme(qapp):
+    load_fonts()
+    apply_theme(qapp)
+
+
+@pytest.fixture
+def director(conn):
+    return auth.bootstrap_director(conn, "directeur", "password1", "École Ennour")
+
+
+def enter(qtbot, widget):
+    qtbot.keyClick(widget, Qt.Key.Key_Return)
+
+
+# ----- login: Enter goes down the form -----
+
+@pytest.fixture
+def login(qtbot, conn, director):
+    dialog = LoginDialog(conn)
+    qtbot.addWidget(dialog)
+    dialog.show()
+    qtbot.waitExposed(dialog)
+    return dialog
+
+
+def test_enter_after_the_username_goes_to_the_password(qtbot, login):
+    qtbot.keyClicks(login.username, "directeur")
+    enter(qtbot, login.username)
+    assert login.password.hasFocus()
+    assert login.banner.isHidden()  # no « incorrect » before the password is typed
+    assert login.ctx is None and login.result() == 0
+
+
+def test_enter_after_the_password_logs_in(qtbot, login, director):
+    qtbot.keyClicks(login.username, "directeur")
+    enter(qtbot, login.username)
+    qtbot.keyClicks(login.password, "password1")
+    enter(qtbot, login.password)
+    assert login.ctx is not None and login.ctx.user_id == director.user_id
+    assert login.result() == LoginDialog.DialogCode.Accepted
+
+
+def test_a_wrong_password_after_enter_shows_the_banner(qtbot, login):
+    qtbot.keyClicks(login.username, "directeur")
+    enter(qtbot, login.username)
+    qtbot.keyClicks(login.password, "wrong-pass")
+    enter(qtbot, login.password)
+    assert login.banner.text() == t["auth.invalid"]
+    assert login.password.hasFocus() and login.password.text() == ""
+
+
+def test_enter_with_an_empty_field_never_tries(qtbot, login):
+    enter(qtbot, login.username)  # nothing typed yet
+    assert login.password.hasFocus() and login.banner.isHidden()
+    enter(qtbot, login.password)  # still nothing: back to the username
+    assert login.username.hasFocus() and login.banner.isHidden()
+    qtbot.keyClicks(login.username, "directeur")
+    login.password.setFocus()
+    enter(qtbot, login.password)  # no password: nothing happens
+    assert login.banner.isHidden() and login.ctx is None
+
+
+def test_enter_in_the_username_when_both_are_filled_logs_in(qtbot, login):
+    login.password.setText("password1")
+    qtbot.keyClicks(login.username, "directeur")
+    enter(qtbot, login.username)
+    assert login.ctx is not None
+
+
+def test_the_button_still_logs_in(qtbot, login):
+    login.username.setText("directeur")
+    login.password.setText("password1")
+    qtbot.mouseClick(login.submit, Qt.MouseButton.LeftButton)
+    assert login.ctx is not None

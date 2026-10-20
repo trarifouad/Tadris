@@ -6,6 +6,9 @@ It is read at a glance, so the page never scrolls and no list scrolls either: ea
 shows as many rows as the window leaves room for (the two panels of a column share it) and
 « Voir les N » says how many there are when some are left out."""
 
+from collections.abc import Callable
+from functools import partial
+
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractScrollArea,
@@ -92,9 +95,12 @@ class Panel(QFrame):
         layout.setContentsMargins(16, 10, 16, 12)
         layout.addWidget(self.list)
 
-    def set_rows(self, rows: list, total: int | None = None) -> None:
-        """total: how many there are when `rows` is already a top few (the debtors). Shows
-        them all until the page says how many fit (show_rows())."""
+    def set_rows(self, rows: list[Callable[[], list]], total: int | None = None) -> None:
+        """rows: one function per row that makes its cells. The table owns (and deletes)
+        the cells it shows, so each redraw makes new ones; reusing or cloning cells across
+        redraws corrupts memory in PySide6. total: how many there are when `rows` is already
+        a top few (the debtors). Shows them all until the page says how many fit
+        (show_rows())."""
         self._rows = rows
         self._total = len(rows) if total is None else total
         self._stale = True
@@ -123,8 +129,7 @@ class Panel(QFrame):
             return  # a resize that changes nothing here: the table is not rebuilt
         self._stale = False
         self.shown = rows
-        # Copies: the table deletes the cells it drops, and the panel shows them again later.
-        self.list.set_rows([[cell.clone() for cell in row] for row in self._rows[:self.shown]])
+        self.list.set_rows([make() for make in self._rows[:self.shown]])
         # Exactly the rows shown, but no minimum beyond one row: a fixed height would hold the
         # window up when it gets smaller, before fit_rows() takes rows away.
         table = self.list.table
@@ -278,29 +283,46 @@ class DashboardPage(QWidget):
         self.fill_card.set(format_percent(fill // 100 * 100), t["dashboard.card.fill_detail"].format(
             enrolled=board.enrolled, seats=board.seats))
 
-        self.sessions.set_rows([[
-            item(f"{s.start_time}–{s.end_time}", s.start_time, item_id=s.id, align=CENTER,
-                 mono=True),
-            item(s.group_title), item(s.room), item(s.teacher),
-            item(t[f"session_status.{s.status}"], kind=kind_for("session", s.status)),
-        ] for s in board.sessions])
-        self.ending.set_rows([[
-            item(m.student_name, item_id=m.student_id), item(m.group_title),
-            item(period_text(m.start_date, m.end_date)),
-            item(format_dzd(m.due), align=RIGHT, mono=True,
-                 tone="danger" if m.due else None),
-        ] for m in board.ending])
-        self.debtors.set_rows([[
-            item(d.student_name, item_id=d.student_id),
-            item(format_dzd(d.owed_now), align=RIGHT, mono=True, tone="danger"),
-            item(t["dashboard.days"].format(days=d.days_overdue), align=RIGHT),
-        ] for d in board.top_debtors], total=board.debtors)
-        self.groups.set_rows([[
-            item(g.title, item_id=g.group_id),
-            item(str(g.enrolled), align=RIGHT, mono=True),
-            item(str(g.seats), align=RIGHT, mono=True),
-            item(format_percent(g.rate_bp // 100 * 100), align=RIGHT, mono=True,
-                 tone="success" if g.rate_bp >= 10000 else None),
-        ] for g in board.groups])
+        self.sessions.set_rows([partial(session_cells, x) for x in board.sessions])
+        self.ending.set_rows([partial(ending_cells, x) for x in board.ending])
+        self.debtors.set_rows([partial(debtor_cells, x) for x in board.top_debtors],
+                              total=board.debtors)
+        self.groups.set_rows([partial(group_cells, x) for x in board.groups])
         self.fit_rows()
 
+
+# ----- the cells of each list (made anew each time a list is drawn) -----
+
+def session_cells(s) -> list:
+    return [
+        item(f"{s.start_time}–{s.end_time}", s.start_time, item_id=s.id, align=CENTER,
+             mono=True),
+        item(s.group_title), item(s.room), item(s.teacher),
+        item(t[f"session_status.{s.status}"], kind=kind_for("session", s.status)),
+    ]
+
+
+def ending_cells(m) -> list:
+    return [
+        item(m.student_name, item_id=m.student_id), item(m.group_title),
+        item(period_text(m.start_date, m.end_date)),
+        item(format_dzd(m.due), align=RIGHT, mono=True, tone="danger" if m.due else None),
+    ]
+
+
+def debtor_cells(d) -> list:
+    return [
+        item(d.student_name, item_id=d.student_id),
+        item(format_dzd(d.owed_now), align=RIGHT, mono=True, tone="danger"),
+        item(t["dashboard.days"].format(days=d.days_overdue), align=RIGHT),
+    ]
+
+
+def group_cells(g) -> list:
+    return [
+        item(g.title, item_id=g.group_id),
+        item(str(g.enrolled), align=RIGHT, mono=True),
+        item(str(g.seats), align=RIGHT, mono=True),
+        item(format_percent(g.rate_bp // 100 * 100), align=RIGHT, mono=True,
+             tone="success" if g.rate_bp >= 10000 else None),
+    ]

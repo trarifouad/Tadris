@@ -17,9 +17,21 @@ FORMATS = {
     "date": "DD/MM/YYYY",
     "datetime": "DD/MM/YYYY HH:MM",
 }
-WIDTHS = {"text": 28, "number": 10, "money": 15, "percent": 10, "date": 12, "datetime": 17}
+WIDTHS = {"number": 10, "money": 15, "percent": 10, "date": 12, "datetime": 17}
+TEXT_MIN, TEXT_MAX = 10, 70  # characters: a longer text wraps inside its cell
 HEADER_ROW = 4
 SHEET_TITLE_MAX = 31  # Excel's limit
+
+
+def _width(report: ReportTable, index: int) -> float:
+    """Text columns as wide as their longest value (or header), up to TEXT_MAX."""
+    column = report.columns[index]
+    if column.kind != "text":
+        return WIDTHS[column.kind]
+    rows = list(report.rows) + ([report.total] if report.total is not None else [])
+    longest = max([len(column.label)] + [len(str(row[index])) for row in rows
+                                         if row[index] is not None])
+    return min(max(longest + 2, TEXT_MIN), TEXT_MAX)
 
 
 def build_report_xlsx(report: ReportTable, school: str, path: Path) -> Path:
@@ -38,12 +50,18 @@ def build_report_xlsx(report: ReportTable, school: str, path: Path) -> Path:
         cell.fill = shade
         cell.alignment = Alignment(horizontal="left" if column.kind == "text" else "right",
                                    wrap_text=True)
-        sheet.column_dimensions[get_column_letter(index)].width = WIDTHS[column.kind]
+        sheet.column_dimensions[get_column_letter(index)].width = _width(report, index - 1)
 
     def write(row_index: int, values: tuple, bold: bool = False) -> None:
         for index, (column, value) in enumerate(zip(report.columns, values, strict=True),
                                                 start=1):
             cell = sheet.cell(row=row_index, column=index, value=excel_value(column.kind, value))
+            if isinstance(cell.value, str):
+                # Typed text stays text: « =… » would otherwise be an Excel formula, run on
+                # the director's computer.
+                cell.data_type = "s"
+                if len(cell.value) > TEXT_MAX:
+                    cell.alignment = Alignment(wrap_text=True, vertical="top")
             if column.kind in FORMATS:
                 cell.number_format = FORMATS[column.kind]
             if bold:

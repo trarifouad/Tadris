@@ -337,3 +337,31 @@ def test_redrawing_the_dashboard_many_times_is_safe(qtbot, conn, director):
         window.nav_buttons["students"].click()
         window.nav_buttons["dashboard"].click()
     assert dashboard.sessions.list.table.rowCount() == dashboard.sessions.shown
+
+
+def test_every_tab_exports_pdf_and_excel(qtbot, conn, director, school, documents):
+    """Each tab, each view: the PDF and the Excel file are written, open, and hold the rows
+    on screen."""
+    page = ReportsPage(conn, director)
+    qtbot.addWidget(page)
+    variants = [("revenue", None), ("revenue", ("view", "group")), ("debtors", None),
+                ("attendance", None), ("attendance", ("view", "student")),
+                ("teachers", None), ("students", None), ("audit", None)]
+    keys = list(page.views)
+    for key, change in variants:
+        page.tabs.setCurrentIndex(keys.index(key))
+        view = page.views[key]
+        if key == "audit":
+            view.first.set_value(date(2020, 1, 1))
+        if change is not None:
+            combo = getattr(view, change[0])
+            combo.setCurrentIndex(combo.findData(change[1]))
+        click(qtbot, view.pdf)
+        assert documents[-1].suffix == ".pdf" and documents[-1].read_bytes()[:4] == b"%PDF"
+        click(qtbot, view.excel)
+        sheet = load_workbook(documents[-1]).active
+        assert sheet["A1"].value == view.report.title
+        body = [row for row in sheet.iter_rows(min_row=5, max_row=4 + len(view.report.rows),
+                                               values_only=True)]
+        assert len(body) == len(view.report.rows), key
+    assert len(documents) == 2 * len(variants)

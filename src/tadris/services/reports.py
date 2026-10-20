@@ -440,7 +440,8 @@ def audit_table(conn, entries: list[AuditEntry], first: date, last: date) -> Rep
                  ReportColumn(t["report.col.entity"]), ReportColumn(t["report.col.detail"])),
         rows=tuple((e.created_at, e.user or t["audit.system"], journal.action_label(e.action),
                     journal.entity_label(e.entity_name, e.entity_id, names),
-                    journal.summary(e.old_value, e.new_value, names))
+                    # Whole: the screen elides it in its column, the PDF and Excel keep it.
+                    journal.summary(e.old_value, e.new_value, names, width=None))
                    for e in entries),
         note=(t["report.audit.limit"].format(limit=AUDIT_LIMIT)
               if len(entries) >= AUDIT_LIMIT else ""))

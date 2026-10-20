@@ -28,6 +28,7 @@ HIDDEN = {"id", "charge_id", "receipt_id", "registration_id", "enrollment_id", "
           "allocation_id", "payment_id", "replaced", "conflicts",
           "chosen"}  # whether the desk picked the lines: says nothing to the director
 LISTS = {"allocations", "lines", "from"}  # shown as a count
+ZERO_SAYS_NOTHING = {"to_credit"}  # « Mis en avoir : 0 DA » on every payment
 
 
 @dataclass(frozen=True)
@@ -77,6 +78,8 @@ def _key_label(key: str) -> str:
 def _value(key: str, value, names: Names) -> str | None:
     """One recorded value in French; None when it says nothing to the reader."""
     if value is None or key in HIDDEN:
+        return None
+    if key in ZERO_SAYS_NOTHING and value == 0:
         return None
     if key in NAMES:
         return names.get(NAMES[key], value) or t["audit.number"].format(id=value)
@@ -174,7 +177,8 @@ def lines(old_raw: str | None, new_raw: str | None, names: Names,
             else f"{f.label} : {f.value}" for f in fields(old_raw, new_raw, names, skip)]
 
 
-def summary(old_raw: str | None, new_raw: str | None, names: Names, width: int = 160) -> str:
-    """The values on one line, for the table."""
+def summary(old_raw: str | None, new_raw: str | None, names: Names,
+            width: int | None = 160) -> str:
+    """The values on one line; width None keeps it whole."""
     text = " · ".join(lines(old_raw, new_raw, names))
-    return text if len(text) <= width else text[:width - 1] + "…"
+    return text if width is None or len(text) <= width else text[:width - 1] + "…"

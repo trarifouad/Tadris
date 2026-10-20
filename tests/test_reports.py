@@ -624,3 +624,89 @@ def test_journal_values():
                          '{"key": "school.name", "value": "B"}', names) == [
         "Paramètre : Nom de l'école", "Valeur : A → B"]
     assert len(journal.summary(None, json.dumps({"reason": "x" * 300}), names, 50)) == 50
+
+
+# ----- exports: layout and safety -----
+
+def _journal_like(rows: int = 3):
+    from tadris.domain.models import ReportColumn, ReportTable
+
+    return ReportTable(
+        key="journal", title="Journal", period="P",
+        columns=(ReportColumn("Date", "datetime"), ReportColumn("Utilisateur"),
+                 ReportColumn("Action"), ReportColumn("Élément"), ReportColumn("Détail")),
+        rows=tuple(("2026-10-20T21:31:45", "directeur", "Paiement enseignant approuvé",
+                    "Paiement enseignant n° 6",
+                    "Statut : Brouillon → Approuvé · À payer : 16 500 DA · " * 3)
+                   for _ in range(rows)))
+
+
+def test_pdf_columns_never_overlap_nor_cut_words():
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.pdfbase.pdfmetrics import stringWidth
+
+    from tadris.documents.pdf import FONT, FONT_BOLD, MARGIN, MONO, register_fonts
+    from tadris.documents.report_pdf import PAD, _fit, layout
+
+    register_fonts()
+    report = _journal_like()
+    sizes, wanted = layout(report, 9)
+    assert wanted > A4[0] - 2 * MARGIN  # it would rather be landscape
+    widths = _fit(sizes, landscape(A4)[0] - 2 * MARGIN)
+    assert sum(widths) <= landscape(A4)[0] - 2 * MARGIN + 0.01
+    # The date and time fit on their line (they used to run under the next column).
+    assert widths[0] >= stringWidth("20/10/2026 21:31", MONO, 9) + 2 * PAD
+    # A short text stays whole; a header never breaks a word.
+    assert widths[1] >= stringWidth("directeur", FONT, 9) + 2 * PAD
+    assert widths[1] >= stringWidth("Utilisateur", FONT_BOLD, 8.5) + 2 * PAD
+
+
+def test_pdf_text_draws_arrows_and_keeps_amounts_whole():
+    from tadris.documents.pdf import register_fonts
+    from tadris.documents.report_pdf import markup
+
+    register_fonts()
+    assert markup("Brouillon → Approuvé") == (
+        'Brouillon <font name="PlexMono">→</font> Approuvé')  # Readex Pro has no arrow
+    assert markup("À payer : 16 500 DA") == "À payer : 16 500 DA"
+    assert markup("a < b & c") == "a &lt; b &amp; c"
+
+
+def test_a_wide_report_prints_in_landscape(tmp_path):
+    from tadris.documents.pdf import Footer, School
+    from tadris.documents.report_pdf import ReportDoc, build_report
+
+    path = build_report(ReportDoc(School("École", "", ""), _journal_like(40), Footer("x")),
+                        tmp_path / "j.pdf")
+    assert b"/MediaBox [ 0 0 841.8898 595.2756 ]" in path.read_bytes()
+
+
+def test_excel_text_is_never_a_formula(tmp_path):
+    from tadris.documents.report_xlsx import build_report_xlsx
+    from tadris.domain.models import ReportColumn, ReportTable
+
+    report = ReportTable(key="x", title="X", period="P",
+                         columns=(ReportColumn("Élève"), ReportColumn("Montant", "money")),
+                         rows=(('=HYPERLINK("http://x","clic")', 100),))
+    sheet = load_workbook(build_report_xlsx(report, "École", tmp_path / "x.xlsx")).active
+    assert sheet["A5"].data_type == "s"
+    assert sheet["A5"].value == '=HYPERLINK("http://x","clic")'  # shown, never run
+    assert sheet["B5"].data_type == "n"
+
+
+def test_excel_text_columns_fit_their_content(tmp_path):
+    from tadris.documents.report_xlsx import TEXT_MAX, build_report_xlsx
+
+    sheet = load_workbook(build_report_xlsx(_journal_like(), "École",
+                                            tmp_path / "j.xlsx")).active
+    assert sheet.column_dimensions["B"].width == len("Utilisateur") + 2
+    assert sheet.column_dimensions["E"].width == TEXT_MAX  # long: capped, and wrapped
+    assert sheet["E5"].alignment.wrap_text
+
+
+def test_the_journal_export_keeps_the_whole_detail(conn, director, school):
+    paid = reports.audit_log(conn, director, date(2020, 1, 1), date(2030, 1, 1),
+                             family="payment.record")
+    table = reports.audit_table(conn, paid, TODAY, TODAY)
+    assert all(not row[4].endswith("…") for row in table.rows)
+    assert all("Mis en avoir : 0 DA" not in row[4] for row in table.rows)

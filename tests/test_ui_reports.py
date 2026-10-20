@@ -301,3 +301,19 @@ def test_audit_tab(qtbot, conn, director, desk, school):
     view.entity.setText("abc")
     view.entity.editingFinished.emit()
     assert view.banner.text() == t["report.entity_invalid"]
+
+
+def test_redrawing_the_dashboard_many_times_is_safe(qtbot, conn, director):
+    """Shrinking and growing the lists, and going to another page and back, again and again:
+    a cell reused across redraws once corrupted memory (a crash a few clicks later)."""
+    window = MainWindow(conn, director)
+    qtbot.addWidget(window)
+    window.show()
+    dashboard = window.pages.currentWidget()
+    for height in (500, 800, 450, 900, 600) * 4:
+        dashboard.show_board(full_board())
+        window.resize(1300, height)
+        qtbot.wait(1)
+        window.nav_buttons["students"].click()
+        window.nav_buttons["dashboard"].click()
+    assert dashboard.sessions.list.table.rowCount() == dashboard.sessions.shown

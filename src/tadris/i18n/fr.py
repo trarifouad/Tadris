@@ -1841,6 +1841,4 @@ t = {
     "audit.format.xlsx": "Excel",
     "audit.type.auto": "automatique",
     "audit.type.manual": "manuelle",
-    "audit.show_system": "Afficher les opérations automatiques",
-    "audit.show_system_tip": "Sauvegardes, séances préparées, mois terminés : ce que l'application fait seule.",
 }

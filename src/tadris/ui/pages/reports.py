@@ -7,7 +7,6 @@ from datetime import date, timedelta
 from PySide6.QtCore import Signal
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
-    QCheckBox,
     QComboBox,
     QHBoxLayout,
     QLabel,
@@ -335,13 +334,9 @@ class StudentsTab(ReportView):
                    self.group.currentData())
 
 
-SYSTEM = -1  # the user filter's « Système » choice
-
-
 class AuditTab(ReportView):
-    """The audit log in plain French: filters, the entries (latest first) and, under them,
-    what the selected entry recorded. What the app does by itself (backups, sessions
-    prepared, months ended) is hidden unless asked for."""
+    """What people did, in plain French: filters, the entries (latest first) and, under
+    them, what the selected entry recorded."""
 
     def __init__(self, conn, ctx: UserContext):
         today = dates.today()
@@ -351,8 +346,6 @@ class AuditTab(ReportView):
         self.family = QComboBox()
         self.entity = QLineEdit()
         self.entity.setPlaceholderText(t["report.filter.any"])
-        self.with_system = QCheckBox(t["audit.show_system"])
-        self.with_system.setToolTip(t["audit.show_system_tip"])
         self.entries: list[AuditEntry] = []
         self.detail = QPlainTextEdit()
         self.detail.setReadOnly(True)
@@ -365,19 +358,17 @@ class AuditTab(ReportView):
             labeled(t["report.filter.family"], self.family),
             labeled(t["report.filter.entity"], self.entity))
         super().__init__(conn, ctx, self._report, filters, stretch=(4,))
-        self.layout().insertWidget(1, self.with_system)
         self.layout().addWidget(self.detail)
         self.load_filters()
         for field in (self.first, self.last):
             field.textChanged.connect(lambda _text: self._dates_changed())
         self.user.currentIndexChanged.connect(lambda _i: self.refresh())
         self.family.currentIndexChanged.connect(lambda _i: self.refresh())
-        self.with_system.toggled.connect(lambda _on: self.refresh())
         self.entity.editingFinished.connect(self.refresh)
         self.row_selected.connect(self._show_detail)
 
     def load_filters(self) -> None:
-        fill_combo(self.user, [(t["report.all_users"], None), (t["audit.system"], SYSTEM)]
+        fill_combo(self.user, [(t["report.all_users"], None)]
                    + [(name, user_id) for user_id, name
                       in reports.audit_users(self._conn, self._ctx)],
                    self.user.currentData())
@@ -403,9 +394,8 @@ class AuditTab(ReportView):
         user = self.user.currentData()
         self.entries = reports.audit_log(
             self._conn, self._ctx, first, last,
-            user_id=None if user in (None, SYSTEM) else user, system_only=user == SYSTEM,
-            family=self.family.currentData(), entity_id=int(text) if text else None,
-            with_system=self.with_system.isChecked())
+            user_id=user, family=self.family.currentData(),
+            entity_id=int(text) if text else None)
         self.detail.clear()
         return reports.audit_table(self._conn, self.entries, first, last)
 

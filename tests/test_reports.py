@@ -386,8 +386,6 @@ def test_audit_log_filters(conn, director, desk, school):
 
     assert reports.audit_log(conn, director, first, last, user_id=desk.user_id) == [
         e for e in every if e.user == "accueil"]
-    system = reports.audit_log(conn, director, first, last, system_only=True)
-    assert all(e.user is None for e in system)
 
     student = reports.audit_log(conn, director, first, last, family="student",
                                 entity_id=school.badis)
@@ -444,16 +442,25 @@ def automatic_entry(conn) -> None:
                          new={"id": 1, "file": "tadris.db", "type": "auto"})
 
 
-def test_the_automatic_operations_can_be_left_out(conn, director, school):
+def test_the_journal_shows_what_people_did(conn, director, school):
+    """The app's own work (backups, sessions prepared, months ended) is not shown, nor
+    offered as a type of operation; a failed backup is."""
     automatic_entry(conn)
-    every = reports.audit_log(conn, director, date(2020, 1, 1), date(2030, 1, 1))
-    people = reports.audit_log(conn, director, date(2020, 1, 1), date(2030, 1, 1),
-                               with_system=False)
-    assert any(e.user is None for e in every)
-    assert people and all(e.user is not None for e in people)
-    only_system = reports.audit_log(conn, director, date(2020, 1, 1), date(2030, 1, 1),
-                                    system_only=True, with_system=False)
-    assert only_system and all(e.user is None for e in only_system)
+    shown = reports.audit_log(conn, director, date(2020, 1, 1), date(2030, 1, 1))
+    assert shown and all(e.user is not None for e in shown)
+    assert "backup" not in reports.audit_families(conn, director)
+
+    from tadris.db.connection import transaction
+    from tadris.services import audit
+    with transaction(conn):
+        audit.log_system(conn, "backup.failed", "backups",
+                         new={"id": 2, "file": "x.db", "error": "disk full"})
+    failed = reports.audit_log(conn, director, date(2020, 1, 1), date(2030, 1, 1),
+                               family="backup")
+    assert [(e.action, e.user) for e in failed] == [("backup.failed", None)]
+    table = reports.audit_table(conn, failed, TODAY, TODAY)
+    assert table.rows[0][1:3] == ("Système", "Sauvegarde échouée")
+    assert "backup" in reports.audit_families(conn, director)
 
 
 def test_audit_lines_show_changes(conn, director, school):

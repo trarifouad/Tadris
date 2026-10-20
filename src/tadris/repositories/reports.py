@@ -141,38 +141,42 @@ def student_list(conn, status: str | None, year_id: int | None, group_id: int | 
 
 # ----- audit log -----
 
-def audit_entries(conn, first: str, last: str, user_id: int | None, system_only: bool,
-                  action_prefix: str | None, entity_id: int | None, limit: int,
-                  with_system: bool = True) -> list:
-    """Latest first. system_only: only the entries written by the app itself; with_system
-    False: none of them."""
+# The Journal shows what people did. What the app does by itself (backups, sessions prepared,
+# months ended) stays in audit_log for a technician, except a failed backup: the director
+# must know the data is not being saved.
+_SHOWN = """
+    (a.user_id IS NOT NULL OR a.action IN ('backup.failed'))
+"""
+
+
+def audit_entries(conn, first: str, last: str, user_id: int | None,
+                  action_prefix: str | None, entity_id: int | None, limit: int) -> list:
+    """Latest first."""
     return conn.execute(
-        """
+        f"""
         SELECT a.id, a.created_at, u.username, a.action, a.entity_name, a.entity_id,
                a.old_value, a.new_value
           FROM audit_log a
           LEFT JOIN users u ON u.id = a.user_id
          WHERE substr(a.created_at, 1, 10) BETWEEN :first AND :last
+           AND {_SHOWN}
            AND (:user IS NULL OR a.user_id = :user)
-           AND (:system = 0 OR a.user_id IS NULL)
-           AND (:with_system = 1 OR a.user_id IS NOT NULL)
            AND (:prefix IS NULL OR a.action = :prefix OR a.action LIKE :prefix || '.%')
            AND (:entity IS NULL OR a.entity_id = :entity)
          ORDER BY a.id DESC
          LIMIT :limit
         """,
-        {"first": first, "last": last, "user": user_id, "system": int(system_only),
-         "prefix": action_prefix, "entity": entity_id, "limit": limit,
-         "with_system": int(with_system)},
+        {"first": first, "last": last, "user": user_id, "prefix": action_prefix,
+         "entity": entity_id, "limit": limit},
     ).fetchall()
 
 
 def audit_families(conn) -> list[str]:
-    """The first part of every action recorded ('payment' for 'payment.record'), sorted."""
+    """The first part of every action the Journal shows ('payment' for 'payment.record')."""
     return [row[0] for row in conn.execute(
         "SELECT DISTINCT CASE WHEN instr(action, '.') > 0 "
         "THEN substr(action, 1, instr(action, '.') - 1) ELSE action END AS family "
-        "FROM audit_log ORDER BY family")]
+        f"FROM audit_log a WHERE {_SHOWN} ORDER BY family")]
 
 
 def users(conn) -> list:

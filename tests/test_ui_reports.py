@@ -290,10 +290,8 @@ def test_audit_tab(qtbot, conn, director, desk, school):
     assert view.table.rowCount() == len(view.entries) > 0
 
     assert "Sauvegarde créée" not in {row[2] for row in texts(view.table)}
-    assert all(e.user is not None for e in view.entries)  # automatic ones hidden
-    view.with_system.setChecked(True)
-    assert any(e.user is None for e in view.entries)
-    view.with_system.setChecked(False)
+    assert all(e.user is not None for e in view.entries)  # the app's own work: not shown
+    assert view.user.findText("Système") == -1
 
     view.family.setCurrentIndex(view.family.findData("payment"))
     assert {row[2] for row in texts(view.table)} == {"Paiement enregistré", "Paiement annulé"}

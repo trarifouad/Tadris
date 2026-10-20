@@ -37,7 +37,7 @@ from tadris.services import debt, groups, payouts, sessions, subscriptions, teac
 # pays the oldest first, as a payment would.
 
 AGE_BUCKETS = (30, 60, 90)  # 0-30, 31-60, 61-90, more than 90 days late
-TOP_DEBTORS = 5
+TOP_DEBTORS = 20  # the dashboard shows as many as fit
 AUDIT_LIMIT = 1000
 
 

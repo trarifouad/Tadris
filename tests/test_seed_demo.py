@@ -37,6 +37,16 @@ def test_seed_fills_phases_4_to_9(tmp_path, capsys):
     assert conn.execute("SELECT COUNT(*) FROM payout_line_charges").fetchone()[0] > 0
     assert conn.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
     assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
+    # The year is lived day by day: history, not only today.
+    today = date.today().isoformat()
+    assert conn.execute("SELECT COUNT(DISTINCT substr(paid_at, 1, 10)) FROM payments"
+                        ).fetchone()[0] > 10
+    assert conn.execute("SELECT COUNT(*) FROM attendances a JOIN sessions s "
+                        "ON s.id = a.session_id WHERE s.date < ?", (today,)).fetchone()[0] > 100
+    assert conn.execute("SELECT COUNT(*) FROM subscriptions WHERE renewal_of_id IS NOT NULL"
+                        ).fetchone()[0] > 5
+    assert conn.execute("SELECT COUNT(*) FROM students").fetchone()[0] >= 50
+    assert conn.execute("SELECT COUNT(*) FROM class_groups").fetchone()[0] == 14
     paid = conn.execute("SELECT COUNT(*) FROM payments").fetchone()[0]
     conn.close()
     assert "registered for the year" in capsys.readouterr().out

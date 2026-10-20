@@ -1,4 +1,5 @@
 from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QButtonGroup,
     QFrame,
@@ -27,7 +28,7 @@ from tadris.ui.pages.subscriptions_page import SubscriptionsPage
 from tadris.ui.pages.teachers import TeachersPage
 from tadris.ui.pages.timetable import TimetablePage
 from tadris.ui.theme import icon
-from tadris.ui.widgets.common import confirm
+from tadris.ui.widgets.common import confirm, variant_button
 
 SIDEBAR_WIDTH = 216
 
@@ -64,6 +65,25 @@ class MainWindow(QMainWindow):
 
         self.pages = QStackedWidget()
         self.nav_buttons: dict[str, QPushButton] = {}
+        self._labels: dict[str, str] = {}
+        # Pages opened from another page (« Voir tout », a student double-clicked) can go
+        # back to it: « ← Retour : Tableau de bord » or Alt+←. A click in the sidebar
+        # starts afresh. (No application-wide event filter for the mouse's back button: it
+        # received objects being deleted and crashed PySide6.)
+        self._current: str | None = None
+        self._history: list[str] = []
+        self._move = "sidebar"  # how the next page is reached: sidebar, link or back
+        self.back_button = variant_button("", "ghost")
+        self.back_button.setObjectName("backLink")
+        self.back_button.clicked.connect(self.back)
+        self.back_bar = QWidget()
+        self.back_bar.setObjectName("page")
+        bar = QHBoxLayout(self.back_bar)
+        bar.setContentsMargins(16, 8, 24, 0)
+        bar.addWidget(self.back_button)
+        bar.addStretch()
+        self.back_bar.hide()
+        QShortcut(QKeySequence(QKeySequence.StandardKey.Back), self, self.back)
         self._slots: dict[str, int] = {}
         self._built: set[str] = set()
         self._group = QButtonGroup(self)
@@ -74,7 +94,12 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         layout.addWidget(self._build_sidebar())
-        layout.addWidget(self.pages, 1)
+        main = QVBoxLayout()
+        main.setContentsMargins(0, 0, 0, 0)
+        main.setSpacing(0)
+        main.addWidget(self.back_bar)
+        main.addWidget(self.pages, 1)
+        layout.addLayout(main, 1)
         self.setCentralWidget(root)
 
         role = t[f"role.{ctx.role}"]
@@ -100,6 +125,27 @@ class MainWindow(QMainWindow):
             if hasattr(page, "refresh"):
                 page.refresh()
         self.pages.setCurrentIndex(index)
+        self._arrived(key)
+
+    def _arrived(self, key: str) -> None:
+        previous, move = self._current, self._move
+        self._move = "sidebar"
+        if move == "link":
+            if previous is not None and previous != key:
+                self._history.append(previous)
+        elif move == "sidebar":
+            self._history.clear()
+        self._current = key
+        if self._history:
+            self.back_button.setText(t["main.back"].format(page=self._labels[self._history[-1]]))
+        self.back_bar.setVisible(bool(self._history))
+
+    def back(self) -> None:
+        """The page this one was opened from."""
+        if not self._history:
+            return
+        self._move = "back"
+        self.nav_buttons[self._history.pop()].click()
 
     def _page_for(self, key: str, label: str) -> QWidget:
         pages = {
@@ -128,10 +174,12 @@ class MainWindow(QMainWindow):
         """Show another page from a link (the dashboard's « Voir tout »), if the user has it."""
         button = self.nav_buttons.get(key)
         if button is not None:
+            self._move = "link"
             button.click()
 
     def open_student(self, student_id: int) -> None:
         """Show a student's page from another page (e.g. a list of months to renew)."""
+        self._move = "link"
         self.nav_buttons["students"].click()
         self.pages.widget(self._slots["students"]).open_student(student_id)
 
@@ -157,6 +205,7 @@ class MainWindow(QMainWindow):
 
         for key, label_key in nav_for(self.ctx):
             label = t[label_key]
+            self._labels[key] = label
             # Pages are built on first visit: startup stays fast and each page loads fresh.
             self._slots[key] = self.pages.addWidget(QWidget())
             button = QPushButton(label)

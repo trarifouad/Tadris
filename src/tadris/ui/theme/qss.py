@@ -37,6 +37,9 @@ def build_qss(t: dict, chevron: str = "", check: str = "") -> str:
     QPushButton[variant="danger"] {{ color: {t['danger']}; border: 1px solid {t['danger']}; }}
     QPushButton[variant="danger"]:hover {{ background: {t['danger_bg']}; }}
     QPushButton[variant="ghost"] {{ border: none; background: transparent; color: {t['muted']}; }}
+    QPushButton#backLink {{ border: none; background: transparent; color: {t['primary']};
+        font-weight: 600; padding: 0 10px; min-height: 30px; border-radius: 6px; }}
+    QPushButton#backLink:hover {{ background: {t['primary_soft']}; }}
     QPushButton:disabled {{ background: {t['surface_alt']}; color: {t['faint']};
                             border-color: {t['surface_alt']}; }}
 

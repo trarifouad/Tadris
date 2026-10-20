@@ -33,6 +33,12 @@ class LoginDialog(QDialog):
         self.password.setEchoMode(QLineEdit.EchoMode.Password)
         self.submit = primary_button(t["login.submit"])
         self.submit.clicked.connect(self._submit)
+        # Enter goes down the form, as at a desk: the username, then the password, then it
+        # logs in. Not a default button, which Enter in the username field would press.
+        self.submit.setDefault(False)
+        self.submit.setAutoDefault(False)
+        self.username.returnPressed.connect(self._username_entered)
+        self.password.returnPressed.connect(self._password_entered)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(32, 28, 32, 28)
@@ -50,6 +56,18 @@ class LoginDialog(QDialog):
         layout.addWidget(self.submit)
         fit_to_content(self)
         self.username.setFocus()
+
+    def _username_entered(self) -> None:
+        if self.username.text().strip() and self.password.text():
+            self._submit()
+        else:
+            self.password.setFocus()
+
+    def _password_entered(self) -> None:
+        if not self.username.text().strip():
+            self.username.setFocus()
+        elif self.password.text():
+            self._submit()
 
     def _submit(self) -> None:
         self.banner.clear_error()

@@ -3,18 +3,18 @@
 director's. A double-click on a student row opens the student."""
 
 from datetime import date, timedelta
+from html import escape
 
 from PySide6.QtCore import Signal
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
-    QCheckBox,
     QComboBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QPlainTextEdit,
     QPushButton,
     QTabWidget,
+    QTextBrowser,
     QVBoxLayout,
     QWidget,
 )
@@ -27,6 +27,7 @@ from tadris.core.permissions import allowed
 from tadris.domain.models import AuditEntry, ReportTable
 from tadris.i18n.fr import t
 from tadris.services import groups, printing, reports, school_years
+from tadris.ui.theme import tokens
 from tadris.ui.widgets import common
 from tadris.ui.widgets.common import PageBanner, labeled, toast
 from tadris.ui.widgets.date_edit import DateLineEdit
@@ -335,13 +336,9 @@ class StudentsTab(ReportView):
                    self.group.currentData())
 
 
-SYSTEM = -1  # the user filter's « Système » choice
-
-
 class AuditTab(ReportView):
-    """The audit log in plain French: filters, the entries (latest first) and, under them,
-    what the selected entry recorded. What the app does by itself (backups, sessions
-    prepared, months ended) is hidden unless asked for."""
+    """What people did, in plain French: filters, the entries (latest first) and, under
+    them, what the selected entry recorded."""
 
     def __init__(self, conn, ctx: UserContext):
         today = dates.today()
@@ -351,12 +348,10 @@ class AuditTab(ReportView):
         self.family = QComboBox()
         self.entity = QLineEdit()
         self.entity.setPlaceholderText(t["report.filter.any"])
-        self.with_system = QCheckBox(t["audit.show_system"])
-        self.with_system.setToolTip(t["audit.show_system_tip"])
         self.entries: list[AuditEntry] = []
-        self.detail = QPlainTextEdit()
-        self.detail.setReadOnly(True)
-        self.detail.setMaximumHeight(150)
+        self.detail = QTextBrowser()
+        self.detail.setObjectName("journalDetail")
+        self.detail.setMaximumHeight(170)
         self.detail.setPlaceholderText(t["report.audit.pick"])
         filters = _filters(
             labeled(t["report.filter.from"], self.first),
@@ -365,19 +360,17 @@ class AuditTab(ReportView):
             labeled(t["report.filter.family"], self.family),
             labeled(t["report.filter.entity"], self.entity))
         super().__init__(conn, ctx, self._report, filters, stretch=(4,))
-        self.layout().insertWidget(1, self.with_system)
         self.layout().addWidget(self.detail)
         self.load_filters()
         for field in (self.first, self.last):
             field.textChanged.connect(lambda _text: self._dates_changed())
         self.user.currentIndexChanged.connect(lambda _i: self.refresh())
         self.family.currentIndexChanged.connect(lambda _i: self.refresh())
-        self.with_system.toggled.connect(lambda _on: self.refresh())
         self.entity.editingFinished.connect(self.refresh)
         self.row_selected.connect(self._show_detail)
 
     def load_filters(self) -> None:
-        fill_combo(self.user, [(t["report.all_users"], None), (t["audit.system"], SYSTEM)]
+        fill_combo(self.user, [(t["report.all_users"], None)]
                    + [(name, user_id) for user_id, name
                       in reports.audit_users(self._conn, self._ctx)],
                    self.user.currentData())
@@ -403,9 +396,8 @@ class AuditTab(ReportView):
         user = self.user.currentData()
         self.entries = reports.audit_log(
             self._conn, self._ctx, first, last,
-            user_id=None if user in (None, SYSTEM) else user, system_only=user == SYSTEM,
-            family=self.family.currentData(), entity_id=int(text) if text else None,
-            with_system=self.with_system.isChecked())
+            user_id=user, family=self.family.currentData(),
+            entity_id=int(text) if text else None)
         self.detail.clear()
         return reports.audit_table(self._conn, self.entries, first, last)
 
@@ -414,12 +406,36 @@ class AuditTab(ReportView):
             self.detail.clear()
             return
         entry = self.entries[index]
-        row = self.report.rows[index]
-        heading = t["report.audit.heading"].format(
-            action=row[2], entity=row[3], user=row[1],
-            when=display("datetime", entry.created_at))
-        self.detail.setPlainText("\n".join(
-            [heading] + reports.audit_lines(self._conn, self._ctx, entry)))
+        _when, user, action, item, _summary = self.report.rows[index]
+        self.detail.setHtml(detail_html(
+            t["report.audit.by"].format(action=action, user=user) if entry.user
+            else t["report.audit.by_app"].format(action=action),
+            t["report.audit.when"].format(date=display("date", entry.created_at),
+                                          time=entry.created_at[11:16], item=item),
+            reports.audit_fields(self._conn, self._ctx, entry)))
+
+
+def detail_html(title: str, meta: str, fields) -> str:
+    """The selected Journal entry as a small card: a title in bold (« Paiement annulé par
+    directeur »), when and on what in grey, then each value on its own row, a changed one
+    as « avant → après » with the new value in bold."""
+    colors = tokens()
+    rows = []
+    for f in fields:
+        if f.before is not None:
+            value = (f'<span style="color:{colors["muted"]}">{escape(f.before)}</span>'
+                     f'&nbsp;&nbsp;→&nbsp;&nbsp;<b>{escape(f.value)}</b>')
+        else:
+            value = escape(f.value)
+        rows.append(f'<tr><td style="color:{colors["muted"]}; padding:3px 28px 3px 0">'
+                    f'{escape(f.label)}</td><td style="padding:3px 0">{value}</td></tr>')
+    body = (f'<table cellspacing="0" cellpadding="0" style="margin-top:10px">'
+            f'{"".join(rows)}</table>' if rows else
+            f'<p style="color:{colors["muted"]}; margin-top:10px">'
+            f'{escape(t["report.audit.nothing"])}</p>')
+    return (f'<div style="font-size:15px; font-weight:600">{escape(title)}</div>'
+            f'<div style="color:{colors["muted"]}; margin-top:2px">{escape(meta)}</div>'
+            f'{body}')
 
 
 # (key, tab label, permissions needed, tab class)

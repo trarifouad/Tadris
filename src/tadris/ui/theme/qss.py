@@ -40,6 +40,8 @@ def build_qss(t: dict, chevron: str = "", check: str = "") -> str:
     QPushButton#backLink {{ border: none; background: transparent; color: {t['primary']};
         font-weight: 600; padding: 0 10px; min-height: 30px; border-radius: 6px; }}
     QPushButton#backLink:hover {{ background: {t['primary_soft']}; }}
+    QTextBrowser#journalDetail {{ background: {t['surface']}; border: 1px solid {t['border']};
+        border-radius: 10px; padding: 12px 16px; font-size: 14px; }}
     QPushButton:disabled {{ background: {t['surface_alt']}; color: {t['faint']};
                             border-color: {t['surface_alt']}; }}
 

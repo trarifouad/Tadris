@@ -410,27 +410,25 @@ def family_label(family: str) -> str:
 
 
 def audit_log(conn, ctx: UserContext, first: date, last: date, user_id: int | None = None,
-              system_only: bool = False, family: str | None = None,
-              entity_id: int | None = None, with_system: bool = True) -> list[AuditEntry]:
-    """Latest first, at most AUDIT_LIMIT entries. with_system False leaves out what the app
-    did by itself (backups, sessions prepared, months ended), unless system_only asks for
-    exactly that."""
+              family: str | None = None, entity_id: int | None = None) -> list[AuditEntry]:
+    """What people did, latest first, at most AUDIT_LIMIT entries (and a failed backup)."""
     require(ctx, "audit.view")
     _check_range(first, last)
     return [AuditEntry(id=row["id"], created_at=row["created_at"], user=row["username"],
                        action=row["action"], entity_name=row["entity_name"],
                        entity_id=row["entity_id"], old_value=row["old_value"],
                        new_value=row["new_value"])
-            for row in repo.audit_entries(conn, _iso(first), _iso(last), user_id, system_only,
-                                          family, entity_id, AUDIT_LIMIT,
-                                          with_system or system_only)]
+            for row in repo.audit_entries(conn, _iso(first), _iso(last), user_id, family,
+                                          entity_id, AUDIT_LIMIT)]
 
 
-def audit_lines(conn, ctx: UserContext, entry: AuditEntry) -> list[str]:
-    """What the entry recorded, one « Clé : valeur » per line, for the detail under the
-    Journal."""
+def audit_fields(conn, ctx: UserContext, entry: AuditEntry) -> list[journal.Field]:
+    """What the entry recorded, for the detail under the Journal (without the item's own
+    name, shown above it)."""
     require(ctx, "audit.view")
-    return journal.lines(entry.old_value, entry.new_value, journal.load_names(conn))
+    names = journal.load_names(conn)
+    item = names.get(entry.entity_name, entry.entity_id)
+    return journal.fields(entry.old_value, entry.new_value, names, skip=item)
 
 
 def audit_table(conn, entries: list[AuditEntry], first: date, last: date) -> ReportTable:

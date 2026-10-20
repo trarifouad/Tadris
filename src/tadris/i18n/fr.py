@@ -1630,7 +1630,10 @@ t = {
     "report.filter.entity": "N° élément",
     "report.filter.any": "Tous",
     "report.audit.pick": "Choisissez une ligne pour voir ce qui a été enregistré.",
-    "report.audit.heading": "{action} · {entity} · {user}, le {when}",
+    "report.audit.by": "{action} par {user}",
+    "report.audit.by_app": "{action} (par l'application)",
+    "report.audit.when": "le {date} à {time} · {item}",
+    "report.audit.nothing": "Aucun autre détail enregistré.",
     "audit.action.attendance.save": "Présences enregistrées",
     "audit.action.backup.create": "Sauvegarde créée",
     "audit.action.backup.failed": "Sauvegarde échouée",
@@ -1841,6 +1844,4 @@ t = {
     "audit.format.xlsx": "Excel",
     "audit.type.auto": "automatique",
     "audit.type.manual": "manuelle",
-    "audit.show_system": "Afficher les opérations automatiques",
-    "audit.show_system_tip": "Sauvegardes, séances préparées, mois terminés : ce que l'application fait seule.",
 }

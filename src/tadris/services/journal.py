@@ -139,20 +139,39 @@ def _load(raw: str | None) -> dict:
     return value if isinstance(value, dict) else {"value": value}
 
 
-def lines(old_raw: str | None, new_raw: str | None, names: Names) -> list[str]:
-    """« Clé : valeur », one per recorded value; a changed one as « avant → après »."""
+@dataclass(frozen=True)
+class Field:
+    """One recorded value: before is set only when it changed (a status, an amount)."""
+
+    label: str
+    value: str
+    before: str | None = None
+
+
+def fields(old_raw: str | None, new_raw: str | None, names: Names,
+           skip: str | None = None) -> list[Field]:
+    """What an entry recorded, in French. skip: a value already shown as the entry's item
+    (« Utilisateur : kadam »), not repeated."""
     old, new = _load(old_raw), _load(new_raw)
     out = []
     for key in list(new) + [k for k in old if k not in new]:
         after = _value(key, new.get(key), names) if key in new else None
         before = _value(key, old.get(key), names) if key in old else None
+        label = _key_label(key)
         if key in new and key in old and before != after:
-            text = f"{before or '—'} → {after or '—'}"
-        else:
-            text = after if key in new else before
-        if text is not None:
-            out.append(f"{_key_label(key)} : {text}")
+            out.append(Field(label, after or "—", before or "—"))
+            continue
+        value = after if key in new else before
+        if value is not None and value != skip:
+            out.append(Field(label, value))
     return out
+
+
+def lines(old_raw: str | None, new_raw: str | None, names: Names,
+          skip: str | None = None) -> list[str]:
+    """« Clé : valeur », one per recorded value; a changed one as « avant → après »."""
+    return [f"{f.label} : {f.before} → {f.value}" if f.before is not None
+            else f"{f.label} : {f.value}" for f in fields(old_raw, new_raw, names, skip)]
 
 
 def summary(old_raw: str | None, new_raw: str | None, names: Names, width: int = 160) -> str:

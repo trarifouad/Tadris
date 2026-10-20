@@ -46,6 +46,24 @@ def owed_teachers(conn, until: str) -> list:
     ).fetchall()
 
 
+def owed_by_rate(conn, until: str) -> list:
+    """The months not paid yet up to `until` that have a teacher's rate on their first day,
+    summed per teacher, group and rate: teacher_id, group_id, percentage_bp, months,
+    amount. Months without a rate are left out."""
+    return conn.execute(
+        f"""
+        SELECT o.teacher_id, o.group_id, r.percentage_bp, COUNT(*) AS months,
+               SUM(o.amount) AS amount
+          FROM ({_OWED}) o
+          JOIN teacher_rates r ON r.teacher_id = o.teacher_id
+                              AND r.valid_from <= o.accrual_date
+                              AND (r.valid_to IS NULL OR r.valid_to > o.accrual_date)
+         GROUP BY o.teacher_id, o.group_id, r.percentage_bp
+        """,
+        {"until": until},
+    ).fetchall()
+
+
 # ----- payouts -----
 
 _COLUMNS = """

@@ -34,3 +34,13 @@ def backup_dir() -> Path:
     p = db_path().parent / "backups"
     p.mkdir(parents=True, exist_ok=True)
     return p
+
+
+def save_dir() -> Path:
+    """Where « Enregistrer sous » opens: the user's Documents folder (outside the app's
+    folder, so a saved report is never cleaned up), or their home folder."""
+    from platformdirs import user_documents_dir
+
+    folder = Path(user_documents_dir())
+    return folder if folder.is_dir() else Path.home()
+

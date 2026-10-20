@@ -112,13 +112,18 @@ def get(conn, payment_id: int):
                         (payment_id,)).fetchone()
 
 
-def for_student(conn, student_id: int) -> list:
-    """Latest first."""
+def for_student(conn, student_id: int, limit: int | None = None, offset: int = 0) -> list:
+    """Latest first; limit/offset: one page of them."""
     return conn.execute(
         f"SELECT {_PAYMENT_COLUMNS} {_PAYMENT_FROM} WHERE p.student_id = ? "
-        "ORDER BY p.paid_at DESC, p.id DESC",
-        (student_id,),
+        "ORDER BY p.paid_at DESC, p.id DESC LIMIT ? OFFSET ?",
+        (student_id, -1 if limit is None else limit, offset),
     ).fetchall()
+
+
+def count_for_student(conn, student_id: int) -> int:
+    return conn.execute("SELECT COUNT(*) FROM payments WHERE student_id = ?",
+                        (student_id,)).fetchone()[0]
 
 
 def on_day(conn, day: str) -> list:

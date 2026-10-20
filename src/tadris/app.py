@@ -4,11 +4,11 @@ import sys
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
 
-from tadris.config import backup_dir, db_override, db_path
+from tadris.config import backup_dir, db_override, db_path, documents_dir
 from tadris.db.connection import connect
 from tadris.db.migrate import has_pending, migrate
 from tadris.i18n.fr import t
-from tadris.services import auth, backup, sessions, subscriptions
+from tadris.services import auth, backup, documents, sessions, subscriptions
 from tadris.ui.first_run import FirstRunDialog
 from tadris.ui.login_dialog import LoginDialog
 from tadris.ui.main_window import MainWindow
@@ -68,6 +68,15 @@ def _backup(take, parent=None, warning: str = "backup.warning") -> bool:
     return True
 
 
+def _clean_documents(conn) -> None:
+    """Old working copies of reports and receipts out of the documents folder; a failure
+    there never stops the app."""
+    try:
+        documents.clean_at_start(conn, documents_dir())
+    except Exception as exc:  # noqa: BLE001 - the desk must open whatever happens here
+        print(f"Nettoyage des documents impossible : {exc}", file=sys.stderr)
+
+
 def main() -> int:
     _choose_linux_platform()
     _choose_scale()
@@ -87,6 +96,7 @@ def main() -> int:
         return 1  # never migrate a database without a copy taken just before
     migrate(conn)
     _backup(lambda: backup.daily(conn, folder))
+    _clean_documents(conn)
     subscriptions.mark_ended(conn)  # months whose last day has passed
     sessions.generate_at_start(conn)  # the next 14 days from the timetable
 

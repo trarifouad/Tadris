@@ -1609,7 +1609,14 @@ t = {
     "report.tab.audit": "Journal",
     "report.pdf": "PDF",
     "report.excel": "Excel",
-    "report.exported": "Rapport enregistré : {file}",
+    "report.exported": "Rapport enregistré : {path}",
+    "report.open_folder": "Ouvrir le dossier",
+    "report.open_folder_tip": (
+        "Le dossier où l'application range les PDF et les rapports. Les rapports y restent "
+        "30 jours, les reçus et les feuilles 90 jours (ils se réimpriment depuis l'application)."
+    ),
+    "report.save_title": "Enregistrer le fichier Excel",
+    "report.save_filter": "Fichier Excel (*.xlsx)",
     "report.preparing.pdf": "Préparation du PDF…",
     "report.preparing.xlsx": "Préparation du fichier Excel…",
     "report.empty": "Rien à afficher pour ces filtres.",
@@ -1644,6 +1651,7 @@ t = {
     "audit.action.attendance.save": "Présences enregistrées",
     "audit.action.backup.create": "Sauvegarde créée",
     "audit.action.backup.failed": "Sauvegarde échouée",
+    "audit.action.backup.prune": "Anciennes sauvegardes supprimées",
     "audit.action.contact.create": "Contact créé",
     "audit.action.contact.link": "Contact lié à l'élève",
     "audit.action.contact.set_main": "Contact principal changé",

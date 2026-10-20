@@ -1,5 +1,5 @@
 """The student's Paiements tab: what is left to pay, line by line, and every payment with its
-receipt, latest first."""
+receipt, latest first, a page at a time."""
 
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QLabel, QPushButton, QVBoxLayout, QWidget
@@ -16,7 +16,15 @@ from tadris.ui.theme.status import kind_for
 from tadris.ui.widgets import common
 from tadris.ui.widgets.common import ask, primary_button, toast, variant_button
 from tadris.ui.widgets.forms import ListSection
-from tadris.ui.widgets.tables import CENTER, RIGHT, fit_columns, item
+from tadris.ui.widgets.tables import (
+    CENTER,
+    PAGE_SIZE,
+    RIGHT,
+    MoreOnScroll,
+    fit_columns,
+    frozen_columns,
+    item,
+)
 
 
 def summary_text(d: Debt) -> str:
@@ -69,6 +77,8 @@ class PaymentsTab(QWidget):
         self.history.selection_changed.connect(self._update_buttons)
         self.history.activated.connect(lambda _id: self._print())
         fit_columns(self.history.table, stretch=(1,))
+        self._total = 0
+        self.pager = MoreOnScroll(self.history.table, self._load_more)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 16, 0, 0)
@@ -88,9 +98,26 @@ class PaymentsTab(QWidget):
             item(format_dzd(c.due), align=RIGHT, mono=True,
                  tone="danger" if c.due_date <= current.as_of else None),
         ] for c in current.charges])
-        listed = payments.for_student(self._conn, self._ctx, self._student_id)
+        # The latest page, or as many as were shown: a payment voided far down stays in view.
+        self._total = payments.count_for_student(self._conn, self._ctx, self._student_id)
+        listed = payments.for_student(self._conn, self._ctx, self._student_id,
+                                      limit=max(PAGE_SIZE, len(self._payments)))
         self._payments = {p.id: p for p in listed}
         self.history.set_rows([self._cells(p) for p in listed])
+        self.pager.reset(len(listed) < self._total)
+
+    def _load_more(self) -> bool:
+        page = payments.for_student(self._conn, self._ctx, self._student_id,
+                                    limit=PAGE_SIZE, offset=len(self._payments))
+        table = self.history.table
+        start = table.rowCount()
+        with frozen_columns(table):
+            table.setRowCount(start + len(page))
+            for r, p in enumerate(page, start):
+                for c, cell in enumerate(self._cells(p)):
+                    table.setItem(r, c, cell)
+        self._payments.update((p.id, p) for p in page)
+        return bool(page) and len(self._payments) < self._total
 
     @staticmethod
     def _cells(p: Payment) -> list:

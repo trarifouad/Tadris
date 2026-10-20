@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from tadris import config
 from tadris.core import dates
 from tadris.core.cells import display
 from tadris.core.context import UserContext
@@ -80,6 +81,10 @@ class ReportView(QWidget):
             button.setAutoDefault(False)
         self.pdf.clicked.connect(lambda: self.export("pdf"))
         self.excel.clicked.connect(lambda: self.export("xlsx"))
+        self.folder = QPushButton(t["report.open_folder"])
+        self.folder.setAutoDefault(False)
+        self.folder.setToolTip(t["report.open_folder_tip"])
+        self.folder.clicked.connect(lambda: common.open_folder(config.documents_dir()))
         self._job = self._future = None
         self._poll = QTimer(self)
         self._poll.setInterval(40)
@@ -91,6 +96,7 @@ class ReportView(QWidget):
         toolbar.addWidget(self.period)
         toolbar.addStretch()
         toolbar.addWidget(self.busy)
+        toolbar.addWidget(self.folder)
         toolbar.addWidget(self.pdf)
         toolbar.addWidget(self.excel)
         self.table = ruled_table([])
@@ -214,9 +220,20 @@ class ReportView(QWidget):
         then it is recorded and opened. exported(path) says when it is there."""
         if self.report is None or self._job is not None:
             return
+        report = self.export_report()
+        path = None
+        if extension == "xlsx":  # a file to keep or send: the user says where
+            path = common.ask_save_path(
+                self, t["report.save_title"],
+                config.save_dir() / printing.report_file_name(report, "xlsx"),
+                t["report.save_filter"])
+            if path is None:
+                return
+            if path.suffix.lower() != ".xlsx":
+                path = path.with_name(path.name + ".xlsx")
         try:
-            job = printing.prepare_report(self._conn, self._ctx, self.export_report(),
-                                          extension)
+            job = printing.prepare_report(self._conn, self._ctx, report, extension,
+                                          path=path)
         except BusinessRuleError as exc:
             self.banner.show_error(exc.message)
             return
@@ -248,7 +265,7 @@ class ReportView(QWidget):
             self.banner.show_error(getattr(exc, "message", None) or t["print.failed"])
             return
         common.open_document(path)
-        toast(self, t["report.exported"].format(file=path.name))
+        toast(self, t["report.exported"].format(path=path))
         self.exported.emit(path)
 
     def _row(self) -> int:

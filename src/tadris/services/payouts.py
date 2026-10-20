@@ -147,14 +147,16 @@ def _by_line(conn, teacher_id: int, owed: list) -> tuple[dict[tuple[int, int], l
     return by_line, no_rate
 
 
-def not_prepared(conn, teacher_id: int, until: date) -> tuple[int, int]:
-    """(months, share) the teacher is owed up to `until` and that no payout holds yet: what
-    the next draft would pay. Months without a rate are left out (the draft refuses them)."""
-    owed = repo.owed(conn, teacher_id, dates.iso(until))
-    by_line, _no_rate = _by_line(conn, teacher_id, owed)
-    return (sum(len(group) for group in by_line.values()),
-            sum(apply_rate(sum(m["amount"] for m in group), bp)
-                for (_group, bp), group in by_line.items()))
+def not_prepared(conn, until: date) -> dict[int, tuple[int, int]]:
+    """Per teacher: (months, share) owed up to `until` and that no payout holds yet, what
+    the next draft would pay. Months without a rate are left out (the draft refuses them).
+    One query for every teacher: a month is not looked at one by one."""
+    result: dict[int, tuple[int, int]] = {}
+    for row in repo.owed_by_rate(conn, dates.iso(until)):
+        months, share = result.get(row["teacher_id"], (0, 0))
+        result[row["teacher_id"]] = (months + row["months"],
+                                     share + apply_rate(row["amount"], row["percentage_bp"]))
+    return result
 
 
 def _build(conn, ctx: UserContext, teacher_id: int, until: str) -> int:

@@ -15,9 +15,11 @@ from tadris.core.permissions import nav_for
 from tadris.i18n.fr import t
 from tadris.services import settings
 from tadris.ui.pages.attendance import AttendancePage
+from tadris.ui.pages.dashboard import DashboardPage
 from tadris.ui.pages.groups import GroupsPage
 from tadris.ui.pages.payments_page import PaymentsPage
 from tadris.ui.pages.payouts_page import PayoutsPage
+from tadris.ui.pages.reports import ReportsPage
 from tadris.ui.pages.settings import SettingsPage
 from tadris.ui.pages.students import StudentsPage
 from tadris.ui.pages.subscriptions_page import SubscriptionsPage
@@ -106,12 +108,21 @@ class MainWindow(QMainWindow):
             return pages[key](self._conn, self.ctx)
         if key == "settings":
             return SettingsPage(self._conn, self.ctx)
-        if key in ("subscriptions", "payments"):
-            page_class = SubscriptionsPage if key == "subscriptions" else PaymentsPage
-            page = page_class(self._conn, self.ctx)
+        student_pages = {"subscriptions": SubscriptionsPage, "payments": PaymentsPage,
+                         "reports": ReportsPage, "dashboard": DashboardPage}
+        if key in student_pages:
+            page = student_pages[key](self._conn, self.ctx)
             page.open_student.connect(self.open_student)
+            if key == "dashboard":
+                page.navigate.connect(self.go_to)
             return page
         return PlaceholderPage(label)
+
+    def go_to(self, key: str) -> None:
+        """Show another page from a link (the dashboard's « Voir tout »), if the user has it."""
+        button = self.nav_buttons.get(key)
+        if button is not None:
+            button.click()
 
     def open_student(self, student_id: int) -> None:
         """Show a student's page from another page (e.g. a list of months to renew)."""

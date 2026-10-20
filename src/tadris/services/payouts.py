@@ -133,6 +133,30 @@ def _check_until(until: date) -> str:
     return dates.iso(until)
 
 
+def _by_line(conn, teacher_id: int, owed: list) -> tuple[dict[tuple[int, int], list], object]:
+    """The owed months by (group, rate on the month's first day), and the first month
+    without a rate (None when every month has one)."""
+    by_line: dict[tuple[int, int], list] = {}
+    no_rate = None
+    for month in owed:
+        bp = teachers_repo.rate_on(conn, teacher_id, month["accrual_date"])
+        if bp is None:
+            no_rate = no_rate or month
+            continue
+        by_line.setdefault((month["group_id"], bp), []).append(month)
+    return by_line, no_rate
+
+
+def not_prepared(conn, teacher_id: int, until: date) -> tuple[int, int]:
+    """(months, share) the teacher is owed up to `until` and that no payout holds yet: what
+    the next draft would pay. Months without a rate are left out (the draft refuses them)."""
+    owed = repo.owed(conn, teacher_id, dates.iso(until))
+    by_line, _no_rate = _by_line(conn, teacher_id, owed)
+    return (sum(len(group) for group in by_line.values()),
+            sum(apply_rate(sum(m["amount"] for m in group), bp)
+                for (_group, bp), group in by_line.items()))
+
+
 def _build(conn, ctx: UserContext, teacher_id: int, until: str) -> int:
     """Inside a transaction: the teacher's draft up to `until`, replacing theirs."""
     teacher = teachers_repo.get(conn, teacher_id, dates.iso(dates.today()))
@@ -145,13 +169,10 @@ def _build(conn, ctx: UserContext, teacher_id: int, until: str) -> int:
     if not owed:
         raise BusinessRuleError(t["payout.nothing"].format(
             teacher=teacher["full_name"], date=dates.display_date(until)))
-    by_line: dict[tuple[int, int], list] = {}
-    for month in owed:
-        bp = teachers_repo.rate_on(conn, teacher_id, month["accrual_date"])
-        if bp is None:
-            raise BusinessRuleError(t["payout.no_rate"].format(
-                teacher=teacher["full_name"], date=dates.display_date(month["accrual_date"])))
-        by_line.setdefault((month["group_id"], bp), []).append(month)
+    by_line, no_rate = _by_line(conn, teacher_id, owed)
+    if no_rate is not None:
+        raise BusinessRuleError(t["payout.no_rate"].format(
+            teacher=teacher["full_name"], date=dates.display_date(no_rate["accrual_date"])))
     shares = {key: apply_rate(sum(m["amount"] for m in group), key[1])
               for key, group in by_line.items()}
     base = sum(m["amount"] for m in owed)

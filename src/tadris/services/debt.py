@@ -50,12 +50,9 @@ def for_student(conn, ctx: UserContext, student_id: int) -> Debt:
     return compute(conn, student_id)
 
 
-def debtors(conn, ctx: UserContext, group_id: int | None = None, min_amount: int = 0,
-            min_days: int = 0) -> list[Debtor]:
-    """Students with something late after their credit, the largest first. group_id keeps
-    the students in that group now (trial or active); min_amount and min_days keep those
-    owing at least that much, or late by at least that many days."""
-    require(ctx, "payment.record")
+def every_debt(conn) -> dict[int, Debt]:
+    """The debt of every student with an open charge, in two queries (no permission check:
+    for the lists and reports that call it)."""
     on = _today()
     charges: dict[int, list] = {}
     for row in repo.open_charges(conn):
@@ -63,16 +60,30 @@ def debtors(conn, ctx: UserContext, group_id: int | None = None, min_amount: int
     credits: dict[int, list] = {}
     for row in repo.with_credit(conn):
         credits.setdefault(row["student_id"], []).append(row)
+    return {student_id: _build(student_id, rows, credits.get(student_id, []), on)
+            for student_id, rows in charges.items()}
+
+
+def days_late(debt: Debt) -> int:
+    return _days_late(debt, debt.as_of)
+
+
+def debtors(conn, ctx: UserContext, group_id: int | None = None, min_amount: int = 0,
+            min_days: int = 0) -> list[Debtor]:
+    """Students with something late after their credit, the largest first. group_id keeps
+    the students in that group now (trial or active); min_amount and min_days keep those
+    owing at least that much, or late by at least that many days."""
+    require(ctx, "payment.record")
+    on = _today()
     in_group = None
     if group_id is not None:
         in_group = {row["student_id"] for row in repo.live_groups(conn)
                     if row["group_id"] == group_id}
 
     owing: dict[int, Debt] = {}
-    for student_id, rows in charges.items():
+    for student_id, debt in every_debt(conn).items():
         if in_group is not None and student_id not in in_group:
             continue
-        debt = _build(student_id, rows, credits.get(student_id, []), on)
         if debt.owed_now <= 0 or debt.owed_now < min_amount:
             continue
         if _days_late(debt, on) < min_days:

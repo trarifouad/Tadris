@@ -137,6 +137,7 @@ RECEPTIONIST_DENIED = {
     "payout.view",
     "payout.manage",
     "teacher.manage",
+    "report.finance",
     "sms.manage",
     "settings.view",
     "settings.change",

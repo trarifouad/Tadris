@@ -513,6 +513,17 @@ Add a `holidays` table or a settings JSON list in this phase. Decide which and a
 
 ## Phase 10: Dashboard and reports
 
+**Status:** done. No schema change. Repository and service `reports` (dashboard; revenue by month and by group; debt by age; attendance by group and by student; teacher summary; student list; audit log with filters), each report a `ReportTable` of raw values that the screen, the PDF (`documents/report_pdf.py`, landscape when wide) and the Excel file (`documents/report_xlsx.py`, real numbers and dates, same total row) all show. New permission `report.finance` (director). Sidebar: Tableau de bord (four stat cards, today's sessions, months ending this week, largest debts, group fill; double-click opens the student, « Voir tout » opens the page) and Rapports (one tab per report the user may see, filters, PDF and Excel; Journal for the director with the entry's before and after). Each export is written to the audit log (`report.export`). 1046 tests green; every report matches a hand count (`test_reports.py`) and, on the demo seed, an independent SQL count.
+
+**Decisions taken in this phase**
+
+- A month or fee counts in the month of its accrual date (a month on its first day, the fee on the registration day); cancelled ones are left out. « Réglé » is what payments not voided paid on them, whenever they were paid; « Encaissé » is the money received in the month, whatever it paid; « Remboursé » is what was handed back in the month. So a month's « Facturé − Réglé » is still owed, and « Encaissé » matches the days' cash reports.
+- Money (revenue, teacher summary, the dashboard's money card) is the director's; the receptionist sees sessions, renewals, debt, attendance, the student list and group fill.
+- Attendance rate = (present + late) / (present + late + absent): an excused absence is left out; cancelled sessions do not count.
+- Debt by age: each late charge from its due date, in 0–30, 31–60, 61–90 and over 90 days; the credit pays the oldest first (as a payment would), so the buckets add up to the debtors list.
+- Teacher summary: groups and students today; paid during the school year; waiting (drafts and approved); « À préparer » is what a draft built today would pay (same rate rule as the payout).
+- The audit log viewer shows at most 1 000 entries, latest first, and says so when the limit is reached.
+
 **Goal:** the director sees the school's state at a glance.
 
 **Dashboard cards**

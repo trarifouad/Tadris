@@ -345,12 +345,18 @@ class ReportJob:
         return build_report_xlsx(self.report, self.school.name, self.path)
 
 
+def report_file_name(report: ReportTable, extension: str) -> str:
+    """« rapport_recettes-par-mois_2026-10-20.xlsx »: what « Enregistrer sous » offers."""
+    return f"rapport_{report.key}_{dates.iso(dates.today())}.{extension}"
+
+
 def prepare_report(conn, ctx: UserContext, report: ReportTable, extension: str,
-                   out_dir: Path | None = None) -> ReportJob:
+                   out_dir: Path | None = None, path: Path | None = None) -> ReportJob:
+    """path: where the user chose to save it; by default the app's documents folder."""
     require(ctx, "print.document")
     return ReportJob(report=report, extension=extension,
-                     path=_report_file(report, extension, out_dir), school=_school(conn),
-                     footer=_footer(ctx))
+                     path=path or _report_file(report, extension, out_dir),
+                     school=_school(conn), footer=_footer(ctx))
 
 
 def finish_report(conn, ctx: UserContext, job: ReportJob) -> Path:

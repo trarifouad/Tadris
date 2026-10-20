@@ -183,3 +183,22 @@ def open_document(path) -> None:
     from PySide6.QtGui import QDesktopServices
 
     QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
+
+
+def open_folder(path) -> None:
+    """Show a folder in the system's file manager."""
+    from PySide6.QtCore import QUrl
+    from PySide6.QtGui import QDesktopServices
+
+    QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
+
+
+def ask_save_path(parent: QWidget, title: str, suggested, file_filter: str):
+    """« Enregistrer sous »: the path chosen, or None when cancelled."""
+    from pathlib import Path
+
+    from PySide6.QtWidgets import QFileDialog
+
+    chosen, _filter = QFileDialog.getSaveFileName(parent, title, str(suggested), file_filter)
+    return Path(chosen) if chosen else None
+

@@ -410,13 +410,57 @@ def test_audit_log_is_for_the_director(conn, desk):
         reports.audit_families(conn, desk)
 
 
-def test_audit_detail_is_short(conn, director, school):
-    entry = reports.audit_log(conn, director, date(2020, 1, 1), date(2030, 1, 1),
-                              family="payment.void")[0]
-    detail = reports.audit_detail(entry, width=40)
-    assert len(detail) == 40 and detail.endswith("…")
-    table = reports.audit_table([entry], TODAY, TODAY)
-    assert table.rows[0][1] == "directeur" and table.rows[0][2] == "payment.void"
+def test_the_journal_reads_in_french(conn, director, school):
+    voided = reports.audit_log(conn, director, date(2020, 1, 1), date(2030, 1, 1),
+                               family="payment.void")
+    table = reports.audit_table(conn, voided, TODAY, TODAY)
+    assert [c.label for c in table.columns] == ["Date", "Utilisateur", "Action", "Élément",
+                                                "Détail"]
+    _when, user, action, item, detail = table.rows[0]
+    assert (user, action) == ("directeur", "Paiement annulé")
+    assert item.startswith("Paiement n° ")
+    assert "Montant : 500 DA" in detail and "Motif : Erreur de saisie" in detail
+    assert "Annulé : Oui" in detail
+    assert "{" not in detail and "_" not in detail  # no JSON, no internal names left
+
+
+def test_the_journal_names_what_it_points_to(conn, director, school):
+    entries = reports.audit_log(conn, director, date(2020, 1, 1), date(2030, 1, 1),
+                                family="enrollment.create")
+    table = reports.audit_table(conn, entries, TODAY, TODAY)
+    details = [row[4] for row in table.rows]
+    assert any("Élève : Benali Amine" in d and "Groupe : A" in d for d in details)
+    assert all("Entrée : " in d for d in details)  # the date, as dd/mm/yyyy
+    assert any("01/09/2026" in d for d in details)
+
+
+def automatic_entry(conn) -> None:
+    """What the app writes by itself, e.g. a backup."""
+    from tadris.db.connection import transaction
+    from tadris.services import audit
+
+    with transaction(conn):
+        audit.log_system(conn, "backup.create", "backups",
+                         new={"id": 1, "file": "tadris.db", "type": "auto"})
+
+
+def test_the_automatic_operations_can_be_left_out(conn, director, school):
+    automatic_entry(conn)
+    every = reports.audit_log(conn, director, date(2020, 1, 1), date(2030, 1, 1))
+    people = reports.audit_log(conn, director, date(2020, 1, 1), date(2030, 1, 1),
+                               with_system=False)
+    assert any(e.user is None for e in every)
+    assert people and all(e.user is not None for e in people)
+    only_system = reports.audit_log(conn, director, date(2020, 1, 1), date(2030, 1, 1),
+                                    system_only=True, with_system=False)
+    assert only_system and all(e.user is None for e in only_system)
+
+
+def test_audit_lines_show_changes(conn, director, school):
+    approved = reports.audit_log(conn, director, date(2020, 1, 1), date(2030, 1, 1),
+                                 family="refund.approve")[0]
+    assert reports.audit_lines(conn, director, approved) == [
+        "Statut : En attente → Approuvé", "Montant accordé : 1 000 DA"]
 
 
 # ----- exports -----
@@ -529,3 +573,36 @@ def test_every_report_agrees_with_the_seed(tmp_path):
     for table in (by_month, by_group, aged, summary, listed):
         load_workbook(printing.report_xlsx(conn, boss, table, tmp_path))
         printing.report_pdf(conn, boss, table, tmp_path)
+
+
+# ----- the Journal's wording -----
+
+def test_journal_values():
+    from tadris.services import journal
+
+    names = journal.Names({"students": {7: "Benali Amine"}, "class_groups": {3: "Maths 4AM"}})
+    assert journal.action_label("payment.record") == "Paiement enregistré"
+    assert journal.action_label("phase11.sms") == "phase11.sms"  # unknown: as recorded
+    assert journal.entity_label("students", 7, names) == "Élève : Benali Amine"
+    assert journal.entity_label("payments", 12, names) == "Paiement n° 12"
+    assert journal.entity_label("reports", None, names) == "Rapport"
+    new = json.dumps({"student_id": 7, "group_id": 3, "price": 3000, "percentage_bp": 6250,
+                      "weekday": 2, "method": "cheque", "is_main": True, "charge_id": 99,
+                      "start_date": "2026-09-15", "notes": None, "mystery": "x"})
+    assert journal.lines(None, new, names) == [
+        "Élève : Benali Amine", "Groupe : Maths 4AM", "Prix : 3 000 DA", "Taux : 62,5 %",
+        "Jour : Mardi", "Mode : Chèque", "Contact principal : Oui",
+        "Début : 15/09/2026", "mystery : x"]
+    marks = json.dumps({"date": "2026-10-18", "changes": [
+        {"enrollment_id": 1, "old": None, "new": "present"},
+        {"enrollment_id": 2, "old": None, "new": "present"},
+        {"enrollment_id": 3, "old": "present", "new": "absent"}]})
+    assert journal.lines(None, marks, names) == ["Date : 18/10/2026",
+                                                 "Marques : 2 Présent, 1 Absent"]
+    export = json.dumps({"report": "liste-eleves", "format": "xlsx", "rows": 3})
+    assert journal.summary(None, export, names) == (
+        "Rapport : Liste des élèves · Format : Excel · Lignes : 3")
+    assert journal.lines('{"key": "school.name", "value": "A"}',
+                         '{"key": "school.name", "value": "B"}', names) == [
+        "Paramètre : Nom de l'école", "Valeur : A → B"]
+    assert len(journal.summary(None, json.dumps({"reason": "x" * 300}), names, 50)) == 50

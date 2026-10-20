@@ -2,12 +2,12 @@
 « PDF » / « Excel ». The tabs follow the user's rights; money and the audit log are the
 director's. A double-click on a student row opens the student."""
 
-import json
 from datetime import date, timedelta
 
 from PySide6.QtCore import Signal
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QHBoxLayout,
     QLabel,
@@ -339,8 +339,9 @@ SYSTEM = -1  # the user filter's « Système » choice
 
 
 class AuditTab(ReportView):
-    """The audit log: filters, the entries (latest first) and, under them, what the selected
-    entry recorded."""
+    """The audit log in plain French: filters, the entries (latest first) and, under them,
+    what the selected entry recorded. What the app does by itself (backups, sessions
+    prepared, months ended) is hidden unless asked for."""
 
     def __init__(self, conn, ctx: UserContext):
         today = dates.today()
@@ -350,23 +351,28 @@ class AuditTab(ReportView):
         self.family = QComboBox()
         self.entity = QLineEdit()
         self.entity.setPlaceholderText(t["report.filter.any"])
+        self.with_system = QCheckBox(t["audit.show_system"])
+        self.with_system.setToolTip(t["audit.show_system_tip"])
         self.entries: list[AuditEntry] = []
         self.detail = QPlainTextEdit()
         self.detail.setReadOnly(True)
-        self.detail.setMaximumHeight(130)
+        self.detail.setMaximumHeight(150)
         self.detail.setPlaceholderText(t["report.audit.pick"])
-        super().__init__(conn, ctx, self._report, _filters(
+        filters = _filters(
             labeled(t["report.filter.from"], self.first),
             labeled(t["report.filter.to"], self.last),
             labeled(t["report.filter.user"], self.user),
             labeled(t["report.filter.family"], self.family),
-            labeled(t["report.filter.entity"], self.entity)), stretch=(5,))
+            labeled(t["report.filter.entity"], self.entity))
+        super().__init__(conn, ctx, self._report, filters, stretch=(4,))
+        self.layout().insertWidget(1, self.with_system)
         self.layout().addWidget(self.detail)
         self.load_filters()
         for field in (self.first, self.last):
             field.textChanged.connect(lambda _text: self._dates_changed())
         self.user.currentIndexChanged.connect(lambda _i: self.refresh())
         self.family.currentIndexChanged.connect(lambda _i: self.refresh())
+        self.with_system.toggled.connect(lambda _on: self.refresh())
         self.entity.editingFinished.connect(self.refresh)
         self.row_selected.connect(self._show_detail)
 
@@ -398,32 +404,22 @@ class AuditTab(ReportView):
         self.entries = reports.audit_log(
             self._conn, self._ctx, first, last,
             user_id=None if user in (None, SYSTEM) else user, system_only=user == SYSTEM,
-            family=self.family.currentData(), entity_id=int(text) if text else None)
+            family=self.family.currentData(), entity_id=int(text) if text else None,
+            with_system=self.with_system.isChecked())
         self.detail.clear()
-        return reports.audit_table(self.entries, first, last)
+        return reports.audit_table(self._conn, self.entries, first, last)
 
     def _show_detail(self, index: int) -> None:
         if index < 0 or index >= len(self.entries):
             self.detail.clear()
             return
         entry = self.entries[index]
-        lines = [t["report.audit.heading"].format(
-            action=entry.action, entity=entry.entity_name,
-            id=entry.entity_id if entry.entity_id is not None else "—",
-            user=entry.user or t["audit.system"],
-            when=display("datetime", entry.created_at))]
-        for key, value in ((t["report.audit.old"], entry.old_value),
-                           (t["report.audit.new"], entry.new_value)):
-            if value:
-                lines.append(f"{key} {_pretty(value)}")
-        self.detail.setPlainText("\n".join(lines))
-
-
-def _pretty(value: str) -> str:
-    try:
-        return json.dumps(json.loads(value), ensure_ascii=False, indent=1)
-    except ValueError:
-        return value
+        row = self.report.rows[index]
+        heading = t["report.audit.heading"].format(
+            action=row[2], entity=row[3], user=row[1],
+            when=display("datetime", entry.created_at))
+        self.detail.setPlainText("\n".join(
+            [heading] + reports.audit_lines(self._conn, self._ctx, entry)))
 
 
 # (key, tab label, permissions needed, tab class)

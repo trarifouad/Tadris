@@ -16,7 +16,7 @@ from tadris.ui.pages.dashboard import DashboardPage, share_rows
 from tadris.ui.pages.reports import ReportsPage
 from tadris.ui.theme import apply_theme, load_fonts
 from tadris.ui.widgets import common
-from test_reports import TODAY, School
+from test_reports import TODAY, School, automatic_entry
 
 
 @pytest.fixture(autouse=True)
@@ -279,6 +279,7 @@ def test_student_tab_filters(qtbot, conn, desk, school):
 
 
 def test_audit_tab(qtbot, conn, director, desk, school):
+    automatic_entry(conn)
     page = ReportsPage(conn, director)
     qtbot.addWidget(page)
     page.tabs.setCurrentIndex(5)
@@ -288,11 +289,18 @@ def test_audit_tab(qtbot, conn, director, desk, school):
     view.last.set_value(today)
     assert view.table.rowCount() == len(view.entries) > 0
 
+    assert "Sauvegarde créée" not in {row[2] for row in texts(view.table)}
+    assert all(e.user is not None for e in view.entries)  # automatic ones hidden
+    view.with_system.setChecked(True)
+    assert any(e.user is None for e in view.entries)
+    view.with_system.setChecked(False)
+
     view.family.setCurrentIndex(view.family.findData("payment"))
-    assert {row[2] for row in texts(view.table)} == {"payment.record", "payment.void"}
+    assert {row[2] for row in texts(view.table)} == {"Paiement enregistré", "Paiement annulé"}
     view.table.selectRow(0)
-    assert view.detail.toPlainText().startswith(view.entries[0].action)
-    assert "Après :" in view.detail.toPlainText()
+    detail = view.detail.toPlainText()
+    assert detail.startswith(texts(view.table)[0][2] + " · Paiement n° ")
+    assert "Montant : " in detail and "{" not in detail
 
     view.user.setCurrentIndex(view.user.findData(desk.user_id))
     assert view.table.rowCount() == 0 and view.empty.isVisibleTo(view)

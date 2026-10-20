@@ -6,6 +6,7 @@ from tadris.core.dates import display_date
 from tadris.i18n.fr import t
 from tadris.services import auth
 from tadris.ui.pages.setup_tabs import CatalogTab, HolidaysTab, RoomsTab, SchoolTab, YearsTab
+from tadris.ui.pages.system_tabs import AboutTab
 from tadris.ui.user_dialog import UserDialog
 from tadris.ui.widgets.common import ask, primary_button, toast
 from tadris.ui.widgets.tables import fill, item, ruled_table
@@ -30,11 +31,13 @@ class SettingsPage(QWidget):
         self.subjects = CatalogTab(conn, ctx, "subject")
         self.rooms = RoomsTab(conn, ctx)
         self.holidays = HolidaysTab(conn, ctx)
+        self.about = AboutTab(conn, ctx)
         self.tabs = QTabWidget()
         self.tabs.setDocumentMode(True)
         for tab, key in ((self.school, "school"), (self.users, "users"), (self.years, "years"),
                          (self.levels, "levels"), (self.subjects, "subjects"),
-                         (self.rooms, "rooms"), (self.holidays, "holidays")):
+                         (self.rooms, "rooms"), (self.holidays, "holidays"),
+                         (self.about, "about")):
             self.tabs.addTab(tab, t[f"settings.tab.{key}"])
         self.tabs.currentChanged.connect(self._refresh_tab)
 

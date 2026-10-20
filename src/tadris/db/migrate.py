@@ -6,6 +6,17 @@ MIGRATIONS_DIR = Path(__file__).parent / "migrations"
 _NAME = re.compile(r"^(\d{4})_.+\.sql$")
 
 
+class MigrationFailed(Exception):
+    """A migration could not run; the database was left as it was (its transaction rolled
+    back). version: the one that failed."""
+
+    def __init__(self, version: int, file: str, error: Exception):
+        super().__init__(f"{file}: {error}")
+        self.version = version
+        self.file = file
+        self.error = error
+
+
 def current_version(conn: sqlite3.Connection) -> int:
     return conn.execute("PRAGMA user_version").fetchone()[0]
 
@@ -27,7 +38,14 @@ def has_pending(conn: sqlite3.Connection) -> bool:
     return 0 < current_version(conn) < latest_version()
 
 
+def is_newer(conn: sqlite3.Connection) -> bool:
+    """A database written by a later version of the app: this one must not open it."""
+    return current_version(conn) > latest_version()
+
+
 def migrate(conn: sqlite3.Connection) -> int:
+    """Run every migration the database lacks, each in its own transaction. Raises
+    MigrationFailed (the failed one changed nothing)."""
     for version, file in _files():
         if version <= current_version(conn):
             continue
@@ -36,8 +54,8 @@ def migrate(conn: sqlite3.Connection) -> int:
             conn.executescript(
                 f"BEGIN IMMEDIATE;\n{sql}\nPRAGMA user_version = {version};\nCOMMIT;"
             )
-        except Exception:
+        except Exception as exc:
             if conn.in_transaction:
                 conn.execute("ROLLBACK")
-            raise
+            raise MigrationFailed(version, file.name, exc) from exc
     return current_version(conn)

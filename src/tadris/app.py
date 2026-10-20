@@ -6,7 +6,14 @@ from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
 
 from tadris.config import backup_dir, db_override, db_path, documents_dir
 from tadris.db.connection import connect
-from tadris.db.migrate import has_pending, migrate
+from tadris.db.migrate import (
+    MigrationFailed,
+    current_version,
+    has_pending,
+    is_newer,
+    latest_version,
+    migrate,
+)
 from tadris.i18n.fr import t
 from tadris.services import auth, backup, documents, sessions, subscriptions
 from tadris.ui.first_run import FirstRunDialog
@@ -77,6 +84,28 @@ def _clean_documents(conn) -> None:
         print(f"Nettoyage des documents impossible : {exc}", file=sys.stderr)
 
 
+def open_database(conn, folder, parent=None) -> bool:
+    """Bring the database to this version of the app. False (with a message saying why)
+    when the app must not go on: a database from a later version, no copy before a
+    migration, or a migration that failed (it changed nothing; the copy is named)."""
+    if is_newer(conn):
+        QMessageBox.critical(parent, t["migration.title"], t["migration.newer"].format(
+            version=current_version(conn), latest=latest_version()))
+        return False
+    taken = []
+    if has_pending(conn) and not _backup(lambda: taken.append(backup.take(conn, folder)),
+                                         parent, warning="backup.before_migration"):
+        return False  # never migrate a database without a copy taken just before
+    try:
+        migrate(conn)
+    except MigrationFailed as exc:
+        copy = taken[0].file_path if taken else t["migration.no_copy"]
+        QMessageBox.critical(parent, t["migration.title"], t["migration.failed"].format(
+            version=exc.version, error=exc.error, copy=copy))
+        return False
+    return True
+
+
 def main() -> int:
     _choose_linux_platform()
     _choose_scale()
@@ -91,10 +120,8 @@ def main() -> int:
         return 1
     conn = connect(db_path())
     folder = backup_dir()
-    if has_pending(conn) and not _backup(lambda: backup.take(conn, folder),
-                                         warning="backup.before_migration"):
-        return 1  # never migrate a database without a copy taken just before
-    migrate(conn)
+    if not open_database(conn, folder):
+        return 1
     _backup(lambda: backup.daily(conn, folder))
     _clean_documents(conn)
     subscriptions.mark_ended(conn)  # months whose last day has passed

@@ -104,7 +104,8 @@ def test_settings_has_structure_tabs(qtbot, conn, director):
     page = keep(qtbot, SettingsPage(conn, director))
     assert [page.tabs.tabText(i) for i in range(page.tabs.count())] == [
         t[f"settings.tab.{k}"]
-        for k in ("school", "users", "years", "levels", "subjects", "rooms", "holidays")]
+        for k in ("school", "users", "years", "levels", "subjects", "rooms", "holidays",
+                  "about")]
 
 
 def test_year_dialog_suggests_the_label(qtbot, conn, director):

@@ -1189,6 +1189,16 @@ t = {
     "school.debt_warning": "Alerte de dette à partir de",
     "school.debt_warning_off": "Vide : pas d'alerte",
     "school.debt_warning_invalid": "Le seuil d'alerte de dette est invalide.",
+    "settings.tab.about": "À propos",
+    "about.caption": (
+        "La version de l'application et de la base de données, et l'endroit où sont "
+        "enregistrées les données. Utile si vous appelez pour de l'aide."
+    ),
+    "about.app_version": "Version de Tadris",
+    "about.schema_version": "Version de la base",
+    "about.database": "Fichier de la base",
+    "about.in_memory": "En mémoire (test)",
+    "about.open_folder": "Ouvrir le dossier des données",
     "settings.tab.years": "Années scolaires",
     "settings.tab.levels": "Niveaux",
     "settings.tab.subjects": "Matières",
@@ -1434,6 +1444,18 @@ t = {
         "{error}\n\nL'application continue, mais vos données ne sont pas sauvegardées. "
         "Vérifiez l'espace disque et les droits du dossier, puis redémarrez l'application."
     ),
+    "migration.title": "Mise à jour de la base",
+    "migration.newer": (
+        "Cette base de données vient d'une version plus récente de Tadris (version {version} "
+        "de la base ; celle-ci connaît jusqu'à la version {latest}).\n\nL'application ne "
+        "l'ouvre pas pour ne rien abîmer. Installez la dernière version de Tadris."
+    ),
+    "migration.failed": (
+        "La mise à jour de la base (étape {version}) a échoué : {error}\n\nLa base n'a pas "
+        "été modifiée. Copie faite juste avant : {copy}\n\nL'application s'arrête. "
+        "Gardez ce message et contactez la personne qui a installé Tadris."
+    ),
+    "migration.no_copy": "aucune (base neuve)",
     "backup.before_migration": (
         "{error}\n\nCette version doit mettre à jour la base, ce qu'elle ne fait jamais sans "
         "copie. Vérifiez l'espace disque et les droits du dossier, puis relancez l'application."

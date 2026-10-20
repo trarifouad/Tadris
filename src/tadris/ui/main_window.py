@@ -1,3 +1,4 @@
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QButtonGroup,
     QFrame,
@@ -13,7 +14,7 @@ from PySide6.QtWidgets import (
 from tadris.core.context import UserContext
 from tadris.core.permissions import nav_for
 from tadris.i18n.fr import t
-from tadris.services import settings
+from tadris.services import auth, settings
 from tadris.ui.pages.attendance import AttendancePage
 from tadris.ui.pages.groups import GroupsPage
 from tadris.ui.pages.payments_page import PaymentsPage
@@ -23,6 +24,7 @@ from tadris.ui.pages.students import StudentsPage
 from tadris.ui.pages.subscriptions_page import SubscriptionsPage
 from tadris.ui.pages.teachers import TeachersPage
 from tadris.ui.pages.timetable import TimetablePage
+from tadris.ui.widgets.common import confirm
 
 SIDEBAR_WIDTH = 216
 
@@ -46,8 +48,11 @@ class PlaceholderPage(QWidget):
 
 
 class MainWindow(QMainWindow):
+    logged_out = Signal()
+
     def __init__(self, conn, ctx: UserContext):
         super().__init__()
+        self.logging_out = False  # closed by « Se déconnecter », not to quit the app
         self._conn = conn
         self.ctx = ctx
         school = settings.get(conn, "school.name")
@@ -163,5 +168,27 @@ class MainWindow(QMainWindow):
         role.setObjectName("sidebarRole")
         footer_layout.addWidget(user)
         footer_layout.addWidget(role)
+        footer_layout.addSpacing(10)
+        self.logout_button = QPushButton(t["main.logout"])
+        self.logout_button.setObjectName("sidebarLogout")
+        self.logout_button.setToolTip(t["main.logout_tip"])
+        self.logout_button.clicked.connect(self.logout)
+        footer_layout.addWidget(self.logout_button)
         layout.addWidget(footer)
         return sidebar
+
+    def has_unsaved(self) -> bool:
+        return any(getattr(self.pages.widget(self._slots[key]), "has_unsaved", lambda: False)()
+                   for key in self._built)
+
+    def logout(self) -> bool:
+        """Back to the login screen. Unsaved attendance marks ask first. True if done."""
+        if self.has_unsaved() and not confirm(self, t["attendance_view.leave_title"],
+                                              t["attendance_view.leave"],
+                                              t["main.logout"]):
+            return False
+        auth.logout(self._conn, self.ctx)
+        self.logging_out = True
+        self.logged_out.emit()
+        self.close()
+        return True

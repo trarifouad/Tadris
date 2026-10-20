@@ -240,6 +240,7 @@ class PayoutDetailView(QWidget):
         self.payout_id = payout_id
         self.setObjectName("page")
         self.back_button = variant_button(t["payouts.back"], "ghost")
+        self.back_button.setObjectName("backLink")
         self.back_button.clicked.connect(self.back.emit)
         back_row = QHBoxLayout()
         back_row.addWidget(self.back_button)

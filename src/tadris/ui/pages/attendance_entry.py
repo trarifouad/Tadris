@@ -81,6 +81,7 @@ class AttendanceView(QWidget):
         self._saved: dict[int, str | None] = {}
 
         self.back_button = QPushButton(t["attendance_view.back"])
+        self.back_button.setObjectName("backLink")
         self.back_button.setProperty("variant", "ghost")
         self.back_button.setAutoDefault(False)
         self.back_button.clicked.connect(self._back)

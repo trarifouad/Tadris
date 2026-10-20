@@ -24,7 +24,7 @@ from tadris.ui.theme.status import kind_for
 from tadris.ui.widgets import common
 from tadris.ui.widgets.common import Badge, PageBanner, confirm, primary_button, toast
 from tadris.ui.widgets.forms import HeaderCard, caption, padded
-from tadris.ui.widgets.tables import fit_columns, item, ruled_table
+from tadris.ui.widgets.tables import fit_columns, frozen_columns, item, ruled_table
 
 
 class MarkButtons(QWidget):
@@ -174,6 +174,13 @@ class AttendanceView(QWidget):
         return True, ""
 
     def _fill(self, lines: list[RosterLine], editable: bool) -> None:
+        with frozen_columns(self.table):
+            self._fill_rows(lines, editable)
+        self._fit_marks()
+        self.table.setVisible(bool(lines))
+        self.empty.setVisible(not lines)
+
+    def _fill_rows(self, lines: list[RosterLine], editable: bool) -> None:
         self.table.setRowCount(0)
         self.table.setRowCount(len(lines))
         self._marks, self._saved = {}, {}
@@ -192,13 +199,13 @@ class AttendanceView(QWidget):
             self.table.setCellWidget(r, 3, marks)
             self._marks[line.enrollment_id] = marks
             self._saved[line.enrollment_id] = line.status
+
+    def _fit_marks(self) -> None:
         if self._marks:  # the buttons decide the column's width, not a cell text
             width = next(iter(self._marks.values())).sizeHint().width() + 24  # cell frame
             header = self.table.horizontalHeader()
             header.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
             self.table.setColumnWidth(3, width)
-        self.table.setVisible(bool(lines))
-        self.empty.setVisible(not lines)
 
     # ----- state -----
 

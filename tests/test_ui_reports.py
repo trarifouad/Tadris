@@ -61,6 +61,13 @@ def texts(table) -> list[list[str]]:
             for r in range(table.rowCount())]
 
 
+def export(qtbot, view, button):
+    """Click PDF or Excel and wait for the file: it is written in the background."""
+    with qtbot.waitSignal(view.exported, timeout=15000) as done:
+        click(qtbot, button)
+    return done.args[0]
+
+
 def double_click_row(table, row: int) -> None:
     table.activated.emit(table.model().index(row, 0))
 
@@ -228,7 +235,7 @@ def test_excel_button_writes_what_the_screen_shows(qtbot, conn, director, school
     page = ReportsPage(conn, director)
     qtbot.addWidget(page)
     view = page.views["revenue"]
-    click(qtbot, view.excel)
+    export(qtbot, view, view.excel)
     [path] = documents
     sheet = load_workbook(path).active
     total_row = 4 + len(view.report.rows) + 1
@@ -236,7 +243,7 @@ def test_excel_button_writes_what_the_screen_shows(qtbot, conn, director, school
     assert view.rows_shown()[-1][1] == "29 000 DA" == f"{sheet.cell(total_row, 2).value:,} DA"\
         .replace(",", " ")
 
-    click(qtbot, view.pdf)
+    export(qtbot, view, view.pdf)
     assert documents[-1].suffix == ".pdf"
 
 
@@ -356,12 +363,91 @@ def test_every_tab_exports_pdf_and_excel(qtbot, conn, director, school, document
         if change is not None:
             combo = getattr(view, change[0])
             combo.setCurrentIndex(combo.findData(change[1]))
-        click(qtbot, view.pdf)
+        export(qtbot, view, view.pdf)
         assert documents[-1].suffix == ".pdf" and documents[-1].read_bytes()[:4] == b"%PDF"
-        click(qtbot, view.excel)
+        export(qtbot, view, view.excel)
         sheet = load_workbook(documents[-1]).active
         assert sheet["A1"].value == view.report.title
         body = [row for row in sheet.iter_rows(min_row=5, max_row=4 + len(view.report.rows),
                                                values_only=True)]
         assert len(body) == len(view.report.rows), key
     assert len(documents) == 2 * len(variants)
+
+
+def test_the_window_answers_while_an_export_is_written(qtbot, conn, director, school,
+                                                        documents, monkeypatch):
+    """The file is built outside the window's thread: the buttons wait, a line says what is
+    being prepared, and the window keeps handling events until the file is there."""
+    import threading
+
+    from tadris.services import printing
+
+    release = threading.Event()
+    build = printing.ReportJob.build
+
+    def slow_build(job):
+        release.wait(5)  # a long PDF
+        return build(job)
+
+    monkeypatch.setattr(printing.ReportJob, "build", slow_build)
+    page = ReportsPage(conn, director)
+    qtbot.addWidget(page)
+    page.show()
+    view = page.views["revenue"]
+    click(qtbot, view.pdf)
+    qtbot.wait(100)  # the event loop runs: the window is not frozen
+    assert not view.pdf.isEnabled() and not view.excel.isEnabled()
+    assert view.busy.isVisible() and view.busy.text() == "Préparation du PDF…"
+    assert documents == []
+    with qtbot.waitSignal(view.exported, timeout=5000):
+        release.set()
+    assert view.pdf.isEnabled() and view.busy.isHidden()
+    assert len(documents) == 1
+    entries = conn.execute("SELECT COUNT(*) FROM audit_log WHERE action = 'report.export'"
+                           ).fetchone()[0]
+    assert entries == 1  # recorded once written, on the window's thread
+
+
+def test_a_failed_export_says_so(qtbot, conn, director, school, documents, monkeypatch):
+    from tadris.services import printing
+
+    def broken(job):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(printing.ReportJob, "build", broken)
+    page = ReportsPage(conn, director)
+    qtbot.addWidget(page)
+    view = page.views["revenue"]
+    click(qtbot, view.excel)
+    qtbot.waitUntil(lambda: view.excel.isEnabled(), timeout=5000)
+    assert view.banner.text() == t["print.failed"] or "disk full" in view.banner.text()
+    assert documents == []
+
+
+def test_refilling_a_table_is_fast(qtbot):
+    """A table whose columns fit their content, refilled while it already has rows: Qt used
+    to measure every column again for each cell (64 rows x 10 columns: 3.5 s, the window
+    « not responding »). The columns now fit once, at the end."""
+    import time
+
+    from PySide6.QtWidgets import QApplication, QHeaderView
+
+    from tadris.ui.widgets.tables import fill, fit_columns, item, ruled_table
+
+    def rows():
+        return [[item(f"cellule {r} {c} " * 3) for c in range(10)] for r in range(64)]
+
+    table = ruled_table([str(c) for c in range(10)])
+    qtbot.addWidget(table)
+    table.resize(1200, 600)
+    table.show()
+    fill(table, rows())
+    fit_columns(table, stretch=(5,))
+    qtbot.wait(20)  # laid out on screen, as when the user comes back to the page
+    started = time.perf_counter()
+    fill(table, rows())
+    QApplication.processEvents()
+    assert time.perf_counter() - started < 0.5
+    modes = [table.horizontalHeader().sectionResizeMode(c) for c in range(10)]
+    assert modes.count(QHeaderView.ResizeMode.ResizeToContents) == 9  # still fitted
+    assert table.rowCount() == 64 and table.item(63, 9).text().startswith("cellule 63 9")

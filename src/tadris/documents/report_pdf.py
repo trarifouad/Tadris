@@ -57,14 +57,11 @@ _AMOUNT = re.compile(r"\d{1,3}(?: \d{3})*(?: DA)?")
 def markup(text: str, font: str = FONT) -> str:
     """Escaped text for a Paragraph, with the characters `font` lacks (→, ←) in Plex Mono,
     which has them, instead of a box. An amount (« 21 725 DA ») never wraps."""
+    text = escape(_AMOUNT.sub(lambda m: m.group(0).replace(" ", "\u00a0"), text))
     lacks = _missing(font)
-    text = _AMOUNT.sub(lambda m: m.group(0).replace(" ", "\u00a0"), text)
-    out = []
-    for ch in text:
-        part = escape(ch)
-        out.append(f'<font name="{MONO}">{part}</font>' if lacks(ch) and not ch.isspace()
-                   else part)
-    return "".join(out)
+    for ch in {ch for ch in text if not ch.isascii() and not ch.isspace() and lacks(ch)}:
+        text = text.replace(ch, f'<font name="{MONO}">{ch}</font>')
+    return text
 
 
 def _width(text: str, font: str, size: float) -> float:

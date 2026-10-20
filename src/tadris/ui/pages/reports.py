@@ -2,10 +2,11 @@
 « PDF » / « Excel ». The tabs follow the user's rights; money and the audit log are the
 director's. A double-click on a student row opens the student."""
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
 from html import escape
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QComboBox,
@@ -35,6 +36,9 @@ from tadris.ui.widgets.forms import caption, padded
 from tadris.ui.widgets.inputs import fill_combo, id_combo
 from tadris.ui.widgets.tables import ID_ROLE, LEFT, RIGHT, fill, fit_columns, item, ruled_table
 
+# One export at a time, in the background: the window keeps answering while it is written.
+EXPORTS = ThreadPoolExecutor(max_workers=1, thread_name_prefix="export")
+
 NUMERIC = ("number", "money", "percent")
 MONO = ("number", "money", "percent", "date", "datetime")
 
@@ -45,6 +49,7 @@ class ReportView(QWidget):
 
     open_student = Signal(int)
     row_selected = Signal(int)  # the row's index, -1 for none (or the total)
+    exported = Signal(object)  # the file written (a Path)
 
     def __init__(self, conn, ctx: UserContext, load, filters: QHBoxLayout | None = None,
                  stretch: tuple[int, ...] | None = None):
@@ -63,10 +68,17 @@ class ReportView(QWidget):
             button.setAutoDefault(False)
         self.pdf.clicked.connect(lambda: self.export("pdf"))
         self.excel.clicked.connect(lambda: self.export("xlsx"))
+        self._job = self._future = None
+        self._poll = QTimer(self)
+        self._poll.setInterval(40)
+        self._poll.timeout.connect(self._export_done)
+        self.busy = caption()
+        self.busy.hide()
         toolbar = QHBoxLayout()
         toolbar.setSpacing(8)
         toolbar.addWidget(self.period)
         toolbar.addStretch()
+        toolbar.addWidget(self.busy)
         toolbar.addWidget(self.pdf)
         toolbar.addWidget(self.excel)
         self.table = ruled_table([])
@@ -117,8 +129,8 @@ class ReportView(QWidget):
         self.empty.setVisible(not report.rows)
         self.note.setText(report.note)
         self.note.setVisible(bool(report.note))
-        self.pdf.setEnabled(allowed(self._ctx, "print.document"))
-        self.excel.setEnabled(allowed(self._ctx, "print.document"))
+        for button in (self.pdf, self.excel):  # not while an export is being written
+            button.setEnabled(self._job is None and allowed(self._ctx, "print.document"))
 
     def _cells(self, values: tuple, row_id: int | None, bold: bool = False) -> list:
         out = []
@@ -137,18 +149,47 @@ class ReportView(QWidget):
         return [[self.table.item(r, c).text() for c in range(self.table.columnCount())]
                 for r in range(self.table.rowCount())]
 
-    def export(self, extension: str):
-        if self.report is None:
-            return None
-        build = printing.report_pdf if extension == "pdf" else printing.report_xlsx
+    def export(self, extension: str) -> None:
+        """Write the PDF or the Excel file without freezing the window: the file is built
+        in the background (the Journal's PDF takes a second or two), the buttons wait,
+        then it is recorded and opened. exported(path) says when it is there."""
+        if self.report is None or self._job is not None:
+            return
         try:
-            path = build(self._conn, self._ctx, self.report)
-        except (BusinessRuleError, OSError) as exc:
-            self.banner.show_error(getattr(exc, "message", str(exc)))
-            return None
+            job = printing.prepare_report(self._conn, self._ctx, self.report, extension)
+        except BusinessRuleError as exc:
+            self.banner.show_error(exc.message)
+            return
+        self._job, self._future = job, EXPORTS.submit(job.build)
+        self._set_busy(t[f"report.preparing.{extension}"])
+        self._poll.start()
+
+    def _set_busy(self, text: str | None) -> None:
+        for button in (self.pdf, self.excel):
+            button.setEnabled(text is None and allowed(self._ctx, "print.document"))
+        self.busy.setText(text or "")
+        self.busy.setVisible(text is not None)
+        if text is None:
+            self.unsetCursor()
+        else:
+            self.setCursor(Qt.CursorShape.BusyCursor)
+
+    def _export_done(self) -> None:
+        if not self._future.done():
+            return
+        self._poll.stop()
+        job, future = self._job, self._future
+        self._job = self._future = None
+        self._set_busy(None)
+        try:
+            future.result()
+            path = printing.finish_report(self._conn, self._ctx, job)
+        except Exception as exc:  # noqa: BLE001 - whatever stopped the file, say so
+            self.banner.show_error(getattr(exc, "message", None) or t["print.failed"])
+            return
         common.open_document(path)
         toast(self, t["report.exported"].format(file=path.name))
-        return path
+        self.exported.emit(path)
 
     def _row(self) -> int:
         rows = self.table.selectionModel().selectedRows()

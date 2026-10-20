@@ -1,3 +1,5 @@
+from contextlib import contextmanager
+
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import QAbstractItemView, QHeaderView, QTableWidget, QTableWidgetItem
@@ -78,15 +80,37 @@ def fit_columns(table: QTableWidget, stretch: tuple[int, ...] = (0,)) -> None:
         header.setSectionResizeMode(column, mode)
 
 
+@contextmanager
+def frozen_columns(table: QTableWidget):
+    """While cells go in, columns that fit their content are frozen and the table is not
+    redrawn: otherwise Qt measures the whole column again for every cell, and refilling a
+    table that already has rows takes seconds (64 rows x 10 columns: 3.5 s, the window
+    « not responding »). They are measured once at the end."""
+    header = table.horizontalHeader()
+    fitted = [c for c in range(table.columnCount())
+              if header.sectionResizeMode(c) == QHeaderView.ResizeMode.ResizeToContents]
+    for c in fitted:
+        header.setSectionResizeMode(c, QHeaderView.ResizeMode.Interactive)
+    table.setUpdatesEnabled(False)
+    try:
+        yield
+    finally:
+        for c in fitted:
+            header.setSectionResizeMode(c, QHeaderView.ResizeMode.ResizeToContents)
+        table.setUpdatesEnabled(True)
+
+
 def fill(table: QTableWidget, rows: list[list[QTableWidgetItem]]) -> None:
     """Replace the rows, keeping the user's sort column and order."""
     sorting = table.isSortingEnabled()
     table.setSortingEnabled(False)
     table.clearSelection()
-    table.setRowCount(len(rows))
-    for r, cells in enumerate(rows):
-        for c, cell in enumerate(cells):
-            table.setItem(r, c, cell)
+    with frozen_columns(table):
+        table.setRowCount(0)  # new cells go into empty rows, never replace old ones
+        table.setRowCount(len(rows))
+        for r, cells in enumerate(rows):
+            for c, cell in enumerate(cells):
+                table.setItem(r, c, cell)
     table.setSortingEnabled(sorting)
 
 

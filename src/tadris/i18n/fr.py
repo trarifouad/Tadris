@@ -1605,6 +1605,8 @@ t = {
     "report.pdf": "PDF",
     "report.excel": "Excel",
     "report.exported": "Rapport enregistré : {file}",
+    "report.preparing.pdf": "Préparation du PDF…",
+    "report.preparing.xlsx": "Préparation du fichier Excel…",
     "report.empty": "Rien à afficher pour ces filtres.",
     "report.no_year": "Créez d'abord une année scolaire dans Paramètres.",
     "report.entity_invalid": "Le n° d'élément doit être un nombre.",

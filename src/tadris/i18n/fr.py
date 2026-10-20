@@ -572,6 +572,8 @@ t = {
     ),
     "main.ready": "Prêt",
     "main.user_status": "Connecté : {username} · {role}",
+    "main.logout": "Se déconnecter",
+    "main.logout_tip": "Revenir à l'écran de connexion (pour changer d'utilisateur).",
     "page.placeholder": "Cette page sera disponible dans une prochaine étape.",
     "role.director": "Directeur",
     "role.receptionist": "Réceptionniste",

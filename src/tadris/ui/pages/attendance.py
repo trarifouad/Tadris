@@ -263,6 +263,10 @@ class AttendancePage(ListDetailPage):
     def sessions(self) -> SessionsView:
         return self.list
 
+    def has_unsaved(self) -> bool:
+        """A session's attendance is open with marks not saved yet."""
+        return self.detail is not None and self.detail.dirty()
+
     def refresh(self) -> None:
         if self.detail is None:
             self.list.load_filters()

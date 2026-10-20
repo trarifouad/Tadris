@@ -103,6 +103,10 @@ def build_qss(t: dict, chevron: str = "", check: str = "") -> str:
     QFrame#sidebarFooter {{ border-top: 1px solid {rgba(t['chalk'], 0.14)}; }}
     QLabel#sidebarUser {{ color: {t['chalk']}; font-size: 13px; font-weight: 500; }}
     QLabel#sidebarRole {{ color: {chalk_dim}; font-size: 12px; }}
+    QPushButton#sidebarLogout {{ background: transparent; color: {chalk_dim}; text-align: left;
+        border: 1px solid {rgba(t['chalk'], 0.22)}; border-radius: 6px; padding: 0 10px;
+        min-height: 30px; font-size: 13px; }}
+    QPushButton#sidebarLogout:hover {{ background: {t['sidebar_hover']}; color: {t['chalk']}; }}
 
     QLabel#brandWordmark {{ font-family: "Reem Kufi"; font-size: 30px; font-weight: 700;
                             color: {t['primary']}; }}

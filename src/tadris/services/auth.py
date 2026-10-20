@@ -83,6 +83,12 @@ def login(conn, username: str, password: str) -> UserContext:
     return _ctx_from_row(row)
 
 
+def logout(conn, ctx: UserContext) -> None:
+    """The user leaves the workstation: written to the audit log (who and when)."""
+    with transaction(conn):
+        audit.log(conn, ctx, "user.logout", "users", ctx.user_id)
+
+
 def list_users(conn, ctx: UserContext) -> list[dict]:
     require(ctx, "user.view")
     rows = conn.execute(

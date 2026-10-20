@@ -57,17 +57,30 @@ def main() -> int:
     subscriptions.mark_ended(conn)  # months whose last day has passed
     sessions.generate_at_start(conn)  # the next 14 days from the timetable
 
-    dialog = FirstRunDialog(conn) if auth.user_count(conn) == 0 else LoginDialog(conn)
-    if dialog.exec() != QDialog.DialogCode.Accepted:
-        return 0
-
-    window = MainWindow(conn, dialog.ctx)
-    if override is not None:  # never mistake a test copy for the real school
-        window.setWindowTitle(f"{window.windowTitle()} · {override.name}")
-    window.show()
-    timer = QTimer(window)
-    timer.timeout.connect(lambda: _backup(lambda: backup.daily(conn, folder), window))
-    timer.start(DAILY_CHECK_MS)
-    code = app.exec()
+    code = run_sessions(app, conn, folder, override)
+    if code is None:
+        return 0  # nobody logged in: nothing to save
     _backup(lambda: backup.take(conn, folder))  # the day's work, on close
+    return code
+
+
+def run_sessions(app, conn, folder, override) -> int | None:
+    """Login, the main window, and back to the login screen after « Se déconnecter », until
+    the app is quit. None if nobody logged in at all."""
+    dialog = FirstRunDialog(conn) if auth.user_count(conn) == 0 else LoginDialog(conn)
+    code = None
+    while dialog.exec() == QDialog.DialogCode.Accepted:
+        window = MainWindow(conn, dialog.ctx)
+        if override is not None:  # never mistake a test copy for the real school
+            window.setWindowTitle(f"{window.windowTitle()} · {override.name}")
+        window.show()
+        timer = QTimer(window)
+        timer.timeout.connect(lambda w=window: _backup(lambda: backup.daily(conn, folder), w))
+        timer.start(DAILY_CHECK_MS)
+        code = app.exec()  # returns when the window closes
+        logged_out = window.logging_out
+        window.deleteLater()
+        if not logged_out:
+            break
+        dialog = LoginDialog(conn)
     return code

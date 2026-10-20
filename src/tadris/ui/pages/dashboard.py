@@ -2,9 +2,9 @@
 the largest debts and the groups' fill on the right. A double-click on a student opens their
 page; « Voir tout » opens the page that handles the list.
 
-It is read at a glance, so the page never scrolls: each list shows its first LIST_ROWS rows
-(« Voir les N » says how many there are), all of them on 1920 x 1080 at 125 % or 1366 x 768
-at 100 %; on a smaller window a list scrolls inside its panel."""
+It is read at a glance, so the page never scrolls and no list scrolls either: each list
+shows as many rows as the window leaves room for (the two panels of a column share it) and
+« Voir les N » says how many there are when some are left out."""
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
@@ -30,8 +30,9 @@ from tadris.ui.theme.status import kind_for
 from tadris.ui.widgets.forms import ListSection, caption
 from tadris.ui.widgets.tables import CENTER, RIGHT, fit_columns, item
 
-LIST_ROWS = 4  # rows a dashboard list shows before « Voir les N »
 ROW_HEIGHT = 34  # a little tighter than the list pages' 40
+SPACING = 12
+MIN_ROWS = 1  # a list with rows always shows at least this many
 
 
 class StatCard(QFrame):
@@ -57,9 +58,9 @@ class StatCard(QFrame):
 
 
 class Panel(QFrame):
-    """A titled list on the dashboard: its first LIST_ROWS rows, and « Voir tout » (« Voir
-    les N » when rows are left out) opening the page with the whole list. As tall as its
-    rows: a short list leaves no empty box."""
+    """A titled list on the dashboard: as many rows as its share of the window, and « Voir
+    tout » (« Voir les N » when rows are left out) opening the page with the whole list.
+    As tall as the rows it shows: no empty box, no scroll bar."""
 
     def __init__(self, title: str, headers: list[str], empty: str, page: str | None,
                  navigate: Signal):
@@ -70,9 +71,11 @@ class Panel(QFrame):
         self.list = ListSection(headers, empty)
         self.list.layout().setSpacing(8)
         self.list.toolbar.insertWidget(0, heading)
-        self.list.table.verticalHeader().setDefaultSectionSize(ROW_HEIGHT)
+        table = self.list.table
+        table.verticalHeader().setDefaultSectionSize(ROW_HEIGHT)
+        table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         # Ask for the rows' height (not Qt's default), so the layout gives it when it can.
-        self.list.table.setSizeAdjustPolicy(QAbstractScrollArea.SizeAdjustPolicy.AdjustToContents)
+        table.setSizeAdjustPolicy(QAbstractScrollArea.SizeAdjustPolicy.AdjustToContents)
         self.list.empty.setObjectName("caption")  # one plain line, not an empty box
         self.list.empty.setAlignment(Qt.AlignmentFlag.AlignLeft)
         self.more: QPushButton | None = None
@@ -81,23 +84,75 @@ class Panel(QFrame):
             self.more.setProperty("variant", "ghost")
             self.more.clicked.connect(lambda: navigate.emit(page))
             self.list.add_button(self.more, end=True)
+        self._rows: list = []
+        self._total = 0
+        self._stale = True  # new rows not on the table yet
+        self.shown = 0
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 10, 16, 12)
         layout.addWidget(self.list)
 
     def set_rows(self, rows: list, total: int | None = None) -> None:
-        """total: how many there are when `rows` is already a top few (the debtors)."""
-        total = len(rows) if total is None else total
-        self.list.set_rows(rows[:LIST_ROWS])
-        # As tall as its rows when there is room; on a small screen it shrinks to one row
-        # and scrolls inside the panel, so the page itself never needs to.
+        """total: how many there are when `rows` is already a top few (the debtors). Shows
+        them all until the page says how many fit (show_rows())."""
+        self._rows = rows
+        self._total = len(rows) if total is None else total
+        self._stale = True
+        self.show_rows(len(rows))
+
+    @property
+    def count(self) -> int:
+        return len(self._rows)
+
+    def _header(self) -> int:
+        return self.list.table.horizontalHeader().sizeHint().height() + 2
+
+    def frame_height(self) -> int:
+        """The panel's height without its rows: margins, title row, table header (or the
+        empty line)."""
+        margins = self.layout().contentsMargins()
+        fixed = (margins.top() + margins.bottom() + self.list.toolbar.sizeHint().height()
+                 + self.list.layout().spacing())
+        if not self._rows:
+            return fixed + self.list.empty.sizeHint().height()
+        return fixed + self._header()
+
+    def show_rows(self, rows: int) -> None:
+        rows = min(rows, len(self._rows))
+        if rows == self.shown and not self._stale:
+            return  # a resize that changes nothing here: the table is not rebuilt
+        self._stale = False
+        self.shown = rows
+        # Copies: the table deletes the cells it drops, and the panel shows them again later.
+        self.list.set_rows([[cell.clone() for cell in row] for row in self._rows[:self.shown]])
+        # Exactly the rows shown, but no minimum beyond one row: a fixed height would hold the
+        # window up when it gets smaller, before fit_rows() takes rows away.
         table = self.list.table
-        header = table.horizontalHeader().sizeHint().height() + 2
-        table.setMinimumHeight(header + ROW_HEIGHT)
-        table.setMaximumHeight(header + ROW_HEIGHT * table.rowCount())
+        table.setMinimumHeight(self._header() + ROW_HEIGHT * min(self.shown, MIN_ROWS))
+        table.setMaximumHeight(self._header() + ROW_HEIGHT * self.shown)
         if self.more is not None:
-            self.more.setText(t["dashboard.see_count"].format(count=total)
-                              if total > LIST_ROWS else t["dashboard.see_all"])
+            self.more.setText(t["dashboard.see_count"].format(count=self._total)
+                              if self._total > self.shown else t["dashboard.see_all"])
+
+
+def share_rows(capacity: int, counts: list[int]) -> list[int]:
+    """Split `capacity` rows between lists that have `counts` rows: an equal share each, and
+    what a short list does not need goes to the others (a list of 3 next to a list of 9 in
+    10 rows: 3 and 7). Every list with rows gets MIN_ROWS, even past the capacity."""
+    shown = [0] * len(counts)
+    left = capacity
+    waiting = [i for i, count in enumerate(counts) if count > 0]
+    while left > 0 and waiting:
+        share = max(left // len(waiting), 1)
+        for i in list(waiting):
+            given = min(share, counts[i] - shown[i], left)
+            shown[i] += given
+            left -= given
+            if shown[i] == counts[i]:
+                waiting.remove(i)
+            if left == 0:
+                break
+    return [max(rows, min(count, MIN_ROWS)) for rows, count in zip(shown, counts, strict=True)]
 
 
 class DashboardPage(QWidget):
@@ -151,10 +206,10 @@ class DashboardPage(QWidget):
             panel.list.activated.connect(self.open_student.emit)
 
         # Two columns of panels, each panel as tall as its rows (top-aligned, no stretch).
+        self.columns = ((self.sessions, self.ending), (self.debtors, self.groups))
         left, right = QVBoxLayout(), QVBoxLayout()
-        for column, panels in ((left, (self.sessions, self.ending)),
-                               (right, (self.debtors, self.groups))):
-            column.setSpacing(12)
+        for column, panels in zip((left, right), self.columns, strict=True):
+            column.setSpacing(SPACING)
             for panel in panels:
                 column.addWidget(panel)
             column.addStretch()
@@ -163,13 +218,43 @@ class DashboardPage(QWidget):
         columns.addLayout(left, 3)
         columns.addLayout(right, 2)
 
+        self.heading, self.cards = heading, cards
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 18, 24, 18)
-        layout.setSpacing(12)
+        layout.setSpacing(SPACING)
         layout.addLayout(heading)
         layout.addLayout(cards)
         layout.addLayout(columns, 1)
         self.refresh()
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self.fit_rows()
+
+    def showEvent(self, event) -> None:
+        # The first resize arrives while the page is being shown, before it counts as
+        # visible: fit again once it is.
+        super().showEvent(event)
+        self.fit_rows()
+
+    def lists_height(self) -> int:
+        """What the two columns of lists have, under the title and the cards."""
+        margins = self.layout().contentsMargins()
+        return (self.height() - margins.top() - margins.bottom() - 2 * SPACING
+                - self.heading.sizeHint().height() - self.cards.sizeHint().height())
+
+    def fit_rows(self) -> None:
+        """As many rows in each list as the window leaves room for. Not before the page is
+        on screen: until then its size is Qt's default, not the window's."""
+        if not self.isVisible():
+            return
+        room = self.lists_height()
+        for panels in self.columns:
+            frames = sum(panel.frame_height() for panel in panels) + SPACING * (len(panels) - 1)
+            capacity = max((room - frames) // ROW_HEIGHT, 0)
+            for panel, rows in zip(panels, share_rows(capacity, [p.count for p in panels]),
+                                   strict=True):
+                panel.show_rows(rows)
 
     def refresh(self) -> None:
         self.show_board(reports.dashboard(self._conn, self._ctx))
@@ -217,4 +302,5 @@ class DashboardPage(QWidget):
             item(format_percent(g.rate_bp // 100 * 100), align=RIGHT, mono=True,
                  tone="success" if g.rate_bp >= 10000 else None),
         ] for g in board.groups])
+        self.fit_rows()
 

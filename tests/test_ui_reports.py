@@ -12,7 +12,7 @@ from tadris.domain.models import Dashboard, DashboardSession, Debtor, GroupFill
 from tadris.i18n.fr import t
 from tadris.services import auth, reports
 from tadris.ui.main_window import MainWindow
-from tadris.ui.pages.dashboard import LIST_ROWS, DashboardPage
+from tadris.ui.pages.dashboard import DashboardPage, share_rows
 from tadris.ui.pages.reports import ReportsPage
 from tadris.ui.theme import apply_theme, load_fonts
 from tadris.ui.widgets import common
@@ -101,33 +101,61 @@ def full_board() -> Dashboard:
         charged=0, settled=0, collected=0, refunded=0)
 
 
-def test_long_lists_stop_at_four_rows(qtbot, conn, director):
-    page = DashboardPage(conn, director)
-    qtbot.addWidget(page)
-    page.show_board(full_board())
-    for panel, button in ((page.sessions, "Voir les 9"), (page.debtors, "Voir les 12"),
-                          (page.groups, "Voir les 9")):
-        assert panel.list.table.rowCount() == LIST_ROWS
-        assert panel.more.text() == button
-    assert page.ending.more.text() == "Voir tout"  # nothing left out
-    assert page.ending.list.empty.isVisibleTo(page) and page.ending.list.table.isHidden()
+def test_rows_are_shared_where_they_are_hidden():
+    assert share_rows(10, [2, 0]) == [2, 0]  # room left over
+    assert share_rows(10, [9, 9]) == [5, 5]
+    assert share_rows(10, [9, 3]) == [7, 3]  # the short list shows all, the long one the rest
+    assert share_rows(10, [12, 12]) == [5, 5]
+    assert share_rows(0, [4, 4]) == [1, 1]  # always one row, even when nothing fits
 
 
-def test_the_dashboard_never_scrolls(qtbot, conn, director):
-    """1920 x 1080 at 125 % is 1536 x 864 in Qt's units; the window gets about 1536 x 795
-    (the desktop's bar and the title bar take the rest): everything shows."""
-    page = DashboardPage(conn, director)
+def dashboard_at(qtbot, conn, ctx, width: int, height: int) -> DashboardPage:
+    page = DashboardPage(conn, ctx)
     qtbot.addWidget(page)
     page.show_board(full_board())
-    assert page.findChildren(QScrollArea) == []
-    page.resize(1536 - 216, 795 - 24)  # minus the sidebar and the status bar
+    page.resize(width, height)
     page.show()
     qtbot.wait(10)
-    assert page.layout().minimumSize().height() <= page.height()
+    return page
+
+
+def lists_bottom(page) -> int:
+    """The lowest edge of a panel, in the page's coordinates."""
+    return max(panel.mapTo(page, panel.rect().bottomLeft()).y()
+               for panels in page.columns for panel in panels)
+
+
+def test_a_large_window_shows_every_row(qtbot, conn, director):
+    """1920 x 1080 at 100 %: room for the nine sessions and the nine groups."""
+    page = dashboard_at(qtbot, conn, director, 1920 - 216, 1000 - 24)
+    assert (page.sessions.shown, page.debtors.shown, page.groups.shown) == (9, 5, 9)
+    assert page.sessions.more.text() == "Voir tout"
+    assert page.groups.more.text() == "Voir tout"
+    assert page.debtors.more.text() == "Voir les 12"  # 12 late, the five largest sent
+
+
+def test_rows_fill_the_window_and_never_scroll(qtbot, conn, director):
+    """1920 x 1080 at 125 % is 1536 x 864 in Qt's units; the window gets about 1536 x 795.
+    The lists take the height there is, and stop at the window's bottom edge."""
+    page = dashboard_at(qtbot, conn, director, 1536 - 216, 795 - 24)
+    assert page.findChildren(QScrollArea) == []
+    assert page.sessions.shown > 4  # more than the old fixed four
+    assert page.sessions.shown + page.groups.shown > 8
+    assert lists_bottom(page) <= page.height()
     for panel in (page.sessions, page.debtors, page.groups):
         table = panel.list.table
-        assert table.height() == table.maximumHeight()  # every row shown, no inner scroll
-        assert table.verticalScrollBar().maximum() == 0
+        assert table.rowCount() == panel.shown
+        assert table.verticalScrollBar().maximum() == 0  # no inner scroll either
+    assert page.ending.list.empty.isVisibleTo(page) and page.ending.list.table.isHidden()
+    assert page.ending.more.text() == "Voir tout"
+
+
+def test_a_smaller_window_shows_fewer_rows(qtbot, conn, director):
+    big = dashboard_at(qtbot, conn, director, 1320, 771)
+    small = dashboard_at(qtbot, conn, director, 1320, 600)
+    assert 1 <= small.sessions.shown < big.sessions.shown
+    assert small.sessions.more.text() == "Voir les 9"
+    assert lists_bottom(small) <= small.height()
 
 
 def test_receptionist_sees_the_fill_instead_of_the_money(qtbot, conn, desk, school):

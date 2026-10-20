@@ -164,14 +164,27 @@ def _terms(query: str) -> list[tuple[str, str | None]]:
 
 
 def search(
-    conn, ctx: UserContext, query: str = "", status: str | None = "active"
+    conn, ctx: UserContext, query: str = "", status: str | None = "active",
+    order: str = "last_name", descending: bool = False, limit: int | None = None,
+    offset: int = 0,
 ) -> list[StudentListItem]:
-    """Find students by name, number or contact phone. status=None returns every status."""
+    """Find students by name, number or contact phone. status=None returns every status.
+    order: a column of the list (repo.ORDERS); limit/offset read one page of it."""
     require(ctx, "student.view")
     if status is not None and status not in STATUSES:
         raise ValidationError(t["validation.generic"])
-    rows = repo.search(conn, _terms(query), status)
+    if order not in repo.ORDERS:
+        raise ValidationError(t["validation.generic"])
+    rows = repo.search(conn, _terms(query), status, order, descending, limit, offset)
     return [StudentListItem(**dict(row)) for row in rows]
+
+
+def count(conn, ctx: UserContext, query: str = "", status: str | None = "active") -> int:
+    """How many students search() finds, all pages."""
+    require(ctx, "student.view")
+    if status is not None and status not in STATUSES:
+        raise ValidationError(t["validation.generic"])
+    return repo.count(conn, _terms(query), status)
 
 
 def possible_duplicates(

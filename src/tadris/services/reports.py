@@ -38,7 +38,8 @@ from tadris.services import debt, groups, journal, payouts, sessions, subscripti
 
 AGE_BUCKETS = (30, 60, 90)  # 0-30, 31-60, 61-90, more than 90 days late
 TOP_DEBTORS = 20  # the dashboard shows as many as fit
-AUDIT_LIMIT = 1000
+AUDIT_PAGE = 100  # the Journal shows the latest, then more as the list is scrolled
+AUDIT_EXPORT_LIMIT = 5000  # what a PDF or Excel file of the Journal holds at most
 
 
 def _now_time() -> str:
@@ -268,14 +269,10 @@ def _rate(counts: dict[str, int]) -> int | None:
 def attendance_by_group(conn, ctx: UserContext, first: date, last: date) -> ReportTable:
     require(ctx, "session.view")
     _check_range(first, last)
-    lines: dict[int, dict] = {}
-    for mark in repo.attendance_between(conn, _iso(first), _iso(last), None):
-        line = lines.setdefault(mark["group_id"], {
-            "title": mark["group_title"], "sessions": set(),
-            **dict.fromkeys(ATTENDANCE_STATUSES, 0)})
-        line["sessions"].add(mark["session_id"])
-        line[mark["status"]] += 1
-    rows = [(line["title"], len(line["sessions"]),
+    lines = {row["group_id"]: {"title": row["group_title"], "sessions": row["sessions"],
+                               **{status: row[status] for status in ATTENDANCE_STATUSES}}
+             for row in repo.attendance_by_group(conn, _iso(first), _iso(last))}
+    rows = [(line["title"], line["sessions"],
              *(line[status] for status in ATTENDANCE_STATUSES), _rate(line))
             for line in sorted(lines.values(), key=lambda line: line["title"].casefold())]
     total = None
@@ -297,15 +294,12 @@ def attendance_by_student(conn, ctx: UserContext, first: date, last: date,
     """One row per student and group, the lowest rate first."""
     require(ctx, "session.view")
     _check_range(first, last)
-    lines: dict[tuple[int, int], dict] = {}
-    for mark in repo.attendance_between(conn, _iso(first), _iso(last), group_id):
-        line = lines.setdefault((mark["student_id"], mark["group_id"]), {
-            "student_id": mark["student_id"],
-            "name": f"{mark['last_name']} {mark['first_name']}",
-            "number": mark["student_number"], "group": mark["group_title"],
-            **dict.fromkeys(ATTENDANCE_STATUSES, 0)})
-        line[mark["status"]] += 1
-    ordered = sorted(lines.values(), key=lambda line: (
+    lines = [{"student_id": row["student_id"],
+              "name": f"{row['last_name']} {row['first_name']}",
+              "number": row["student_number"], "group": row["group_title"],
+              **{status: row[status] for status in ATTENDANCE_STATUSES}}
+             for row in repo.attendance_by_student(conn, _iso(first), _iso(last), group_id)]
+    ordered = sorted(lines, key=lambda line: (
         _rate(line) if _rate(line) is not None else 10001, line["name"].casefold(),
         line["group"].casefold()))
     rows = [(line["name"], line["number"], line["group"],
@@ -365,32 +359,45 @@ def teachers_summary(conn, ctx: UserContext, year_id: int) -> ReportTable:
 # ----- students -----
 
 def student_list(conn, ctx: UserContext, status: str | None = "active",
-                 group_id: int | None = None) -> ReportTable:
+                 group_id: int | None = None, limit: int | None = None,
+                 offset: int = 0) -> ReportTable:
+    """The students the filters match, in name order; limit/offset: one page of them. The
+    total row (« 1 500 élève(s) », what they owe) is always for all of them."""
     require(ctx, "student.view")
     if status not in (None, "active", "inactive"):
         raise ValidationError(t["validation.generic"])
     year = years_repo.open_year(conn)
     owing = {student_id: d.owed_now for student_id, d in debt.every_debt(conn).items()}
-    found = repo.student_list(conn, status, None if year is None else year["id"], group_id)
+    found = repo.student_list(conn, status, None if year is None else year["id"], group_id,
+                              limit, offset)
     rows = tuple(
         (row["student_number"], row["last_name"], row["first_name"], row["birth_date"],
          row["level"], row["groups"], row["contact"],
          format_phone(row["phone"]) if row["phone"] else None,
          t[f"student_status.{row['status']}"], owing.get(row["id"], 0))
         for row in found)
-    return _report(
+    every = repo.student_ids(conn, status, group_id)
+    columns = (ReportColumn(t["report.col.number"]), ReportColumn(t["report.col.last_name"]),
+               ReportColumn(t["report.col.first_name"]),
+               ReportColumn(t["report.col.birth"], "date"),
+               ReportColumn(t["report.col.level"]), ReportColumn(t["report.col.groups"]),
+               ReportColumn(t["report.col.contact"]), ReportColumn(t["report.col.phone"]),
+               ReportColumn(t["report.col.status"]),
+               ReportColumn(t["report.col.owed"], "money"))
+    total = ((t["report.count"].format(count=len(every)),) + (None,) * 8
+             + (sum(owing.get(i, 0) for i in every),)) if every else None
+    return ReportTable(
         key="liste-eleves", title=t["report.students.title"],
         period=(t["report.year"].format(label=year["label"]) if year is not None
                 else t["report.on"].format(date=dates.display_date(_iso(dates.today())))),
-        columns=(ReportColumn(t["report.col.number"]), ReportColumn(t["report.col.last_name"]),
-                 ReportColumn(t["report.col.first_name"]),
-                 ReportColumn(t["report.col.birth"], "date"),
-                 ReportColumn(t["report.col.level"]), ReportColumn(t["report.col.groups"]),
-                 ReportColumn(t["report.col.contact"]), ReportColumn(t["report.col.phone"]),
-                 ReportColumn(t["report.col.status"]),
-                 ReportColumn(t["report.col.owed"], "money")),
-        rows=rows, total_label=t["report.count"].format(count=len(rows)),
-        note=t["report.students.note"], row_ids=tuple(row["id"] for row in found))
+        columns=columns, rows=rows, total=total, note=t["report.students.note"],
+        row_ids=tuple(row["id"] for row in found))
+
+
+def student_count(conn, ctx: UserContext, status: str | None = "active",
+                  group_id: int | None = None) -> int:
+    require(ctx, "student.view")
+    return len(repo.student_ids(conn, status, group_id))
 
 
 # ----- audit log -----
@@ -409,17 +416,32 @@ def family_label(family: str) -> str:
     return t.get(f"audit.family.{family}", family)
 
 
-def audit_log(conn, ctx: UserContext, first: date, last: date, user_id: int | None = None,
-              family: str | None = None, entity_id: int | None = None) -> list[AuditEntry]:
-    """What people did, latest first, at most AUDIT_LIMIT entries (and a failed backup)."""
-    require(ctx, "audit.view")
+def _audit_dates(first: date, last: date) -> tuple[str, str]:
     _check_range(first, last)
+    return _iso(first), _iso(last + timedelta(days=1))
+
+
+def audit_log(conn, ctx: UserContext, first: date, last: date, user_id: int | None = None,
+              family: str | None = None, entity_id: int | None = None,
+              before_id: int | None = None, limit: int = AUDIT_PAGE) -> list[AuditEntry]:
+    """What people did, latest first (and a failed backup), a page at a time: `limit`
+    entries older than before_id (None: the latest)."""
+    require(ctx, "audit.view")
+    start, after = _audit_dates(first, last)
     return [AuditEntry(id=row["id"], created_at=row["created_at"], user=row["username"],
                        action=row["action"], entity_name=row["entity_name"],
                        entity_id=row["entity_id"], old_value=row["old_value"],
                        new_value=row["new_value"])
-            for row in repo.audit_entries(conn, _iso(first), _iso(last), user_id, family,
-                                          entity_id, AUDIT_LIMIT)]
+            for row in repo.audit_entries(conn, start, after, user_id, family, entity_id,
+                                          limit, before_id)]
+
+
+def audit_count(conn, ctx: UserContext, first: date, last: date, user_id: int | None = None,
+                family: str | None = None, entity_id: int | None = None) -> int:
+    """How many entries the filters match, all pages."""
+    require(ctx, "audit.view")
+    start, after = _audit_dates(first, last)
+    return repo.audit_count(conn, start, after, user_id, family, entity_id)
 
 
 def audit_fields(conn, ctx: UserContext, entry: AuditEntry) -> list[journal.Field]:
@@ -443,5 +465,5 @@ def audit_table(conn, entries: list[AuditEntry], first: date, last: date) -> Rep
                     # Whole: the screen elides it in its column, the PDF and Excel keep it.
                     journal.summary(e.old_value, e.new_value, names, width=None))
                    for e in entries),
-        note=(t["report.audit.limit"].format(limit=AUDIT_LIMIT)
-              if len(entries) >= AUDIT_LIMIT else ""))
+        note=(t["report.audit.limit"].format(limit=AUDIT_EXPORT_LIMIT)
+              if len(entries) >= AUDIT_EXPORT_LIMIT else ""))

@@ -61,7 +61,20 @@ def set_status(conn, student_id: int, status: str) -> None:
     )
 
 
-def search(conn, terms: list[tuple[str, str | None]], status: str | None) -> list:
+# The orders the students list offers, by column: a whitelist, never text from outside.
+# The student number ends each one, so a page boundary never splits two equal rows.
+ORDERS = {
+    "number": ["s.student_number"],
+    "last_name": ["fold(s.last_name)", "fold(s.first_name)", "s.student_number"],
+    "first_name": ["fold(s.first_name)", "fold(s.last_name)", "s.student_number"],
+    "birth_date": ["COALESCE(s.birth_date, '')", "s.student_number"],
+    "contact": ["fold(COALESCE(c.full_name, ''))", "s.student_number"],
+    "phone": ["COALESCE(c.phone, '')", "s.student_number"],
+    "status": ["s.status", "fold(s.last_name)", "fold(s.first_name)", "s.student_number"],
+}
+
+
+def _where(terms: list[tuple[str, str | None]], status: str | None) -> tuple[str, list]:
     """Each term is (folded text, digits or None). A student matches when every term matches
     its first name, last name or number, or one of its contacts' phones (digits)."""
     where: list[str] = []
@@ -85,16 +98,32 @@ def search(conn, terms: list[tuple[str, str | None]], status: str | None) -> lis
     if status is not None:
         where.append("s.status = ?")
         params.append(status)
-    clause = f"WHERE {' AND '.join(where)}" if where else ""
+    return (f"WHERE {' AND '.join(where)}" if where else ""), params
+
+
+def search(conn, terms: list[tuple[str, str | None]], status: str | None,
+           order: str = "last_name", descending: bool = False, limit: int | None = None,
+           offset: int = 0) -> list:
+    """Students matching every term, in `order` (a key of ORDERS); limit/offset: one page."""
+    clause, params = _where(terms, status)
+    direction = " DESC" if descending else ""
+    order_by = ", ".join(part + direction for part in ORDERS[order])
+    page = "" if limit is None else f"LIMIT {int(limit)} OFFSET {int(offset)}"
     return conn.execute(
         f"""
         SELECT {_LIST_COLUMNS}
         {_LIST_FROM}
         {clause}
-        ORDER BY fold(s.last_name), fold(s.first_name), s.student_number
+        ORDER BY {order_by}
+        {page}
         """,
         params,
     ).fetchall()
+
+
+def count(conn, terms: list[tuple[str, str | None]], status: str | None) -> int:
+    clause, params = _where(terms, status)
+    return conn.execute(f"SELECT COUNT(*) {_LIST_FROM} {clause}", params).fetchone()[0]
 
 
 def same_name(conn, first_name: str, last_name: str, birth_date: str | None,

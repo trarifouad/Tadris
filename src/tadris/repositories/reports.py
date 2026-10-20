@@ -68,21 +68,46 @@ def refunded_by_month(conn, first: str, last: str) -> dict[str, int]:
     return {row["month"]: row["amount"] for row in rows}
 
 
-def attendance_between(conn, first: str, last: str, group_id: int | None) -> list:
-    """Every attendance mark of a session not cancelled in [first, last]."""
+_MARKS = """
+    SUM(a.status = 'present') AS present, SUM(a.status = 'late') AS late,
+    SUM(a.status = 'absent') AS absent, SUM(a.status = 'excused') AS excused
+"""
+_ATTENDANCE_FROM = """
+      FROM attendances a
+      JOIN sessions s ON s.id = a.session_id
+      JOIN class_groups g ON g.id = s.group_id
+      JOIN subjects sb ON sb.id = g.subject_id
+      JOIN levels l ON l.id = g.level_id
+"""
+
+
+def attendance_by_group(conn, first: str, last: str) -> list:
+    """Per group: sessions with marks and the marks of each kind, counted in SQL (a year
+    of a big school is a million marks), sessions not cancelled in [first, last]."""
     return conn.execute(
         f"""
-        SELECT a.status, a.session_id, s.group_id, {_GROUP_TITLE} AS group_title,
-               e.student_id, st.student_number, st.last_name, st.first_name
-          FROM attendances a
-          JOIN sessions s ON s.id = a.session_id
+        SELECT s.group_id, {_GROUP_TITLE} AS group_title,
+               COUNT(DISTINCT a.session_id) AS sessions, {_MARKS}
+        {_ATTENDANCE_FROM}
+         WHERE s.status <> 'cancelled' AND s.date BETWEEN :first AND :last
+         GROUP BY s.group_id
+        """,
+        {"first": first, "last": last},
+    ).fetchall()
+
+
+def attendance_by_student(conn, first: str, last: str, group_id: int | None) -> list:
+    """Per student and group: the marks of each kind, counted in SQL."""
+    return conn.execute(
+        f"""
+        SELECT e.student_id, st.student_number, st.last_name, st.first_name, s.group_id,
+               {_GROUP_TITLE} AS group_title, {_MARKS}
+        {_ATTENDANCE_FROM}
           JOIN enrollments e ON e.id = a.enrollment_id
           JOIN students st ON st.id = e.student_id
-          JOIN class_groups g ON g.id = s.group_id
-          JOIN subjects sb ON sb.id = g.subject_id
-          JOIN levels l ON l.id = g.level_id
          WHERE s.status <> 'cancelled' AND s.date BETWEEN :first AND :last
            AND (:group IS NULL OR s.group_id = :group)
+         GROUP BY e.student_id, s.group_id
         """,
         {"first": first, "last": last, "group": group_id},
     ).fetchall()
@@ -105,9 +130,25 @@ def payouts_by_teacher(conn, first: str, last: str) -> list:
     ).fetchall()
 
 
-def student_list(conn, status: str | None, year_id: int | None, group_id: int | None) -> list:
+_STUDENT_FILTER = """
+         WHERE (:status IS NULL OR st.status = :status)
+           AND (:group IS NULL OR EXISTS (
+                   SELECT 1 FROM enrollments e WHERE e.student_id = st.id
+                      AND e.group_id = :group AND e.status IN ('trial', 'active')))
+"""
+
+
+def student_ids(conn, status: str | None, group_id: int | None) -> list[int]:
+    """Every student the list's filters match (ids only: the count and the total owed)."""
+    return [row[0] for row in conn.execute(
+        f"SELECT st.id FROM students st {_STUDENT_FILTER}",
+        {"status": status, "group": group_id})]
+
+
+def student_list(conn, status: str | None, year_id: int | None, group_id: int | None,
+                 limit: int | None = None, offset: int = 0) -> list:
     """Students with their level in the year, their groups now (trial or active) and their
-    main contact."""
+    main contact; limit/offset: one page of them, in name order."""
     return conn.execute(
         f"""
         SELECT st.id, st.student_number, st.last_name, st.first_name, st.birth_date, st.status,
@@ -129,13 +170,12 @@ def student_list(conn, status: str | None, year_id: int | None, group_id: int | 
                   JOIN contacts ct ON ct.id = sc.contact_id
                  WHERE sc.student_id = st.id AND sc.is_main = 1) AS phone
           FROM students st
-         WHERE (:status IS NULL OR st.status = :status)
-           AND (:group IS NULL OR EXISTS (
-                   SELECT 1 FROM enrollments e WHERE e.student_id = st.id
-                      AND e.group_id = :group AND e.status IN ('trial', 'active')))
+        {_STUDENT_FILTER}
          ORDER BY fold(st.last_name), fold(st.first_name), st.student_number
+         LIMIT :limit OFFSET :offset
         """,
-        {"status": status, "year": year_id, "group": group_id},
+        {"status": status, "year": year_id, "group": group_id,
+         "limit": -1 if limit is None else limit, "offset": offset},
     ).fetchall()
 
 
@@ -149,26 +189,46 @@ _SHOWN = """
 """
 
 
-def audit_entries(conn, first: str, last: str, user_id: int | None,
-                  action_prefix: str | None, entity_id: int | None, limit: int) -> list:
-    """Latest first."""
+_FILTERS = f"""
+         WHERE a.created_at >= :first AND a.created_at < :after
+           AND {_SHOWN}
+           AND (:user IS NULL OR a.user_id = :user)
+           AND (:prefix IS NULL OR a.action = :prefix OR a.action LIKE :prefix || '.%')
+           AND (:entity IS NULL OR a.entity_id = :entity)
+"""
+
+
+def _params(first: str, after: str, user_id, action_prefix, entity_id) -> dict:
+    return {"first": first, "after": after, "user": user_id, "prefix": action_prefix,
+            "entity": entity_id}
+
+
+def audit_entries(conn, first: str, after: str, user_id: int | None,
+                  action_prefix: str | None, entity_id: int | None, limit: int,
+                  before_id: int | None = None) -> list:
+    """Latest first, from `first` (a date) to before `after` (the day after the last one).
+    before_id: the next page, the entries older than that one (stable while new ones are
+    written, and as fast on the fiftieth page as on the first)."""
     return conn.execute(
         f"""
         SELECT a.id, a.created_at, u.username, a.action, a.entity_name, a.entity_id,
                a.old_value, a.new_value
           FROM audit_log a
           LEFT JOIN users u ON u.id = a.user_id
-         WHERE substr(a.created_at, 1, 10) BETWEEN :first AND :last
-           AND {_SHOWN}
-           AND (:user IS NULL OR a.user_id = :user)
-           AND (:prefix IS NULL OR a.action = :prefix OR a.action LIKE :prefix || '.%')
-           AND (:entity IS NULL OR a.entity_id = :entity)
+        {_FILTERS}
+           AND (:before IS NULL OR a.id < :before)
          ORDER BY a.id DESC
          LIMIT :limit
         """,
-        {"first": first, "last": last, "user": user_id, "prefix": action_prefix,
-         "entity": entity_id, "limit": limit},
+        {**_params(first, after, user_id, action_prefix, entity_id), "limit": limit,
+         "before": before_id},
     ).fetchall()
+
+
+def audit_count(conn, first: str, after: str, user_id: int | None,
+                action_prefix: str | None, entity_id: int | None) -> int:
+    return conn.execute(f"SELECT COUNT(*) FROM audit_log a {_FILTERS}",
+                        _params(first, after, user_id, action_prefix, entity_id)).fetchone()[0]
 
 
 def audit_families(conn) -> list[str]:

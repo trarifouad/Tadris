@@ -2,10 +2,12 @@
 « PDF » / « Excel ». The tabs follow the user's rights; money and the audit log are the
 director's. A double-click on a student row opens the student."""
 
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from datetime import date, timedelta
 from html import escape
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QComboBox,
@@ -33,7 +35,21 @@ from tadris.ui.widgets.common import PageBanner, labeled, toast
 from tadris.ui.widgets.date_edit import DateLineEdit
 from tadris.ui.widgets.forms import caption, padded
 from tadris.ui.widgets.inputs import fill_combo, id_combo
-from tadris.ui.widgets.tables import ID_ROLE, LEFT, RIGHT, fill, fit_columns, item, ruled_table
+from tadris.ui.widgets.tables import (
+    ID_ROLE,
+    LEFT,
+    PAGE_SIZE,
+    RIGHT,
+    MoreOnScroll,
+    fill,
+    fit_columns,
+    frozen_columns,
+    item,
+    ruled_table,
+)
+
+# One export at a time, in the background: the window keeps answering while it is written.
+EXPORTS = ThreadPoolExecutor(max_workers=1, thread_name_prefix="export")
 
 NUMERIC = ("number", "money", "percent")
 MONO = ("number", "money", "percent", "date", "datetime")
@@ -45,6 +61,7 @@ class ReportView(QWidget):
 
     open_student = Signal(int)
     row_selected = Signal(int)  # the row's index, -1 for none (or the total)
+    exported = Signal(object)  # the file written (a Path)
 
     def __init__(self, conn, ctx: UserContext, load, filters: QHBoxLayout | None = None,
                  stretch: tuple[int, ...] | None = None):
@@ -63,15 +80,24 @@ class ReportView(QWidget):
             button.setAutoDefault(False)
         self.pdf.clicked.connect(lambda: self.export("pdf"))
         self.excel.clicked.connect(lambda: self.export("xlsx"))
+        self._job = self._future = None
+        self._poll = QTimer(self)
+        self._poll.setInterval(40)
+        self._poll.timeout.connect(self._export_done)
+        self.busy = caption()
+        self.busy.hide()
         toolbar = QHBoxLayout()
         toolbar.setSpacing(8)
         toolbar.addWidget(self.period)
         toolbar.addStretch()
+        toolbar.addWidget(self.busy)
         toolbar.addWidget(self.pdf)
         toolbar.addWidget(self.excel)
         self.table = ruled_table([])
         self.table.activated.connect(self._activated)
         self.table.itemSelectionChanged.connect(self._selected)
+        self._shown = 0
+        self.pager = MoreOnScroll(self.table, self._load_more)
         self.empty = QLabel(t["report.empty"])
         self.empty.setObjectName("emptyState")
         self.empty.setWordWrap(True)
@@ -98,12 +124,15 @@ class ReportView(QWidget):
         self.show_report(report)
 
     def show_report(self, report: ReportTable) -> None:
+        """The report's first PAGE_SIZE rows (and its total); the next ones come as the
+        table is scrolled (more_rows), so a long report never freezes the window."""
         self.report = report
         self.period.setText(report.period)
         self.table.setColumnCount(len(report.columns))
         self.table.setHorizontalHeaderLabels([c.label for c in report.columns])
-        rows = [self._cells(values, report.row_ids[i] if report.row_ids else None)
-                for i, values in enumerate(report.rows)]
+        first = report.rows[:PAGE_SIZE]
+        self._shown = len(first)
+        rows = [self._cells(values, self._row_id(i)) for i, values in enumerate(first)]
         if report.total is not None:
             rows.append(self._cells(report.total, None, bold=True))
         fill(self.table, rows)
@@ -117,8 +146,45 @@ class ReportView(QWidget):
         self.empty.setVisible(not report.rows)
         self.note.setText(report.note)
         self.note.setVisible(bool(report.note))
-        self.pdf.setEnabled(allowed(self._ctx, "print.document"))
-        self.excel.setEnabled(allowed(self._ctx, "print.document"))
+        for button in (self.pdf, self.excel):  # not while an export is being written
+            button.setEnabled(self._job is None and allowed(self._ctx, "print.document"))
+        self.pager.reset(self.has_more())
+
+    def _row_id(self, index: int) -> int | None:
+        ids = self.report.row_ids
+        return ids[index] if index < len(ids) else None
+
+    # ----- paging: what has_more / more_rows say, the table follows -----
+
+    def has_more(self) -> bool:
+        """Rows left to show (the report's own, already computed)."""
+        return self._shown < len(self.report.rows)
+
+    def more_rows(self) -> int:
+        """Make the next rows available in self.report (a report read a page at a time
+        fetches them); returns how many there are past the ones shown."""
+        return len(self.report.rows) - self._shown
+
+    def after_more(self) -> None:
+        """Hook once a page is shown (the Journal updates its count)."""
+
+    def _load_more(self) -> bool:
+        if self.report is None or self.more_rows() <= 0:
+            return False
+        start = self._shown
+        new = self.report.rows[start:start + PAGE_SIZE]
+        with frozen_columns(self.table):
+            # New rows go above the total row, which moves down (made anew: one row).
+            self.table.setRowCount(start + len(new) + (self.report.total is not None))
+            for r, values in enumerate(new, start):
+                for c, cell in enumerate(self._cells(values, self._row_id(r))):
+                    self.table.setItem(r, c, cell)
+            if self.report.total is not None:
+                for c, cell in enumerate(self._cells(self.report.total, None, bold=True)):
+                    self.table.setItem(start + len(new), c, cell)
+        self._shown += len(new)
+        self.after_more()
+        return self.has_more()
 
     def _cells(self, values: tuple, row_id: int | None, bold: bool = False) -> list:
         out = []
@@ -133,27 +199,62 @@ class ReportView(QWidget):
             out.append(cell)
         return out
 
+    def export_report(self) -> ReportTable:
+        """What PDF and Excel write: the report on screen (the Journal: every entry its
+        filters match, not only the pages loaded)."""
+        return self.report
+
     def rows_shown(self) -> list[list[str]]:
         return [[self.table.item(r, c).text() for c in range(self.table.columnCount())]
                 for r in range(self.table.rowCount())]
 
-    def export(self, extension: str):
-        if self.report is None:
-            return None
-        build = printing.report_pdf if extension == "pdf" else printing.report_xlsx
+    def export(self, extension: str) -> None:
+        """Write the PDF or the Excel file without freezing the window: the file is built
+        in the background (the Journal's PDF takes a second or two), the buttons wait,
+        then it is recorded and opened. exported(path) says when it is there."""
+        if self.report is None or self._job is not None:
+            return
         try:
-            path = build(self._conn, self._ctx, self.report)
-        except (BusinessRuleError, OSError) as exc:
-            self.banner.show_error(getattr(exc, "message", str(exc)))
-            return None
+            job = printing.prepare_report(self._conn, self._ctx, self.export_report(),
+                                          extension)
+        except BusinessRuleError as exc:
+            self.banner.show_error(exc.message)
+            return
+        self._job, self._future = job, EXPORTS.submit(job.build)
+        self._set_busy(t[f"report.preparing.{extension}"])
+        self._poll.start()
+
+    def _set_busy(self, text: str | None) -> None:
+        for button in (self.pdf, self.excel):
+            button.setEnabled(text is None and allowed(self._ctx, "print.document"))
+        self.busy.setText(text or "")
+        self.busy.setVisible(text is not None)
+        if text is None:
+            self.unsetCursor()
+        else:
+            self.setCursor(Qt.CursorShape.BusyCursor)
+
+    def _export_done(self) -> None:
+        if not self._future.done():
+            return
+        self._poll.stop()
+        job, future = self._job, self._future
+        self._job = self._future = None
+        self._set_busy(None)
+        try:
+            future.result()
+            path = printing.finish_report(self._conn, self._ctx, job)
+        except Exception as exc:  # noqa: BLE001 - whatever stopped the file, say so
+            self.banner.show_error(getattr(exc, "message", None) or t["print.failed"])
+            return
         common.open_document(path)
         toast(self, t["report.exported"].format(file=path.name))
-        return path
+        self.exported.emit(path)
 
     def _row(self) -> int:
         rows = self.table.selectionModel().selectedRows()
-        if not rows or self.report is None or rows[0].row() >= len(self.report.rows):
-            return -1
+        if not rows or self.report is None or rows[0].row() >= self._shown:
+            return -1  # none, or the total
         return rows[0].row()
 
     def _selected(self) -> None:
@@ -324,12 +425,39 @@ class StudentsTab(ReportView):
                                 (t["report.status.inactive"], "inactive"),
                                 (t["report.status.all"], None)])
         self.group = id_combo(_group_items(conn, ctx, "report.all_groups"))
-        super().__init__(conn, ctx, lambda: reports.student_list(
-            self._conn, self._ctx, self.status.currentData(), self.group.currentData()),
-            _filters(labeled(t["report.filter.status"], self.status),
-                     labeled(t["report.filter.group"], self.group)), stretch=(5,))
+        self._total = 0
+        super().__init__(conn, ctx, self._first_page,
+                         _filters(labeled(t["report.filter.status"], self.status),
+                                  labeled(t["report.filter.group"], self.group)), stretch=(5,))
         self.status.currentIndexChanged.connect(lambda _i: self.refresh())
         self.group.currentIndexChanged.connect(lambda _i: self.refresh())
+
+    def _first_page(self) -> ReportTable:
+        """A page from the database; the next ones as the list is scrolled (with 5 000
+        students, the whole list would freeze the window)."""
+        status, group = self.status.currentData(), self.group.currentData()
+        self._total = reports.student_count(self._conn, self._ctx, status, group)
+        return reports.student_list(self._conn, self._ctx, status, group, limit=PAGE_SIZE)
+
+    def has_more(self) -> bool:
+        return self._shown < self._total
+
+    def more_rows(self) -> int:
+        if self._shown >= len(self.report.rows):  # read the next page
+            page = reports.student_list(self._conn, self._ctx, self.status.currentData(),
+                                        self.group.currentData(), limit=PAGE_SIZE,
+                                        offset=len(self.report.rows))
+            if not page.rows:
+                self._total = len(self.report.rows)
+                return 0
+            self.report = replace(self.report, rows=self.report.rows + page.rows,
+                                  row_ids=self.report.row_ids + page.row_ids)
+        return len(self.report.rows) - self._shown
+
+    def export_report(self) -> ReportTable:
+        """Every student the filters match, not only the pages scrolled through."""
+        return reports.student_list(self._conn, self._ctx, self.status.currentData(),
+                                    self.group.currentData())
 
     def load_filters(self) -> None:
         fill_combo(self.group, _group_items(self._conn, self._ctx, "report.all_groups"),
@@ -368,6 +496,8 @@ class AuditTab(ReportView):
         self.family.currentIndexChanged.connect(lambda _i: self.refresh())
         self.entity.editingFinished.connect(self.refresh)
         self.row_selected.connect(self._show_detail)
+        self._total = 0
+        self._filters: dict = {}
 
     def load_filters(self) -> None:
         fill_combo(self.user, [(t["report.all_users"], None)]
@@ -389,17 +519,55 @@ class AuditTab(ReportView):
             self.refresh()
 
     def _report(self) -> ReportTable:
+        """The latest page of what the filters match; the next pages come as the list is
+        scrolled (_more)."""
         first, last = _read_range(self.first, self.last)
         text = self.entity.text().strip()
         if text and not text.isdigit():
             raise ValidationError(t["report.entity_invalid"])
-        user = self.user.currentData()
-        self.entries = reports.audit_log(
-            self._conn, self._ctx, first, last,
-            user_id=user, family=self.family.currentData(),
-            entity_id=int(text) if text else None)
+        self._filters = {"first": first, "last": last, "user_id": self.user.currentData(),
+                         "family": self.family.currentData(),
+                         "entity_id": int(text) if text else None}
+        self._total = reports.audit_count(self._conn, self._ctx, **self._filters)
+        self.entries = reports.audit_log(self._conn, self._ctx, **self._filters)
         self.detail.clear()
-        return reports.audit_table(self._conn, self.entries, first, last)
+        return self._counted(reports.audit_table(self._conn, self.entries, first, last))
+
+    def _counted(self, report: ReportTable) -> ReportTable:
+        """The report with « 100 sur 765 opérations » under it."""
+        shown = len(self.entries)
+        key = "report.audit.shown_all" if shown >= self._total else "report.audit.shown_part"
+        return replace(report, note=t[key].format(shown=shown, total=self._total))
+
+    def has_more(self) -> bool:
+        return len(self.entries) < self._total
+
+    def more_rows(self) -> int:
+        """The next page from the database, older than the last entry shown."""
+        if self._shown < len(self.report.rows):
+            return len(self.report.rows) - self._shown
+        page = reports.audit_log(self._conn, self._ctx, **self._filters,
+                                 before_id=self.entries[-1].id)
+        if not page:
+            self._total = len(self.entries)  # deleted meanwhile: nothing more
+            return 0
+        rows = reports.audit_table(self._conn, page, self._filters["first"],
+                                   self._filters["last"]).rows
+        self.entries += page
+        self.report = self._counted(replace(self.report, rows=self.report.rows + rows))
+        return len(rows)
+
+    def after_more(self) -> None:
+        self.report = self._counted(self.report)
+        self.note.setText(self.report.note)
+
+    def export_report(self) -> ReportTable:
+        """Every entry the filters match (up to AUDIT_EXPORT_LIMIT), not only the pages
+        scrolled through."""
+        entries = reports.audit_log(self._conn, self._ctx, **self._filters,
+                                    limit=reports.AUDIT_EXPORT_LIMIT)
+        return reports.audit_table(self._conn, entries, self._filters["first"],
+                                   self._filters["last"])
 
     def _show_detail(self, index: int) -> None:
         if index < 0 or index >= len(self.entries):

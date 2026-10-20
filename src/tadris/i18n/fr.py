@@ -613,6 +613,8 @@ t = {
     "students.col.phone": "Téléphone",
     "students.col.status": "Statut",
     "students.count": "{count} élève(s)",
+    "students.count_part": "{shown} affichés sur {count} élève(s) : faites défiler pour voir "
+                           "les suivants",
     "students.empty": "Aucun élève pour l'instant. Cliquez sur « Nouvel élève » pour inscrire le premier.",
     "students.no_match": "Aucun élève ne correspond à cette recherche.",
     "students.created": "Élève créé : {name} ({number})",
@@ -1530,8 +1532,11 @@ t = {
     "report.students.note": "Groupes : inscriptions en cours (essai compris). En retard : ce "
                             "qui est échu et pas payé, après l'avoir.",
     "report.audit.title": "Journal des opérations",
-    "report.audit.limit": "Seules les {limit} opérations les plus récentes sont affichées : "
-                          "réduisez la période ou filtrez.",
+    "report.audit.limit": "Ce fichier contient les {limit} opérations les plus récentes : "
+                          "réduisez la période ou filtrez pour les autres.",
+    "report.audit.shown_part": "{shown} sur {total} opérations : faites défiler pour voir "
+                               "les plus anciennes.",
+    "report.audit.shown_all": "{total} opération(s).",
     "audit.system": "Système",
     "audit.family.attendance": "Présences",
     "audit.family.backup": "Sauvegardes",
@@ -1605,6 +1610,8 @@ t = {
     "report.pdf": "PDF",
     "report.excel": "Excel",
     "report.exported": "Rapport enregistré : {file}",
+    "report.preparing.pdf": "Préparation du PDF…",
+    "report.preparing.xlsx": "Préparation du fichier Excel…",
     "report.empty": "Rien à afficher pour ces filtres.",
     "report.no_year": "Créez d'abord une année scolaire dans Paramètres.",
     "report.entity_invalid": "Le n° d'élément doit être un nombre.",

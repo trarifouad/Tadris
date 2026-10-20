@@ -1,4 +1,5 @@
 import re
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from html import escape
 from pathlib import Path
@@ -325,17 +326,46 @@ def _log_export(conn, ctx: UserContext, report: ReportTable, extension: str) -> 
                        "period": report.period})
 
 
-def report_pdf(conn, ctx: UserContext, report: ReportTable, out_dir: Path | None = None) -> Path:
+@dataclass(frozen=True)
+class ReportJob:
+    """An export ready to be written: build() needs no database, so a long one (the
+    Journal, 40 pages) can run outside the window's thread while the window keeps
+    answering; finish() then records it, back on the database's thread."""
+
+    report: ReportTable
+    extension: str  # pdf | xlsx
+    path: Path
+    school: School
+    footer: Footer
+
+    def build(self) -> Path:
+        if self.extension == "pdf":
+            return build_report(ReportDoc(school=self.school, table=self.report,
+                                          footer=self.footer), self.path)
+        return build_report_xlsx(self.report, self.school.name, self.path)
+
+
+def prepare_report(conn, ctx: UserContext, report: ReportTable, extension: str,
+                   out_dir: Path | None = None) -> ReportJob:
     require(ctx, "print.document")
-    path = build_report(ReportDoc(school=_school(conn), table=report, footer=_footer(ctx)),
-                        _report_file(report, "pdf", out_dir))
-    _log_export(conn, ctx, report, "pdf")
-    return path
+    return ReportJob(report=report, extension=extension,
+                     path=_report_file(report, extension, out_dir), school=_school(conn),
+                     footer=_footer(ctx))
+
+
+def finish_report(conn, ctx: UserContext, job: ReportJob) -> Path:
+    _log_export(conn, ctx, job.report, job.extension)
+    return job.path
+
+
+def report_pdf(conn, ctx: UserContext, report: ReportTable, out_dir: Path | None = None) -> Path:
+    job = prepare_report(conn, ctx, report, "pdf", out_dir)
+    job.build()
+    return finish_report(conn, ctx, job)
 
 
 def report_xlsx(conn, ctx: UserContext, report: ReportTable,
                 out_dir: Path | None = None) -> Path:
-    require(ctx, "print.document")
-    path = build_report_xlsx(report, _school(conn).name, _report_file(report, "xlsx", out_dir))
-    _log_export(conn, ctx, report, "xlsx")
-    return path
+    job = prepare_report(conn, ctx, report, "xlsx", out_dir)
+    job.build()
+    return finish_report(conn, ctx, job)

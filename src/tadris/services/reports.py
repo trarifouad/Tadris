@@ -38,7 +38,8 @@ from tadris.services import debt, groups, journal, payouts, sessions, subscripti
 
 AGE_BUCKETS = (30, 60, 90)  # 0-30, 31-60, 61-90, more than 90 days late
 TOP_DEBTORS = 20  # the dashboard shows as many as fit
-AUDIT_LIMIT = 1000
+AUDIT_PAGE = 100  # the Journal shows the latest, then more as the list is scrolled
+AUDIT_EXPORT_LIMIT = 5000  # what a PDF or Excel file of the Journal holds at most
 
 
 def _now_time() -> str:
@@ -409,17 +410,32 @@ def family_label(family: str) -> str:
     return t.get(f"audit.family.{family}", family)
 
 
-def audit_log(conn, ctx: UserContext, first: date, last: date, user_id: int | None = None,
-              family: str | None = None, entity_id: int | None = None) -> list[AuditEntry]:
-    """What people did, latest first, at most AUDIT_LIMIT entries (and a failed backup)."""
-    require(ctx, "audit.view")
+def _audit_dates(first: date, last: date) -> tuple[str, str]:
     _check_range(first, last)
+    return _iso(first), _iso(last + timedelta(days=1))
+
+
+def audit_log(conn, ctx: UserContext, first: date, last: date, user_id: int | None = None,
+              family: str | None = None, entity_id: int | None = None,
+              before_id: int | None = None, limit: int = AUDIT_PAGE) -> list[AuditEntry]:
+    """What people did, latest first (and a failed backup), a page at a time: `limit`
+    entries older than before_id (None: the latest)."""
+    require(ctx, "audit.view")
+    start, after = _audit_dates(first, last)
     return [AuditEntry(id=row["id"], created_at=row["created_at"], user=row["username"],
                        action=row["action"], entity_name=row["entity_name"],
                        entity_id=row["entity_id"], old_value=row["old_value"],
                        new_value=row["new_value"])
-            for row in repo.audit_entries(conn, _iso(first), _iso(last), user_id, family,
-                                          entity_id, AUDIT_LIMIT)]
+            for row in repo.audit_entries(conn, start, after, user_id, family, entity_id,
+                                          limit, before_id)]
+
+
+def audit_count(conn, ctx: UserContext, first: date, last: date, user_id: int | None = None,
+                family: str | None = None, entity_id: int | None = None) -> int:
+    """How many entries the filters match, all pages."""
+    require(ctx, "audit.view")
+    start, after = _audit_dates(first, last)
+    return repo.audit_count(conn, start, after, user_id, family, entity_id)
 
 
 def audit_fields(conn, ctx: UserContext, entry: AuditEntry) -> list[journal.Field]:
@@ -443,5 +459,5 @@ def audit_table(conn, entries: list[AuditEntry], first: date, last: date) -> Rep
                     # Whole: the screen elides it in its column, the PDF and Excel keep it.
                     journal.summary(e.old_value, e.new_value, names, width=None))
                    for e in entries),
-        note=(t["report.audit.limit"].format(limit=AUDIT_LIMIT)
-              if len(entries) >= AUDIT_LIMIT else ""))
+        note=(t["report.audit.limit"].format(limit=AUDIT_EXPORT_LIMIT)
+              if len(entries) >= AUDIT_EXPORT_LIMIT else ""))

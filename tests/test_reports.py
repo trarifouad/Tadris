@@ -1,5 +1,5 @@
 import json
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 from openpyxl import load_workbook
@@ -710,3 +710,40 @@ def test_the_journal_export_keeps_the_whole_detail(conn, director, school):
     table = reports.audit_table(conn, paid, TODAY, TODAY)
     assert all(not row[4].endswith("…") for row in table.rows)
     assert all("Mis en avoir : 0 DA" not in row[4] for row in table.rows)
+
+
+# ----- the Journal, a page at a time -----
+
+def many_entries(conn, ctx, count: int) -> None:
+    from tadris.db.connection import transaction
+    from tadris.services import audit
+
+    with transaction(conn):
+        for n in range(count):
+            audit.log(conn, ctx, "student.update", "students", 1, new={"notes": f"n° {n}"})
+
+
+def test_the_journal_comes_a_page_at_a_time(conn, director, school):
+    many_entries(conn, director, 250)
+    first, last = date(2020, 1, 1), date(2030, 1, 1)
+    total = reports.audit_count(conn, director, first, last)
+    assert total == len(reports.audit_log(conn, director, first, last, limit=10_000)) > 250
+
+    page1 = reports.audit_log(conn, director, first, last)
+    assert len(page1) == reports.AUDIT_PAGE == 100
+    page2 = reports.audit_log(conn, director, first, last, before_id=page1[-1].id)
+    ids = [e.id for e in page1 + page2]
+    assert ids == sorted(ids, reverse=True) and len(set(ids)) == 200  # no gap, no repeat
+    everything = reports.audit_log(conn, director, first, last, limit=10_000)
+    assert [e.id for e in everything[:200]] == ids
+
+    # The filters count the same way the pages read.
+    assert reports.audit_count(conn, director, first, last, family="student.update") == 250
+    assert reports.audit_count(conn, director, first, last, user_id=10_000) == 0
+
+
+def test_the_last_day_is_included(conn, director, school):
+    today = date.today()  # rows carry SQLite's clock
+    assert reports.audit_count(conn, director, today, today) > 0
+    assert reports.audit_count(conn, director, today - timedelta(days=3),
+                               today - timedelta(days=1)) == 0

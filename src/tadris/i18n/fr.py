@@ -1530,8 +1530,11 @@ t = {
     "report.students.note": "Groupes : inscriptions en cours (essai compris). En retard : ce "
                             "qui est échu et pas payé, après l'avoir.",
     "report.audit.title": "Journal des opérations",
-    "report.audit.limit": "Seules les {limit} opérations les plus récentes sont affichées : "
-                          "réduisez la période ou filtrez.",
+    "report.audit.limit": "Ce fichier contient les {limit} opérations les plus récentes : "
+                          "réduisez la période ou filtrez pour les autres.",
+    "report.audit.shown_part": "{shown} sur {total} opérations : faites défiler pour voir "
+                               "les plus anciennes.",
+    "report.audit.shown_all": "{total} opération(s).",
     "audit.system": "Système",
     "audit.family.attendance": "Présences",
     "audit.family.backup": "Sauvegardes",

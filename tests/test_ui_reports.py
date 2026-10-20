@@ -451,3 +451,72 @@ def test_refilling_a_table_is_fast(qtbot):
     modes = [table.horizontalHeader().sectionResizeMode(c) for c in range(10)]
     assert modes.count(QHeaderView.ResizeMode.ResizeToContents) == 9  # still fitted
     assert table.rowCount() == 64 and table.item(63, 9).text().startswith("cellule 63 9")
+
+
+def test_the_journal_loads_more_as_it_is_scrolled(qtbot, conn, director, school, documents):
+    from test_reports import many_entries
+
+    many_entries(conn, director, 250)
+    page = ReportsPage(conn, director)
+    qtbot.addWidget(page)
+    page.resize(1300, 700)
+    page.show()
+    page.tabs.setCurrentIndex(5)
+    view = page.views["audit"]
+    view.first.set_value(date(2020, 1, 1))
+    view.last.set_value(date(2030, 1, 1))
+    qtbot.wait(20)
+    total = reports.audit_count(conn, director, date(2020, 1, 1), date(2030, 1, 1))
+    assert view.table.rowCount() == len(view.entries) == 100
+    assert view.note.text().startswith(f"100 sur {total} opérations")
+
+    bar = view.table.verticalScrollBar()
+
+    def at_the_end() -> bool:
+        bar.setValue(bar.maximum())  # the end of the list
+        return view.table.rowCount() == 200
+
+    qtbot.waitUntil(at_the_end, timeout=3000)
+    assert bar.value() > 0  # the list did not jump back to the top
+    assert len(view.entries) == len(view.report.rows) == 200
+    assert view.note.text().startswith(f"200 sur {total} opérations")
+
+    view.table.selectRow(150)  # a row of the second page: its own detail
+    assert view.entries[150].id < view.entries[99].id
+    assert view.detail.toPlainText().startswith(view.report.rows[150][2])
+
+    while view.table.rowCount() < total:
+        bar.setValue(bar.maximum())
+        qtbot.wait(5)
+    assert view.table.rowCount() == total and view.note.text() == f"{total} opération(s)."
+    bar.setValue(bar.maximum())
+    qtbot.wait(20)
+    assert view.table.rowCount() == total  # nothing more to load
+
+    path = export(qtbot, view, view.excel)  # the file holds every entry, not the pages
+    sheet = load_workbook(path).active
+    assert sheet.max_row - 4 == total
+
+
+def test_a_new_filter_starts_again_at_the_latest(qtbot, conn, director, school):
+    from test_reports import many_entries
+
+    many_entries(conn, director, 150)
+    page = ReportsPage(conn, director)
+    qtbot.addWidget(page)
+    page.resize(1300, 700)
+    page.show()
+    page.tabs.setCurrentIndex(5)
+    view = page.views["audit"]
+    view.first.set_value(date(2020, 1, 1))
+    view.last.set_value(date(2030, 1, 1))  # the entries carry SQLite's clock, not TODAY
+    bar = view.table.verticalScrollBar()
+
+    def scrolled_down() -> bool:  # as a user does: down until the next page is there
+        bar.setValue(bar.maximum())
+        return view.table.rowCount() > 100
+
+    qtbot.waitUntil(scrolled_down, timeout=3000)
+    view.family.setCurrentIndex(view.family.findData("payment"))
+    assert view.table.rowCount() == len(view.entries) <= 100
+    assert {e.action.split(".")[0] for e in view.entries} == {"payment"}

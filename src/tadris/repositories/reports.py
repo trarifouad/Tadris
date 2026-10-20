@@ -182,10 +182,10 @@ def student_list(conn, status: str | None, year_id: int | None, group_id: int | 
 # ----- audit log -----
 
 # The Journal shows what people did. What the app does by itself (backups, sessions prepared,
-# months ended) stays in audit_log for a technician, except a failed backup: the director
-# must know the data is not being saved.
+# months ended) stays in audit_log for a technician, except a failed backup or copy to the
+# second location: the director must know the data is not being saved.
 _SHOWN = """
-    (a.user_id IS NOT NULL OR a.action IN ('backup.failed'))
+    (a.user_id IS NOT NULL OR a.action IN ('backup.failed', 'backup.mirror_failed'))
 """
 
 

@@ -1444,6 +1444,19 @@ t = {
         "{error}\n\nL'application continue, mais vos données ne sont pas sauvegardées. "
         "Vérifiez l'espace disque et les droits du dossier, puis redémarrez l'application."
     ),
+    "backup.second_missing": (
+        "Le second emplacement de sauvegarde est introuvable ({path}). La clé USB ou le "
+        "disque est-il branché ? La sauvegarde sur cet ordinateur est faite."
+    ),
+    "backup.second_failed": (
+        "La copie vers le second emplacement a échoué ({path}). La sauvegarde sur cet "
+        "ordinateur est faite."
+    ),
+    "backup.second_not_found": "Dossier introuvable : {path}",
+    "backup.second_warning": (
+        "{error}\n\nBranchez le support, ou changez le dossier dans Paramètres → "
+        "Sauvegardes."
+    ),
     "migration.title": "Mise à jour de la base",
     "migration.newer": (
         "Cette base de données vient d'une version plus récente de Tadris (version {version} "
@@ -1674,6 +1687,8 @@ t = {
     "audit.action.backup.create": "Sauvegarde créée",
     "audit.action.backup.failed": "Sauvegarde échouée",
     "audit.action.backup.prune": "Anciennes sauvegardes supprimées",
+    "audit.action.backup.mirror": "Sauvegarde copiée au second emplacement",
+    "audit.action.backup.mirror_failed": "Copie au second emplacement échouée",
     "audit.action.contact.create": "Contact créé",
     "audit.action.contact.link": "Contact lié à l'élève",
     "audit.action.contact.set_main": "Contact principal changé",
@@ -1788,6 +1803,8 @@ t = {
     "audit.key.enrolled_on": "Entrée",
     "audit.key.fee_amount": "Frais d'inscription",
     "audit.key.file": "Fichier",
+    "audit.key.folder": "Dossier",
+    "audit.key.error": "Erreur",
     "audit.key.first_name": "Prénom",
     "audit.key.format": "Format",
     "audit.key.from": "Pris sur",

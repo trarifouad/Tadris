@@ -19,6 +19,8 @@ KEYS: dict[str, type] = {
     "school.closes_at": str,
     "defaults.registration_fee": int,
     "defaults.max_debt_warning": int,
+    "backup.second_dir": str,
+    "backup.school_id": str,
 }
 
 

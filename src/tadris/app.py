@@ -68,6 +68,9 @@ def _backup(take, parent=None, warning: str = "backup.warning") -> bool:
     """Run a backup; on failure warn the user (never block the desk). True if it worked."""
     try:
         take()
+    except backup.MirrorFailed as exc:  # the copy is made: only the second one is missing
+        QMessageBox.warning(parent, t["backup.warning_title"],
+                            t["backup.second_warning"].format(error=exc.message))
     except backup.BackupFailed as exc:
         QMessageBox.warning(parent, t["backup.warning_title"],
                             t[warning].format(error=exc.message))

@@ -45,3 +45,16 @@ def mark_verified(conn, backup_id: int) -> None:
 def mark_failed(conn, backup_id: int) -> None:
     conn.execute("UPDATE backups SET status = 'failed', verified_at = NULL WHERE id = ?",
                  (backup_id,))
+
+
+def removable(conn) -> list:
+    """Copies retention may look at, latest first: automatic ones never used by a restore."""
+    return conn.execute(
+        f"SELECT {_COLUMNS} FROM backups b WHERE type = 'auto' "
+        "AND NOT EXISTS (SELECT 1 FROM restore_log r WHERE r.backup_id = b.id) "
+        "ORDER BY created_at DESC, id DESC"
+    ).fetchall()
+
+
+def delete(conn, backup_id: int) -> None:
+    conn.execute("DELETE FROM backups WHERE id = ?", (backup_id,))

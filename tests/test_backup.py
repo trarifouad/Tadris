@@ -220,3 +220,95 @@ def test_a_failure_warns_and_never_raises(monkeypatch):
     assert app._backup(failing, warning="backup.before_migration") is False
     assert "mettre à jour la base" in shown[1][1]
     assert app._backup(lambda: None) is True
+
+
+# ----- retention -----
+
+def old_copy(c, folder, created_at, status="verified", kind="auto"):
+    """A copy row with its file, as if taken at created_at."""
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / f"tadris-{created_at.replace(':', '')}-{status}.db"
+    path.write_bytes(b"copy")
+    cur = c.execute("INSERT INTO backups(file_path, type, status, created_at) "
+                    "VALUES (?, ?, ?, ?)", (str(path), kind, status, created_at))
+    return cur.lastrowid, path
+
+
+def kept_ids(c) -> set[int]:
+    return {row[0] for row in c.execute("SELECT id FROM backups")}
+
+
+def test_retention_keeps_one_copy_a_day_for_14_days_and_one_a_month_for_12(school, folder):
+    days = {}
+    for n in range(40):  # two copies a day (start and close), every day for 40 days
+        day = f"2020-03-{n + 1:02d}" if n < 31 else f"2020-04-{n - 30:02d}"
+        days[day] = [old_copy(school, folder, f"{day}T08:00:00")[0],
+                     old_copy(school, folder, f"{day}T18:00:00")[0]]
+    months = [old_copy(school, folder, f"2019-{m:02d}-15T18:00:00")[0] for m in range(1, 13)]
+
+    removed = backup.prune(school)
+
+    kept = kept_ids(school)
+    last_days = sorted(days)[-14:]
+    assert {days[d][1] for d in last_days} <= kept  # each day's close copy
+    assert days[last_days[-1]][0] in kept  # among the 3 latest copies
+    assert days["2020-03-31"][1] in kept  # March's latest copy (one of the 14 days too)
+    assert days["2020-03-15"][0] not in kept and days["2020-03-15"][1] not in kept
+    assert set(months[-10:]) <= kept  # with March and April: 12 months
+    assert months[0] not in kept and months[1] not in kept
+    assert len(kept) == 14 + 1 + 10  # 14 days, 1 more of the 3 latest, 10 older months
+    for name in removed:
+        assert not (folder / name).exists()
+    assert len(list(folder.iterdir())) == len(kept)
+    logged = audit_rows(school, "backup.prune")
+    assert json.loads(logged[-1]["new_value"])["count"] == len(removed) == 80 + 12 - len(kept)
+
+
+def test_a_long_break_never_empties_the_folder(school, folder):
+    ids = [old_copy(school, folder, f"2019-07-{d:02d}T18:00:00")[0] for d in range(1, 6)]
+    assert backup.prune(school) == []  # summer: the last copies are months old, still kept
+    assert set(ids) <= kept_ids(school)
+
+
+def test_manual_copies_and_copies_a_restore_used_are_kept(school, folder):
+    manual, _ = old_copy(school, folder, "2018-01-01T08:00:00", kind="manual")
+    used, _ = old_copy(school, folder, "2018-01-02T08:00:00")
+    school.execute("INSERT INTO restore_log(backup_id, restored_by, result) VALUES (?, 1, "
+                   "'success')", (used,))
+    for d in range(1, 31):
+        old_copy(school, folder, f"2020-01-{d:02d}T08:00:00")
+        old_copy(school, folder, f"2020-02-{d if d < 30 else 29:02d}T0{d % 10}:00:00")
+    backup.prune(school)
+    assert {manual, used} <= kept_ids(school)
+
+
+def test_failed_copies_go_after_14_days(school, folder):
+    old, old_path = old_copy(school, folder, "2020-01-01T08:00:00", status="failed")
+    stuck, _ = old_copy(school, folder, "2020-01-02T08:00:00", status="running")
+    recent, _ = old_copy(school, folder, backup.dates.iso(backup.dates.today()) + "T08:00:00",
+                         status="failed")
+    backup.prune(school)
+    assert old not in kept_ids(school) and stuck not in kept_ids(school)
+    assert not old_path.exists()
+    assert recent in kept_ids(school)
+
+
+def test_a_file_that_cannot_be_removed_keeps_its_row(school, folder, monkeypatch):
+    for d in range(1, 6):
+        old_copy(school, folder, f"2020-01-{d:02d}T08:00:00")
+        old_copy(school, folder, f"2020-01-{d:02d}T09:00:00")
+    monkeypatch.setattr(Path, "unlink", lambda self, missing_ok=False: (_ for _ in ()).throw(
+        PermissionError("locked")))
+    assert backup.prune(school) == []
+    assert len(kept_ids(school)) == 10
+    assert audit_rows(school, "backup.prune") == []
+
+
+def test_each_new_copy_prunes_the_old_ones(school, folder):
+    for d in range(1, 21):
+        old_copy(school, folder, f"2020-01-{d:02d}T08:00:00")
+    taken = backup.take(school, folder)
+    kept = kept_ids(school)
+    assert taken.id in kept
+    assert len(kept) == 14  # today and the last 13 days of January (its latest among them)
+    assert len(list(folder.iterdir())) == 14

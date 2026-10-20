@@ -85,10 +85,16 @@ def get(conn, ctx: UserContext, payment_id: int) -> Payment:
     return _to_payment(_require_row(conn, payment_id))
 
 
-def for_student(conn, ctx: UserContext, student_id: int) -> list[Payment]:
-    """Latest first, voided ones included."""
+def for_student(conn, ctx: UserContext, student_id: int, limit: int | None = None,
+                offset: int = 0) -> list[Payment]:
+    """Latest first, voided ones included; limit/offset: one page of them."""
     require(ctx, "student.view")
-    return [_to_payment(row) for row in repo.for_student(conn, student_id)]
+    return [_to_payment(row) for row in repo.for_student(conn, student_id, limit, offset)]
+
+
+def count_for_student(conn, ctx: UserContext, student_id: int) -> int:
+    require(ctx, "student.view")
+    return repo.count_for_student(conn, student_id)
 
 
 def lines(conn, ctx: UserContext, payment_id: int) -> list[PaymentLine]:

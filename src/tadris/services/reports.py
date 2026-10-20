@@ -331,13 +331,14 @@ def teachers_summary(conn, ctx: UserContext, year_id: int) -> ReportTable:
             line[1] += g.enrolled
     payouts_rows = {row["teacher_id"]: row
                     for row in repo.payouts_by_teacher(conn, year["start_date"], year["end_date"])}
+    owed = payouts.not_prepared(conn, today)
     rows = []
     for teacher in teachers.search(conn, ctx, status=None):
         held = by_teacher.get(teacher.id, [0, 0])
         row = payouts_rows.get(teacher.id)
         paid = row["paid"] if row else 0
         waiting = (row["drafted"] + row["approved"]) if row else 0
-        months, share = payouts.not_prepared(conn, teacher.id, today)
+        months, share = owed.get(teacher.id, (0, 0))
         if teacher.status != "active" and not (held[0] or paid or waiting or share):
             continue
         rows.append((teacher.full_name, held[0], held[1], paid, waiting, months, share,

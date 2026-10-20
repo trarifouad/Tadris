@@ -1651,6 +1651,7 @@ t = {
     "audit.action.attendance.save": "Présences enregistrées",
     "audit.action.backup.create": "Sauvegarde créée",
     "audit.action.backup.failed": "Sauvegarde échouée",
+    "audit.action.backup.prune": "Anciennes sauvegardes supprimées",
     "audit.action.contact.create": "Contact créé",
     "audit.action.contact.link": "Contact lié à l'élève",
     "audit.action.contact.set_main": "Contact principal changé",

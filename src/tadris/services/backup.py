@@ -1,6 +1,6 @@
 import hashlib
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from tadris.core import dates
@@ -17,9 +17,18 @@ from tadris.services import audit
 # written under a temporary name and renamed once complete, so a half-written file never looks
 # like a backup. Each copy is then verified: opened read-only, PRAGMA integrity_check, sha256
 # compared with the one recorded. A failure never stops the app; the caller warns the user.
-# Retention, a second location and restore come in phase 12.
+#
+# Retention: after each new verified copy, older ones are removed (file and row) so the folder
+# does not grow for ever. Kept: the RECENT_KEPT latest copies, the latest copy of each of the
+# last DAILY_KEPT days that have one, and of each of the last MONTHLY_KEPT months; days and
+# months without a copy (holidays) do not count, so a long break never empties the folder.
+# Manual copies and copies a restore used are never removed. A failed copy (or one cut short
+# by a crash) goes once it is older than DAILY_KEPT days. A second location and restore come in phase 12.
 
 _HASH_CHUNK = 1 << 20
+RECENT_KEPT = 3
+DAILY_KEPT = 14
+MONTHLY_KEPT = 12
 
 
 class BackupFailed(BusinessRuleError):
@@ -100,6 +109,7 @@ def take(conn, folder: Path, kind: str = "auto") -> Backup:
     with transaction(conn):
         audit.log_system(conn, "backup.create", "backups",
                          new={"id": backup_id, "file": path.name, "type": kind})
+    prune(conn)
     return get(conn, backup_id)
 
 
@@ -147,3 +157,50 @@ def daily_due(conn) -> bool:
 def daily(conn, folder: Path) -> Backup | None:
     """Today's automatic copy, unless one was already taken and verified today."""
     return take(conn, folder) if daily_due(conn) else None
+
+
+# ----- retention -----
+
+def _latest_per(rows: list, length: int, count: int) -> set[int]:
+    """Ids of the latest row of each of the `count` latest periods (created_at cut to
+    `length`: 10 for a day, 7 for a month). rows: latest first."""
+    kept: dict[str, int] = {}
+    for row in rows:
+        period = row["created_at"][:length]
+        if period not in kept:
+            if len(kept) == count:
+                break
+            kept[period] = row["id"]
+    return set(kept.values())
+
+
+def to_remove(conn) -> list:
+    """The copies retention lets go (rows, latest first)."""
+    rows = repo.removable(conn)
+    verified = [row for row in rows if row["status"] == "verified"]
+    kept = ({row["id"] for row in verified[:RECENT_KEPT]}
+            | _latest_per(verified, 10, DAILY_KEPT) | _latest_per(verified, 7, MONTHLY_KEPT))
+    cutoff = dates.iso(dates.today() - timedelta(days=DAILY_KEPT))
+    return [row for row in rows if row["id"] not in kept
+            and (row["status"] == "verified" or row["created_at"][:10] < cutoff)]
+
+
+def prune(conn) -> list[str]:
+    """Remove the copies retention lets go; returns their file names. A file that cannot be
+    removed (locked) keeps its row and is tried again after the next copy."""
+    removed = []
+    for row in to_remove(conn):
+        path = Path(row["file_path"])
+        try:
+            path.unlink(missing_ok=True)
+            path.with_name(path.name + ".part").unlink(missing_ok=True)
+        except OSError:
+            continue
+        with transaction(conn):
+            repo.delete(conn, row["id"])
+        removed.append(path.name)
+    if removed:
+        with transaction(conn):
+            audit.log_system(conn, "backup.prune", "backups",
+                             new={"count": len(removed), "files": removed})
+    return removed

@@ -38,6 +38,7 @@ def test_the_button_sits_under_the_user(qtbot, conn, receptionist):
     qtbot.addWidget(window)
     assert window.logout_button.text() == "Se déconnecter"
     assert window.logout_button.parent().objectName() == "sidebarFooter"
+    assert not window.logout_button.icon().isNull()
 
 
 def test_logout_closes_the_window_and_is_audited(qtbot, conn, receptionist):

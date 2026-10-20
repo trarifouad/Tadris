@@ -1,4 +1,4 @@
-from PySide6.QtCore import Signal
+from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtWidgets import (
     QButtonGroup,
     QFrame,
@@ -26,6 +26,7 @@ from tadris.ui.pages.students import StudentsPage
 from tadris.ui.pages.subscriptions_page import SubscriptionsPage
 from tadris.ui.pages.teachers import TeachersPage
 from tadris.ui.pages.timetable import TimetablePage
+from tadris.ui.theme import icon
 from tadris.ui.widgets.common import confirm
 
 SIDEBAR_WIDTH = 216
@@ -182,6 +183,9 @@ class MainWindow(QMainWindow):
         footer_layout.addSpacing(10)
         self.logout_button = QPushButton(t["main.logout"])
         self.logout_button.setObjectName("sidebarLogout")
+        self.logout_button.setIcon(icon("log-out", "on_primary"))
+        self.logout_button.setIconSize(QSize(16, 16))
+        self.logout_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.logout_button.setToolTip(t["main.logout_tip"])
         self.logout_button.clicked.connect(self.logout)
         footer_layout.addWidget(self.logout_button)

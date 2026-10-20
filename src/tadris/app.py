@@ -23,6 +23,38 @@ def _choose_linux_platform() -> None:
 
 
 DAILY_CHECK_MS = 60 * 60 * 1000  # the app may stay open past midnight
+# The app's own zoom, for Tadris only (the computer's settings are left alone). On Linux it
+# defaults to 125 %, the scale most Windows laptops use, so the app looks as it will at the
+# school. On Windows Qt already follows the system's scale: nothing is added there, unless
+# TADRIS_SCALE asks for it (e.g. TADRIS_SCALE=1 for 100 %, 1.5 for 150 %).
+SCALE_ENV = "TADRIS_SCALE"
+LINUX_SCALE = "1.25"
+MIN_SCALE, MAX_SCALE = 0.5, 3.0
+
+
+def _choose_scale() -> None:
+    """Set before the QApplication exists: Qt reads QT_SCALE_FACTOR once, at start."""
+    value = os.environ.get(SCALE_ENV, "").strip().replace(",", ".")
+    if value:
+        try:
+            scale = float(value)
+        except ValueError:
+            scale = None
+        if scale is not None and MIN_SCALE <= scale <= MAX_SCALE:
+            os.environ["QT_SCALE_FACTOR"] = str(scale)
+            return
+        print(f"{SCALE_ENV} : valeur ignorée ({value})", file=sys.stderr)
+    if sys.platform.startswith("linux"):
+        os.environ.setdefault("QT_SCALE_FACTOR", LINUX_SCALE)
+
+
+def _fit_to_screen(window) -> None:
+    """At 125 % a small screen may be smaller than the window: fill it instead."""
+    screen = window.screen().availableGeometry()
+    if window.width() > screen.width() or window.height() > screen.height() * 0.95:
+        window.showMaximized()
+    else:
+        window.show()
 
 
 def _backup(take, parent=None, warning: str = "backup.warning") -> bool:
@@ -38,6 +70,7 @@ def _backup(take, parent=None, warning: str = "backup.warning") -> bool:
 
 def main() -> int:
     _choose_linux_platform()
+    _choose_scale()
     app = QApplication(sys.argv)
     app.setApplicationName(t["app.name"])
     load_fonts()
@@ -73,7 +106,7 @@ def run_sessions(app, conn, folder, override) -> int | None:
         window = MainWindow(conn, dialog.ctx)
         if override is not None:  # never mistake a test copy for the real school
             window.setWindowTitle(f"{window.windowTitle()} · {override.name}")
-        window.show()
+        _fit_to_screen(window)
         timer = QTimer(window)
         timer.timeout.connect(lambda w=window: _backup(lambda: backup.daily(conn, folder), w))
         timer.start(DAILY_CHECK_MS)

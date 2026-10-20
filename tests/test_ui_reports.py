@@ -3,14 +3,16 @@ from datetime import date
 import pytest
 from openpyxl import load_workbook
 from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QScrollArea
 
 from tadris import config
 from tadris.core import dates
 from tadris.core.context import UserContext
+from tadris.domain.models import Dashboard, DashboardSession, Debtor, GroupFill
 from tadris.i18n.fr import t
 from tadris.services import auth, reports
 from tadris.ui.main_window import MainWindow
-from tadris.ui.pages.dashboard import DashboardPage
+from tadris.ui.pages.dashboard import LIST_ROWS, DashboardPage
 from tadris.ui.pages.reports import ReportsPage
 from tadris.ui.theme import apply_theme, load_fonts
 from tadris.ui.widgets import common
@@ -79,6 +81,53 @@ def test_dashboard_cards_and_lists(qtbot, conn, director, school):
     assert texts(page.groups.list.table) == [["A · Maths 4AM", "2", "20", "10 %"],
                                             ["B · Physique 4AM", "1", "20", "5 %"]]
     assert not page.sessions.list.table.isVisible()
+
+
+def full_board() -> Dashboard:
+    """Nine of everything: more than a dashboard list shows."""
+    many = range(9)
+    return Dashboard(
+        today="2026-10-18", now="10:00",
+        sessions=tuple(DashboardSession(id=i, start_time=f"{8 + i:02d}:00",
+                                        end_time=f"{9 + i:02d}:00", group_title=f"G{i}",
+                                        room="Salle A", teacher="Karim", status="planned")
+                       for i in many),
+        ending=(), lapsed=0, debt_total=9000, debtors=12,
+        top_debtors=tuple(Debtor(student_id=i, student_number=f"2026-{i:04d}",
+                                 student_name=f"Élève {i}", owed_now=1000, due=1000, credit=0,
+                                 oldest_overdue="2026-10-01", days_overdue=17)
+                          for i in range(5)),
+        groups=tuple(GroupFill(group_id=i, title=f"G{i}", enrolled=5, seats=10) for i in many),
+        charged=0, settled=0, collected=0, refunded=0)
+
+
+def test_long_lists_stop_at_four_rows(qtbot, conn, director):
+    page = DashboardPage(conn, director)
+    qtbot.addWidget(page)
+    page.show_board(full_board())
+    for panel, button in ((page.sessions, "Voir les 9"), (page.debtors, "Voir les 12"),
+                          (page.groups, "Voir les 9")):
+        assert panel.list.table.rowCount() == LIST_ROWS
+        assert panel.more.text() == button
+    assert page.ending.more.text() == "Voir tout"  # nothing left out
+    assert page.ending.list.empty.isVisibleTo(page) and page.ending.list.table.isHidden()
+
+
+def test_the_dashboard_never_scrolls(qtbot, conn, director):
+    """1920 x 1080 at 125 % is 1536 x 864 in Qt's units; the window gets about 1536 x 795
+    (the desktop's bar and the title bar take the rest): everything shows."""
+    page = DashboardPage(conn, director)
+    qtbot.addWidget(page)
+    page.show_board(full_board())
+    assert page.findChildren(QScrollArea) == []
+    page.resize(1536 - 216, 795 - 24)  # minus the sidebar and the status bar
+    page.show()
+    qtbot.wait(10)
+    assert page.layout().minimumSize().height() <= page.height()
+    for panel in (page.sessions, page.debtors, page.groups):
+        table = panel.list.table
+        assert table.height() == table.maximumHeight()  # every row shown, no inner scroll
+        assert table.verticalScrollBar().maximum() == 0
 
 
 def test_receptionist_sees_the_fill_instead_of_the_money(qtbot, conn, desk, school):

@@ -1,15 +1,18 @@
 """Tableau de bord: four stat cards, then today's sessions and the months ending on the left,
 the largest debts and the groups' fill on the right. A double-click on a student opens their
-page; « Voir tout » opens the page that handles the list."""
+page; « Voir tout » opens the page that handles the list.
 
-from PySide6.QtCore import Signal
+It is read at a glance, so the page never scrolls: each list shows its first LIST_ROWS rows
+(« Voir les N » says how many there are), all of them on 1920 x 1080 at 125 % or 1366 x 768
+at 100 %; on a smaller window a list scrolls inside its panel."""
+
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
+    QAbstractScrollArea,
     QFrame,
-    QGridLayout,
     QHBoxLayout,
     QLabel,
     QPushButton,
-    QScrollArea,
     QVBoxLayout,
     QWidget,
 )
@@ -27,7 +30,8 @@ from tadris.ui.theme.status import kind_for
 from tadris.ui.widgets.forms import ListSection, caption
 from tadris.ui.widgets.tables import CENTER, RIGHT, fit_columns, item
 
-LIST_ROWS = 6  # rows a dashboard list shows before « Voir tout »
+LIST_ROWS = 4  # rows a dashboard list shows before « Voir les N »
+ROW_HEIGHT = 34  # a little tighter than the list pages' 40
 
 
 class StatCard(QFrame):
@@ -40,8 +44,8 @@ class StatCard(QFrame):
         self.detail = caption()
         self.detail.setWordWrap(True)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(18, 14, 18, 14)
-        layout.setSpacing(2)
+        layout.setContentsMargins(16, 10, 16, 10)
+        layout.setSpacing(0)
         layout.addWidget(self.title)
         layout.addWidget(self.value)
         layout.addWidget(self.detail)
@@ -53,7 +57,9 @@ class StatCard(QFrame):
 
 
 class Panel(QFrame):
-    """A titled list on the dashboard, with « Voir tout » opening its page."""
+    """A titled list on the dashboard: its first LIST_ROWS rows, and « Voir tout » (« Voir
+    les N » when rows are left out) opening the page with the whole list. As tall as its
+    rows: a short list leaves no empty box."""
 
     def __init__(self, title: str, headers: list[str], empty: str, page: str | None,
                  navigate: Signal):
@@ -62,21 +68,36 @@ class Panel(QFrame):
         heading = QLabel(title)
         heading.setObjectName("sectionTitle")
         self.list = ListSection(headers, empty)
+        self.list.layout().setSpacing(8)
         self.list.toolbar.insertWidget(0, heading)
+        self.list.table.verticalHeader().setDefaultSectionSize(ROW_HEIGHT)
+        # Ask for the rows' height (not Qt's default), so the layout gives it when it can.
+        self.list.table.setSizeAdjustPolicy(QAbstractScrollArea.SizeAdjustPolicy.AdjustToContents)
+        self.list.empty.setObjectName("caption")  # one plain line, not an empty box
+        self.list.empty.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        self.more: QPushButton | None = None
         if page is not None:
-            more = QPushButton(t["dashboard.see_all"])
-            more.setProperty("variant", "ghost")
-            more.clicked.connect(lambda: navigate.emit(page))
-            self.list.add_button(more, end=True)
+            self.more = QPushButton(t["dashboard.see_all"])
+            self.more.setProperty("variant", "ghost")
+            self.more.clicked.connect(lambda: navigate.emit(page))
+            self.list.add_button(self.more, end=True)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(16, 12, 16, 16)
+        layout.setContentsMargins(16, 10, 16, 12)
         layout.addWidget(self.list)
 
-    def set_rows(self, rows: list) -> None:
+    def set_rows(self, rows: list, total: int | None = None) -> None:
+        """total: how many there are when `rows` is already a top few (the debtors)."""
+        total = len(rows) if total is None else total
         self.list.set_rows(rows[:LIST_ROWS])
+        # As tall as its rows when there is room; on a small screen it shrinks to one row
+        # and scrolls inside the panel, so the page itself never needs to.
         table = self.list.table
-        table.setFixedHeight(table.horizontalHeader().height() + 2
-                             + table.verticalHeader().defaultSectionSize() * table.rowCount())
+        header = table.horizontalHeader().sizeHint().height() + 2
+        table.setMinimumHeight(header + ROW_HEIGHT)
+        table.setMaximumHeight(header + ROW_HEIGHT * table.rowCount())
+        if self.more is not None:
+            self.more.setText(t["dashboard.see_count"].format(count=total)
+                              if total > LIST_ROWS else t["dashboard.see_all"])
 
 
 class DashboardPage(QWidget):
@@ -91,6 +112,11 @@ class DashboardPage(QWidget):
         title = QLabel(t["dashboard.title"])
         title.setObjectName("pageTitle")
         self.day = caption()
+        heading = QHBoxLayout()
+        heading.setSpacing(12)
+        heading.addWidget(title)
+        heading.addWidget(self.day, 0, Qt.AlignmentFlag.AlignBottom)
+        heading.addStretch()
 
         self.sessions_card = StatCard(t["dashboard.card.sessions"])
         self.renew_card = StatCard(t["dashboard.card.renew"])
@@ -124,34 +150,25 @@ class DashboardPage(QWidget):
         for panel in (self.ending, self.debtors):
             panel.list.activated.connect(self.open_student.emit)
 
-        columns = QGridLayout()
-        columns.setHorizontalSpacing(12)
-        columns.setVerticalSpacing(12)
-        columns.addWidget(self.sessions, 0, 0)
-        columns.addWidget(self.ending, 1, 0)
-        columns.addWidget(self.debtors, 0, 1)
-        columns.addWidget(self.groups, 1, 1)
-        columns.setColumnStretch(0, 3)
-        columns.setColumnStretch(1, 2)
-        columns.setRowStretch(2, 1)
+        # Two columns of panels, each panel as tall as its rows (top-aligned, no stretch).
+        left, right = QVBoxLayout(), QVBoxLayout()
+        for column, panels in ((left, (self.sessions, self.ending)),
+                               (right, (self.debtors, self.groups))):
+            column.setSpacing(12)
+            for panel in panels:
+                column.addWidget(panel)
+            column.addStretch()
+        columns = QHBoxLayout()
+        columns.setSpacing(12)
+        columns.addLayout(left, 3)
+        columns.addLayout(right, 2)
 
-        body = QWidget()
-        body.setObjectName("page")
-        layout = QVBoxLayout(body)
-        layout.setContentsMargins(24, 20, 24, 24)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 18, 24, 18)
         layout.setSpacing(12)
-        layout.addWidget(title)
-        layout.addWidget(self.day)
+        layout.addLayout(heading)
         layout.addLayout(cards)
-        layout.addSpacing(4)
         layout.addLayout(columns, 1)
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setWidget(body)
-        outer = QVBoxLayout(self)
-        outer.setContentsMargins(0, 0, 0, 0)
-        outer.addWidget(scroll)
         self.refresh()
 
     def refresh(self) -> None:
@@ -192,7 +209,7 @@ class DashboardPage(QWidget):
             item(d.student_name, item_id=d.student_id),
             item(format_dzd(d.owed_now), align=RIGHT, mono=True, tone="danger"),
             item(t["dashboard.days"].format(days=d.days_overdue), align=RIGHT),
-        ] for d in board.top_debtors])
+        ] for d in board.top_debtors], total=board.debtors)
         self.groups.set_rows([[
             item(g.title, item_id=g.group_id),
             item(str(g.enrolled), align=RIGHT, mono=True),
@@ -200,7 +217,4 @@ class DashboardPage(QWidget):
             item(format_percent(g.rate_bp // 100 * 100), align=RIGHT, mono=True,
                  tone="success" if g.rate_bp >= 10000 else None),
         ] for g in board.groups])
-        self.groups.list.table.setToolTip(
-            t["dashboard.groups_more"].format(count=len(board.groups))
-            if len(board.groups) > LIST_ROWS else "")
 

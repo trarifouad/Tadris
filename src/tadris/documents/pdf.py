@@ -43,6 +43,7 @@ class School:
     name: str
     address: str
     phone: str
+    header: str = ""  # Paramètres: a line under the contact on receipts and slips
 
 
 @dataclass(frozen=True)

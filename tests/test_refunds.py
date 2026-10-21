@@ -19,6 +19,7 @@ from tadris.services import (
     refunds,
     registrations,
     school_years,
+    settings,
     students,
     subscriptions,
     teachers,
@@ -343,6 +344,11 @@ def test_refund_slip(conn, director, desk, amine, paid_twice, tmp_path):
     doc = printing.refund_slip_content(conn, desk, refund_id)
     assert (doc.title, doc.number, doc.stamp, doc.copy_mark) == (
         "Bon de remboursement", "RB2026-00001", "REMBOURSÉ", "")
+    assert doc.note == ""
+    settings.save_school(conn, director, "École Ennour", "", "", "08:00", "20:00",
+                         receipt_header="NIF 0001", receipt_footer="Bon à conserver.")
+    doc = printing.refund_slip_content(conn, desk, refund_id)
+    assert (doc.school.header, doc.note) == ("NIF 0001", "Bon à conserver.")
     assert dict(doc.details)["Élève"] == "Benali Amine (N° 2026-0001)"
     assert (dict(doc.details)["Approuvé par"], dict(doc.details)["Remis par"]) == (
         "directeur", "accueil")

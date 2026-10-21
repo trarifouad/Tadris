@@ -18,6 +18,7 @@ from tadris.services import (
     printing,
     registrations,
     school_years,
+    settings,
     students,
     subscriptions,
     teachers,
@@ -375,6 +376,10 @@ def test_payout_slip(conn, director, school, tmp_path):
     slip = printing.payout_slip_content(conn, director, payout_id)
     assert (slip.number, slip.stamp, slip.total, slip.copy_mark) == (
         "PE2026-00001", "PAYÉ", "108 000 DA", "")
+    settings.save_school(conn, director, "École Ennour", "", "", "08:00", "20:00",
+                         receipt_header="Agrément n° 12")
+    assert printing.payout_slip_content(conn, director, payout_id).school.header == (
+        "Agrément n° 12")
     assert dict(slip.details)["Enseignant"] == "Karim Haddad"
     assert dict(slip.details)["Versé"] == "le 18/10/2026, en Espèces, par directeur"
     assert slip.group_rows == [

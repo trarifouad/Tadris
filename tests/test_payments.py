@@ -551,6 +551,19 @@ def test_receipt_content(conn, director, receptionist, amine):
     assert doc.totals == [("Total payé", "2 500 DA"),
                           ("Reste à payer au 18/10/2026", "1 500 DA")]
     assert doc.voided_note == ""
+    assert (doc.school.header, doc.note) == ("", "")  # nothing set: nothing printed
+
+
+def test_receipt_prints_the_lines_set_in_settings(conn, director, amine, tmp_path):
+    settings.save_school(conn, director, "École Ennour", "", "Oran", "08:00", "20:00",
+                         receipt_header="Agrément n° 12", receipt_footer="Merci de votre "
+                         "confiance.")
+    payment_id = payments.record(conn, director, amine, 2500, "cash")
+    receipt_id = receipt_of(conn, director, payment_id)
+    doc = printing.receipt_content(conn, director, receipt_id)
+    assert (doc.school.header, doc.note) == ("Agrément n° 12", "Merci de votre confiance.")
+    path = printing.receipt(conn, director, receipt_id, out_dir=tmp_path)
+    assert path.stat().st_size > 1000
 
 
 def test_receipt_with_credit(conn, director, amine):

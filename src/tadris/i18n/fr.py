@@ -1183,12 +1183,24 @@ t = {
         "Montant proposé à chaque inscription annuelle. L'accueil peut le changer au cas par cas ; "
         "les inscriptions déjà faites gardent leur montant. Au-delà du seuil d'alerte, "
         "l'inscription dans un groupe et le renouvellement affichent la dette en retard de "
-        "l'élève (sans bloquer)."
+        "l'élève (sans bloquer). Le prix par défaut est proposé à la création d'un groupe."
     ),
     "school.registration_fee": "Frais d'inscription par défaut",
     "school.debt_warning": "Alerte de dette à partir de",
     "school.debt_warning_off": "Vide : pas d'alerte",
     "school.debt_warning_invalid": "Le seuil d'alerte de dette est invalide.",
+    "school.group_price": "Prix mensuel par défaut d'un groupe",
+    "school.group_price_off": "Vide : aucun",
+    "school.receipts": "Reçus",
+    "school.receipts_caption": (
+        "Deux lignes facultatives : l'une sous l'adresse, en tête des reçus et des bons "
+        "(n° d'agrément, NIF…), l'autre en bas des reçus et des bons de remboursement."
+    ),
+    "school.receipt_header": "Ligne d'en-tête",
+    "school.receipt_header_hint": "Ex. : Agrément n° 123/2024 · NIF 000123456789",
+    "school.receipt_footer": "Ligne de bas de page",
+    "school.receipt_footer_hint": "Ex. : Les frais d'inscription ne sont pas remboursables.",
+    "school.receipt_line_too_long": "Une ligne de reçu fait au plus {max} caractères.",
     "settings.tab.backups": "Sauvegardes",
     "backups.caption": (
         "Une copie de la base est faite chaque jour à l'ouverture et à chaque fermeture, puis "
@@ -1972,6 +1984,9 @@ t = {
     "audit.setting.defaults.registration_fee": "Frais d'inscription par défaut",
     "audit.setting.defaults.max_debt_warning": "Seuil d'alerte de dette",
     "audit.setting.backup.second_dir": "Second emplacement des sauvegardes",
+    "audit.setting.defaults.group_price": "Prix par défaut d'un groupe",
+    "audit.setting.receipt.header": "En-tête des reçus",
+    "audit.setting.receipt.footer": "Bas de page des reçus",
     "audit.result.success": "Réussie",
     "audit.result.failed": "Échouée",
     "audit.entity_named": "{kind} : {name}",

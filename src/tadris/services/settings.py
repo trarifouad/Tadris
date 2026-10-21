@@ -19,6 +19,9 @@ KEYS: dict[str, type] = {
     "school.closes_at": str,
     "defaults.registration_fee": int,
     "defaults.max_debt_warning": int,
+    "defaults.group_price": int,
+    "receipt.header": str,
+    "receipt.footer": str,
     "backup.second_dir": str,
     "backup.school_id": str,
 }
@@ -60,15 +63,31 @@ def set_value(conn, ctx: UserContext, key: str, value) -> None:
         _store(conn, ctx, key, stored)
 
 
+RECEIPT_LINE_MAX = 200  # a line under the header or at the foot of a receipt
+
+
 def save_school(conn, ctx: UserContext, name: str, phone: str, address: str,
                 opens_at: str, closes_at: str, registration_fee: int | None = None,
-                debt_warning: int | None = None) -> None:
-    """The École tab, all or nothing: details, opening hours, the default registration fee
-    and the debt warning threshold (each left unchanged when None; a threshold of 0 turns
-    the warning off)."""
+                debt_warning: int | None = None, group_price: int | None = None,
+                receipt_header: str | None = None, receipt_footer: str | None = None) -> None:
+    """The École tab, all or nothing: details, opening hours, the default registration fee,
+    the debt warning threshold, the default price of a new group and the receipts' extra
+    lines (each left unchanged when None; a threshold or price of 0 turns it off, an empty
+    line prints nothing)."""
     require(ctx, "settings.change")
     details = {key: _coerce(key, value) for key, value in (
         ("school.name", name), ("school.phone", phone), ("school.address", address))}
+    for key, line in (("receipt.header", receipt_header), ("receipt.footer", receipt_footer)):
+        if line is not None:
+            stored = _coerce(key, line)
+            if len(stored) > RECEIPT_LINE_MAX:
+                raise ValidationError(t["school.receipt_line_too_long"].format(
+                    max=RECEIPT_LINE_MAX))
+            details[key] = stored
+    if group_price is not None:
+        if group_price < 0:
+            raise ValidationError(t["group.price_invalid"])
+        details["defaults.group_price"] = str(group_price)
     if registration_fee is not None:
         if registration_fee < 0:
             raise ValidationError(t["registration.fee_invalid"])

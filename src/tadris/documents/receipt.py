@@ -42,6 +42,7 @@ class ReceiptDoc:
     thanks: str
     signature: str
     footer: Footer
+    note: str = ""  # Paramètres: a line at the foot of the receipt (e.g. fees not refunded)
 
 
 class Stamp(Flowable):
@@ -101,6 +102,8 @@ def header_table(receipt, usable: float) -> Table:
     contact = " · ".join(part for part in (school.address, school.phone) if part)
     if contact:
         left.append(Paragraph(escape(contact), style(8.5, color=MUTED)))
+    if school.header:
+        left.append(Paragraph(escape(school.header), style(8.5, color=MUTED)))
     left += [Spacer(1, 4 * mm), Paragraph(escape(receipt.title), style(16, bold=True))]
     header = Table([[left, number_box(receipt)]], colWidths=[usable - 48 * mm, 48 * mm])
     header.setStyle(TableStyle([
@@ -180,6 +183,9 @@ def build_receipt(receipt: ReceiptDoc, path: Path) -> Path:
                   Spacer(1, 4 * mm)]
     story += [_lines(receipt, usable), Spacer(1, 10 * mm), signature_table(receipt, usable),
               Spacer(1, 8 * mm), Paragraph(escape(receipt.thanks), style(9, color=MUTED,
+                                                                          align=1))]
+    if receipt.note:
+        story += [Spacer(1, 2 * mm), Paragraph(escape(receipt.note), style(8.5, color=MUTED,
                                                                           align=1))]
     doc.build(story, onFirstPage=receipt.footer.draw, onLaterPages=receipt.footer.draw)
     return path

@@ -4,6 +4,7 @@ import pytest
 from PySide6.QtCore import QPointF, Qt
 
 from tadris.core import dates
+from tadris.core.money import format_dzd
 from tadris.domain.models import GroupInput, SlotInput, TeacherInput
 from tadris.i18n.fr import t
 from tadris.services import (
@@ -300,6 +301,16 @@ def test_group_dialog_needs_a_teacher(qtbot, conn, director):
     assert not dialog.submit.isEnabled()
 
 
+def test_group_dialog_starts_with_the_default_price(qtbot, conn, director, school):
+    assert keep(qtbot, GroupDialog(conn, director)).price.text() == ""  # none set
+    settings.save_school(conn, director, "École Ennour", "", "", "08:00", "20:00",
+                         group_price=3500)
+    assert keep(qtbot, GroupDialog(conn, director)).price.text() == "3 500 DA"
+    existing = groups.search(conn, director)[0]
+    edit = keep(qtbot, GroupDialog(conn, director, group=existing))
+    assert edit.price.text() == format_dzd(existing.price)  # its own price, not the default
+
+
 def test_group_detail_change_teacher_and_close(qtbot, conn, director, school, monkeypatch):
     view = keep(qtbot, GroupDetailView(conn, director, school["g1"]))
     assert view.teacher.text() == t["group_detail.teacher"].format(teacher="Karim Haddad")
@@ -466,6 +477,24 @@ def test_school_tab_saves_details_and_hours(qtbot, conn, director):
     assert settings.school_hours(conn) == ("08:30", "19:00")
     assert settings.get(conn, "school.phone") == "048 55 12 30"
     assert tab.opens_at.currentText() == "08:30"
+
+
+
+def test_school_tab_saves_the_group_price_and_receipt_lines(qtbot, conn, director):
+    tab = keep(qtbot, setup_tabs.SchoolTab(conn, director))
+    assert (tab.group_price.text(), tab.receipt_header.text()) == ("", "")
+    tab.group_price.setText("3500")
+    tab.receipt_header.setText("Agrément n° 12")
+    tab.receipt_footer.setText("Frais non remboursables.")
+    click(qtbot, tab.save)
+    assert tab.error.isHidden()
+    assert groups.default_price(conn) == 3500
+    assert settings.get(conn, "receipt.footer") == "Frais non remboursables."
+    assert tab.group_price.text() == "3 500 DA"  # shown as saved
+    tab.group_price.setText("")
+    click(qtbot, tab.save)
+    assert groups.default_price(conn) == 0
+    assert tab.receipt_header.maxLength() == settings.RECEIPT_LINE_MAX
 
 
 def test_school_tab_refuses_hours_that_cut_a_slot(qtbot, conn, director, school):

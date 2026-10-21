@@ -874,3 +874,37 @@ def test_school_tab_saves_all_or_nothing(conn, director):
                          "9h", "18h")
     assert settings.school_hours(conn) == ("09:00", "18:00")
     assert settings.get(conn, "school.address") == "Oran"
+
+
+def test_school_tab_saves_the_receipt_lines_and_the_group_price(conn, director):
+    def save(**extra):
+        settings.save_school(conn, director, "École Ennour", "", "Oran", "08:00", "20:00",
+                             **extra)
+
+    save(group_price=3500, receipt_header="  Agrément n° 12  ",
+         receipt_footer="Frais non remboursables.")
+    assert groups.default_price(conn) == 3500
+    assert settings.get(conn, "receipt.header") == "Agrément n° 12"  # trimmed
+    assert settings.get(conn, "receipt.footer") == "Frais non remboursables."
+    save()  # None: left as they are
+    assert groups.default_price(conn) == 3500
+    assert settings.get(conn, "receipt.header") == "Agrément n° 12"
+    save(group_price=0, receipt_header="", receipt_footer="")  # off
+    assert groups.default_price(conn) == 0
+    assert settings.get(conn, "receipt.header") == ""
+    logged = [json.loads(row[0])["key"] for row in conn.execute(
+        "SELECT new_value FROM audit_log WHERE action = 'settings.set'")]
+    assert {"defaults.group_price", "receipt.header", "receipt.footer"} <= set(logged)
+
+
+def test_school_tab_refuses_a_long_receipt_line_or_a_negative_price(conn, director):
+    with pytest.raises(ValidationError) as caught:
+        settings.save_school(conn, director, "École Ennour", "", "", "08:00", "20:00",
+                             receipt_footer="x" * (settings.RECEIPT_LINE_MAX + 1))
+    assert caught.value.message == t["school.receipt_line_too_long"].format(
+        max=settings.RECEIPT_LINE_MAX)
+    with pytest.raises(ValidationError):
+        settings.save_school(conn, director, "École Ennour", "", "", "08:00", "20:00",
+                             group_price=-1)
+    assert settings.get(conn, "receipt.footer") is None  # all or nothing
+    assert groups.default_price(conn) == 0

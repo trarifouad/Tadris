@@ -114,6 +114,8 @@ def _value(key: str, value, names: Names) -> str | None:
         return t.get(f"audit.type.{value}", value)
     if key == "key":
         return t.get(f"audit.setting.{value}", value)
+    if key == "result":
+        return t.get(f"audit.result.{value}", value)
     if isinstance(value, list):
         return t["audit.lines"].format(count=len(value))
     if isinstance(value, dict):

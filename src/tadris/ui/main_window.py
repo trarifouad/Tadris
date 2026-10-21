@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMainWindow,
+    QMessageBox,
     QPushButton,
     QStackedWidget,
     QVBoxLayout,
@@ -57,6 +58,7 @@ class MainWindow(QMainWindow):
     def __init__(self, conn, ctx: UserContext):
         super().__init__()
         self.logging_out = False  # closed by « Se déconnecter », not to quit the app
+        self.restored = False  # a copy of the database was put back: log in again
         self._conn = conn
         self.ctx = ctx
         school = settings.get(conn, "school.name")
@@ -159,7 +161,9 @@ class MainWindow(QMainWindow):
         if key in pages:
             return pages[key](self._conn, self.ctx)
         if key == "settings":
-            return SettingsPage(self._conn, self.ctx)
+            page = SettingsPage(self._conn, self.ctx)
+            page.restored.connect(self._restored)
+            return page
         student_pages = {"subscriptions": SubscriptionsPage, "payments": PaymentsPage,
                          "reports": ReportsPage, "dashboard": DashboardPage}
         if key in student_pages:
@@ -244,6 +248,17 @@ class MainWindow(QMainWindow):
     def has_unsaved(self) -> bool:
         return any(getattr(self.pages.widget(self._slots[key]), "has_unsaved", lambda: False)()
                    for key in self._built)
+
+    def _restored(self, safety: str) -> None:
+        """A copy of the database is in place: its accounts may differ, every page shows
+        what is gone. Back to the login screen (nothing to ask: the restore was
+        confirmed, and unsaved marks belonged to the data replaced)."""
+        QMessageBox.information(self, t["restore.done_title"],
+                                t["restore.done"].format(safety=safety))
+        self.restored = True
+        self.logging_out = True
+        self.logged_out.emit()
+        self.close()
 
     def logout(self) -> bool:
         """Back to the login screen. Unsaved attendance marks ask first. True if done."""

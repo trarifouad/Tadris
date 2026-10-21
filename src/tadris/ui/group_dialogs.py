@@ -73,7 +73,8 @@ class GroupDialog(FormDialog):
                                 None if creating else group.subject_id)
         self.name = QLineEdit("" if creating else group.name)
         self.name.setPlaceholderText(t["group_dialog.name_placeholder"])
-        self.price = money_edit(None if creating else group.price)
+        self.price = money_edit((groups.default_price(conn) or None) if creating
+                                else group.price)
         self.capacity = count_spin(12 if creating else group.capacity)
         self.start = DateLineEdit()
         self.teacher = id_combo([(x.full_name, x.id) for x in teachers.search(conn, ctx)])

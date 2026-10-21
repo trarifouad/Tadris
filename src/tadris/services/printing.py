@@ -57,7 +57,12 @@ LETTERS = {"present": "P", "late": "R", "absent": "A", "excused": "E"}
 def _school(conn) -> School:
     return School(name=settings.get(conn, "school.name", "") or t["app.name"],
                   address=settings.get(conn, "school.address", "") or "",
-                  phone=settings.get(conn, "school.phone", "") or "")
+                  phone=settings.get(conn, "school.phone", "") or "",
+                  header=settings.get(conn, "receipt.header", "") or "")
+
+
+def _receipt_note(conn) -> str:
+    return settings.get(conn, "receipt.footer", "") or ""
 
 
 def _footer(ctx: UserContext) -> Footer:
@@ -211,7 +216,7 @@ def receipt_content(conn, ctx: UserContext, receipt_id: int) -> ReceiptDoc:
         lines=lines, totals=totals,
         stamp=t["receipt.stamp_voided"] if p.voided else t["receipt.stamp_paid"],
         stamp_date=paid_on, voided_note=voided_note, thanks=t["receipt.thanks"],
-        signature=t["receipt.signature"], footer=_footer(ctx))
+        signature=t["receipt.signature"], footer=_footer(ctx), note=_receipt_note(conn))
 
 
 # ----- refund slips -----
@@ -251,7 +256,7 @@ def refund_slip_content(conn, ctx: UserContext, refund_id: int) -> ReceiptDoc:
         totals=[(t["refund_slip.total"], format_dzd(r.refunded_amount))],
         stamp=t["refund_slip.stamp"], stamp_date=paid_on, voided_note="",
         thanks=t["refund_slip.thanks"], signature=t["refund_slip.signature"],
-        footer=_footer(ctx))
+        footer=_footer(ctx), note=_receipt_note(conn))
 
 
 # ----- teacher payout slips -----

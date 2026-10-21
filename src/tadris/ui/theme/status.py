@@ -18,6 +18,7 @@ STATUS_STYLE = {
     "refund": {"pending": "warning", "approved": "info", "paid": "success", "rejected": "neutral"},
     "payout": {"draft": "neutral", "approved": "info", "paid": "success"},
     "sms": {"pending": "info", "sent": "success", "failed": "danger"},
+    "backup": {"verified": "success", "done": "warning", "running": "info", "failed": "danger"},
 }
 
 

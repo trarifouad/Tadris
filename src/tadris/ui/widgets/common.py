@@ -1,4 +1,5 @@
 from html import escape
+from pathlib import Path
 
 from PySide6.QtWidgets import (
     QDialog,
@@ -195,10 +196,23 @@ def open_folder(path) -> None:
 
 def ask_save_path(parent: QWidget, title: str, suggested, file_filter: str):
     """« Enregistrer sous »: the path chosen, or None when cancelled."""
-    from pathlib import Path
-
     from PySide6.QtWidgets import QFileDialog
 
     chosen, _filter = QFileDialog.getSaveFileName(parent, title, str(suggested), file_filter)
     return Path(chosen) if chosen else None
 
+
+def ask_folder(parent: QWidget, title: str, start) -> Path | None:
+    """Choose a folder (a USB drive, a synced folder): the one chosen, or None."""
+    from PySide6.QtWidgets import QFileDialog
+
+    chosen = QFileDialog.getExistingDirectory(parent, title, str(start))
+    return Path(chosen) if chosen else None
+
+
+def ask_open_path(parent: QWidget, title: str, start, file_filter: str) -> Path | None:
+    """Choose a file to open: the one chosen, or None when cancelled."""
+    from PySide6.QtWidgets import QFileDialog
+
+    chosen, _filter = QFileDialog.getOpenFileName(parent, title, str(start), file_filter)
+    return Path(chosen) if chosen else None

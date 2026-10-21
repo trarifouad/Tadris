@@ -11,7 +11,15 @@ from tadris.i18n.fr import t
 from tadris.repositories import groups as repo
 from tadris.repositories import timetable as timetable_repo
 from tadris.repositories.students import like_pattern
-from tadris.services import audit, catalog, school_years, sessions, teachers, timetable
+from tadris.services import (
+    audit,
+    catalog,
+    school_years,
+    sessions,
+    settings,
+    teachers,
+    timetable,
+)
 
 # Groups belong to the open year or an upcoming one. The price is copied onto each
 # subscription when it is created, so a price change only affects later subscriptions.
@@ -42,6 +50,11 @@ def _to_group(row) -> Group:
 
 def _today() -> str:
     return dates.iso(dates.today())
+
+
+def default_price(conn) -> int:
+    """The monthly price a new group starts with (Paramètres → École); 0: none."""
+    return settings.get(conn, "defaults.group_price", 0)
 
 
 def _require_row(conn, group_id: int):

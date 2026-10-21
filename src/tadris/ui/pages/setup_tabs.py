@@ -1,10 +1,13 @@
 """Paramètres tabs: the school's details and hours, years, levels, subjects and rooms."""
 
 from PySide6.QtWidgets import (
+    QFrame,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QPushButton,
+    QScrollArea,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -17,6 +20,7 @@ from tadris.i18n.fr import t
 from tadris.services import (
     catalog,
     debt,
+    groups,
     holidays,
     registrations,
     rooms,
@@ -358,6 +362,19 @@ class SchoolTab(QWidget):
         fees_caption = QLabel(t["school.fees_caption"])
         fees_caption.setObjectName("caption")
         fees_caption.setWordWrap(True)
+        self.group_price = money_edit()
+        self.group_price.setPlaceholderText(t["school.group_price_off"])
+        receipts_title = QLabel(t["school.receipts"])
+        receipts_title.setObjectName("sectionTitle")
+        receipts_caption = QLabel(t["school.receipts_caption"])
+        receipts_caption.setObjectName("caption")
+        receipts_caption.setWordWrap(True)
+        self.receipt_header = QLineEdit()
+        self.receipt_header.setPlaceholderText(t["school.receipt_header_hint"])
+        self.receipt_header.setMaxLength(settings.RECEIPT_LINE_MAX)
+        self.receipt_footer = QLineEdit()
+        self.receipt_footer.setPlaceholderText(t["school.receipt_footer_hint"])
+        self.receipt_footer.setMaxLength(settings.RECEIPT_LINE_MAX)
         self.save = primary_button(t["action.save"])
         self.save.setDefault(False)
         self.save.clicked.connect(self._save)
@@ -376,7 +393,13 @@ class SchoolTab(QWidget):
         form.addWidget(fees_title)
         form.addWidget(fees_caption)
         form.addLayout(row(labeled(t["school.registration_fee"], self.registration_fee),
-                           labeled(t["school.debt_warning"], self.debt_warning)))
+                           labeled(t["school.group_price"], self.group_price)))
+        form.addLayout(row(labeled(t["school.debt_warning"], self.debt_warning), QWidget()))
+        form.addSpacing(4)
+        form.addWidget(receipts_title)
+        form.addWidget(receipts_caption)
+        form.addWidget(labeled(t["school.receipt_header"], self.receipt_header))
+        form.addWidget(labeled(t["school.receipt_footer"], self.receipt_footer))
         actions = QHBoxLayout()
         actions.addStretch()
         actions.addWidget(self.save)
@@ -384,14 +407,25 @@ class SchoolTab(QWidget):
         box = QWidget()
         box.setMaximumWidth(self.FORM_WIDTH)
         box.setLayout(form)
+        # Its full height always: the scroll area scrolls it rather than squeeze the fields.
+        box.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
 
+        # A long form scrolls instead of squeezing its fields (a laptop screen at 125 %).
+        content = QWidget()
+        inner = QVBoxLayout(content)
+        inner.setContentsMargins(0, 16, 0, 0)
+        inner.setSpacing(12)
+        inner.addWidget(intro)
+        inner.addWidget(self.error)
+        inner.addWidget(box)
+        inner.addStretch()
+        self.scroll = QScrollArea()
+        self.scroll.setWidgetResizable(True)
+        self.scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.scroll.setWidget(content)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 16, 0, 0)
-        layout.setSpacing(12)
-        layout.addWidget(intro)
-        layout.addWidget(self.error)
-        layout.addWidget(box)
-        layout.addStretch()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.scroll)
         self.refresh()
 
     def refresh(self) -> None:
@@ -404,6 +438,10 @@ class SchoolTab(QWidget):
         self.registration_fee.setText(format_dzd(registrations.default_fee(self._conn)))
         threshold = debt.warning_threshold(self._conn)
         self.debt_warning.setText(format_dzd(threshold) if threshold else "")
+        price = groups.default_price(self._conn)
+        self.group_price.setText(format_dzd(price) if price else "")
+        self.receipt_header.setText(settings.get(self._conn, "receipt.header", ""))
+        self.receipt_footer.setText(settings.get(self._conn, "receipt.footer", ""))
 
     def _save(self) -> None:
         try:
@@ -411,7 +449,9 @@ class SchoolTab(QWidget):
                                  self.address.text(), self.opens_at.currentText(),
                                  self.closes_at.currentText(),
                                  read_money(self.registration_fee, empty=0),
-                                 read_money(self.debt_warning, empty=0))
+                                 read_money(self.debt_warning, empty=0),
+                                 read_money(self.group_price, empty=0),
+                                 self.receipt_header.text(), self.receipt_footer.text())
         except BusinessRuleError as exc:
             self.error.show_error(exc.message)
             return

@@ -312,3 +312,147 @@ def test_each_new_copy_prunes_the_old_ones(school, folder):
     assert taken.id in kept
     assert len(kept) == 14  # today and the last 13 days of January (its latest among them)
     assert len(list(folder.iterdir())) == 14
+
+
+# ----- second location -----
+
+@pytest.fixture
+def usb(tmp_path):
+    drive = tmp_path / "usb"
+    drive.mkdir()
+    return drive
+
+
+@pytest.fixture
+def director(school):
+    return auth.login(school, "directeur", "password1")
+
+
+def test_no_second_location_by_default(school, folder):
+    taken = backup.take(school, folder)
+    assert backup.second_root(school) is None
+    assert backup.mirror(school, taken) is None
+
+
+def test_each_copy_also_goes_to_the_second_location(school, folder, usb, director):
+    backup.set_second_root(school, director, str(usb))
+    taken = backup.take(school, folder)
+
+    sub = backup.second_folder(school)
+    assert sub.parent == usb and sub.name == f"Tadris-{backup.school_id(school)}"
+    copy = sub / Path(taken.file_path).name
+    assert copy.is_file() and backup.sha256(copy) == taken.checksum
+    assert not list(sub.glob("*.part"))
+    with open_ro(copy) as c:
+        assert c.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+        assert c.execute("SELECT COUNT(*) FROM students").fetchone()[0] == 1
+    logged = json.loads(audit_rows(school, "backup.mirror")[-1]["new_value"])
+    assert logged["file"] == copy.name and logged["folder"] == str(sub)
+
+
+def test_the_school_id_is_made_once(school):
+    first = backup.school_id(school)
+    assert len(first) == 12 and backup.school_id(school) == first
+
+
+def test_a_folder_that_does_not_exist_is_refused(school, director, tmp_path):
+    with pytest.raises(backup.ValidationError):
+        backup.set_second_root(school, director, str(tmp_path / "nowhere"))
+    assert backup.second_root(school) is None
+    backup.set_second_root(school, director, "  ")  # off
+    assert backup.second_root(school) is None
+
+
+def test_only_the_director_sets_the_second_location(school, director, usb):
+    from tadris.core.errors import PermissionDenied
+
+    auth.create_user(school, director, "accueil", "password1", "receptionist")
+    desk = auth.login(school, "accueil", "password1")
+    with pytest.raises(PermissionDenied):
+        backup.set_second_root(school, desk, str(usb))
+
+
+def test_a_drive_not_plugged_in_warns_but_the_copy_is_made(school, folder, usb, director):
+    backup.set_second_root(school, director, str(usb))
+    usb.rmdir()  # unplugged
+    with pytest.raises(backup.MirrorFailed) as failed:
+        backup.take(school, folder)
+    assert "introuvable" in failed.value.message and str(usb) in failed.value.message
+    kept = failed.value.backup
+    assert kept.status == "verified" and Path(kept.file_path).is_file()
+    assert not usb.exists()  # the drive's root is never created
+    entry = audit_rows(school, "backup.mirror_failed")[-1]
+    assert json.loads(entry["new_value"])["error"] == "missing"
+    assert not backup.daily_due(school)  # today's copy counts
+
+
+def test_a_write_that_fails_leaves_no_half_copy(school, folder, usb, director, monkeypatch):
+    backup.set_second_root(school, director, str(usb))
+
+    def full_disk(source, target):
+        Path(target).write_bytes(b"half")
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(backup.shutil, "copyfile", full_disk)
+    with pytest.raises(backup.MirrorFailed) as failed:
+        backup.take(school, folder)
+    assert "a échoué" in failed.value.message
+    assert list(backup.second_folder(school).iterdir()) == []
+
+
+def test_a_copy_that_differs_is_not_kept(school, folder, usb, director, monkeypatch):
+    backup.set_second_root(school, director, str(usb))
+    monkeypatch.setattr(backup.shutil, "copyfile",
+                        lambda source, target: Path(target).write_bytes(b"not the same"))
+    with pytest.raises(backup.MirrorFailed):
+        backup.take(school, folder)
+    assert list(backup.second_folder(school).iterdir()) == []
+    entry = audit_rows(school, "backup.mirror_failed")[-1]
+    assert json.loads(entry["new_value"])["error"] == "checksum"
+
+
+def test_retention_on_the_second_location_by_file_name(tmp_path):
+    sub = tmp_path / "Tadris-abc"
+    sub.mkdir()
+    names = []
+    for day in range(1, 31):
+        for hour in ("08", "18"):
+            name = f"tadris-2020-01-{day:02d}_{hour}0000-auto.db"
+            (sub / name).write_bytes(b"x")
+            names.append(name)
+    (sub / "tadris-2019-01-01_080000-manual.db").write_bytes(b"x")  # a manual copy
+    (sub / "notes.txt").write_text("à garder")  # not the app's
+
+    removed = backup.prune_folder(sub)
+
+    left = {p.name for p in sub.iterdir()}
+    assert "tadris-2019-01-01_080000-manual.db" in left and "notes.txt" in left
+    assert {f"tadris-2020-01-{d:02d}_180000-auto.db" for d in range(17, 31)} <= left
+    assert "tadris-2020-01-30_080000-auto.db" in left  # among the 3 latest
+    assert len(left) == 14 + 1 + 2
+    assert len(removed) == 60 - 15
+
+
+def test_the_journal_shows_a_failed_copy_to_the_second_location(school, folder, usb,
+                                                                director):
+    from tadris.repositories import reports as reports_repo
+
+    backup.set_second_root(school, director, str(usb))
+    usb.rmdir()
+    with pytest.raises(backup.MirrorFailed):
+        backup.take(school, folder)
+    shown = [row["action"] for row in reports_repo.audit_entries(
+        school, "2000-01-01", "2100-01-01", None, None, None, 100)]
+    assert "backup.mirror_failed" in shown and "backup.create" not in shown
+
+
+def test_the_app_warns_about_the_second_location_and_goes_on(monkeypatch):
+    shown = []
+    monkeypatch.setattr(app.QMessageBox, "warning",
+                        lambda parent, title, text: shown.append(text))
+
+    def unplugged():
+        raise backup.MirrorFailed("Le second emplacement est introuvable (E:).", None)
+
+    assert app._backup(unplugged) is True  # the copy on this computer is made
+    assert "Paramètres → Sauvegardes" in shown[0]

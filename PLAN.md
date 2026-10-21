@@ -13,7 +13,8 @@ Estimated effort: 3 to 4 months part-time (about 10 to 15 hours per week).
 |---|---|
 | Subscriptions | Monthly, fixed price snapshot copied from the group at creation. `end_date = start_date + 1 month`. Student absence never extends or changes a subscription. |
 | Money | Whole DZD integers. Debt is always derived (charges minus valid allocations). Never store a running debt column. |
-| Discounts | None. A student always owes the full price of each month and fee: no remises, no corrections (decided in phase 8). Money handed back is a refund, which does not change what is owed. |
+| Discounts | None. A student always owes the full price of each month and fee: no remises, no corrections (decided in phase 8). |
+| Refunds | None in V1 (decided after phase 12; refund tables archived in 0015). A mistaken payment is voided by the director; money handed back is handled outside the app until V2. |
 | Payments | Immutable. Corrections are new rows (`payment_voids`, never negative payments). |
 | Teacher pay | Percentage of group revenue, accrual basis: the full subscription price of the month, whether or not the student has paid yet. One percentage per teacher, applied to each of their groups. Example: 60% of 60,000 plus 60% of 120,000 = 108,000. |
 | Rates and prices | Snapshots. Never recompute an old month from today's price or rate. |
@@ -428,6 +429,8 @@ Add a `holidays` table or a settings JSON list in this phase. Decide which and a
 - Suggestion: for a month, what was paid and kept beyond the value of the days used (until the day the student left, or today; a date can be typed), at the month's price, rounded up for the school; for the fee, everything kept (the director decides).
 - Not covered: money paid and allocated to no charge (credit) cannot be refunded (parking lot).
 
+**Removed from V1 (after phase 12).** The school has not opened; the refund workflow waits for V2. Migration 0015 drops the refund triggers and renames `refunds` and `refund_allocations` to `archived_refunds` and `archived_refund_allocations`, read-only (trigger): a database that recorded refunds keeps them, and a payment some of whose money was handed back still cannot be voided (`trg_void_rules` follows the rename). Gone: the service and repository, the student page's « Remboursements », the « Remboursements à traiter » queue, the refund slip, the refunds in the cash of the day (the drawer is cash received minus teachers paid in cash), the « Remboursé » and « Net encaissé » columns, the `refund.*` permissions and the demo refunds. Cancelling a month or a registration is refused once anything was paid on it; a payment recorded by mistake is voided by the director (a void is not a refund: it undoes an erroneous entry). Money handed back exceptionally is handled outside the app by the director and noted. 1140 tests green.
+
 **Goal (as planned):** handle discounts, corrections and money returned. Discounts and corrections were dropped (see the decisions above).
 
 **Services**
@@ -671,7 +674,7 @@ Add a `holidays` table or a settings JSON list in this phase. Decide which and a
 | 6 | Non-renewed student: still allowed in class? | **Decided:** « Mois non renouvelé » badge on the attendance screen, no block |
 | 3 / 6 | Timetable slot validity | **Decided:** half-open `[valid_from, valid_to)`, same as rates and subscriptions. Adjacent periods that share a boundary date do not overlap. |
 | 6 | Holidays storage | **Decided:** `holidays` table of periods (start, end included, label) |
-| 7 | Receipt paper | **Decided:** A4 first, thermal later |
+| 7 | Receipt paper | **Decided:** thermal 80 mm tickets for receipts and refund slips (A4 first, changed after phase 12) |
 | 7 | Overpayment | **Decided:** kept as credit; it pays the oldest charges first when the next payment is recorded |
 | 7 | Debt limit | **Decided:** a warning in the enroll, switch, renew and payment dialogs once the late debt reaches the threshold in Paramètres (0 = off); never a block, so no override |
 | 11 | SMS provider | Decide after testing a real modem or phone gateway |
@@ -699,5 +702,6 @@ Add a `holidays` table or a settings JSON list in this phase. Decide which and a
 - Teacher fixed-salary or per-session pay methods.
 - Exams, grades and report cards.
 - Inventory of books and materials.
-- Refund a student's credit (money paid and allocated to no charge), e.g. paid in advance and gone before the next month was created.
 - Remises (discounts) and corrections: built then dropped in phase 8 by decision; the school charges the full price.
+- Refunds (built in phase 8, removed from V1 after phase 12, rows archived): request, director approval and payout with allocation to the original payments, numbered slip, cash and reports. Decisions already taken for V2: the suggestion counts the sessions held up to the departure (from the timetable, absences count as used); a month starts at the first session attended (moved only within the original month, renewals moved with it); the fee is refundable through the normal request only before any attendance, otherwise by director exception; a departure date changed after a request means reject and ask again; an impossible makeup is decided by the director; refunds do not lower teacher pay; credit beyond what is owed may be refunded; a paid refund is corrected by a numbered reversal (director, full or part).
+- Refund a student's credit (money paid and allocated to no charge), e.g. paid in advance and gone before the next month was created.

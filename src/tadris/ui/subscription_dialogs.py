@@ -18,8 +18,8 @@ from tadris.ui.widgets.date_edit import DateLineEdit
 from tadris.ui.widgets.forms import FormDialog, caption, row
 from tadris.ui.widgets.inputs import id_combo
 from tadris.ui.widgets.tables import (
+    CENTER,
     ID_ROLE,
-    RIGHT,
     ROW_HEIGHT,
     fill,
     fit_columns,
@@ -188,7 +188,7 @@ class BulkRenewDialog(FormDialog):
             item(m.group_title),
             item(period_text(m.start_date, m.end_date)),
             item(period_text(m.end_date, dates.iso(dates.add_one_month(end)))),
-            item(format_dzd(self._prices[m.id]), align=RIGHT, mono=True),
+            item(format_dzd(self._prices[m.id]), align=CENTER, mono=True),
         ]
 
     def checked(self) -> list[int]:

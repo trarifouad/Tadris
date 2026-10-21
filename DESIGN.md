@@ -35,7 +35,7 @@ All three are open source (OFL). Bundle them in `ui/resources/fonts/`, because t
 | Table text | 13 px / 400 | Readex Pro | Rows, dense lists |
 | Table header | 11.5 px / 500, uppercase, tracking +6% | Readex Pro | Column headers |
 | Caption | 12 px / 400, muted | Readex Pro | Hints, timestamps |
-| Money and IDs | 13 px / 500, right-aligned | Plex Mono | Every amount column, receipt and student numbers |
+| Money and IDs | 13 px / 500, centered in tables | Plex Mono | Every amount column, receipt and student numbers |
 
 Use pixel sizes in QSS (not pt) so Windows scaling stays predictable. Line height is about 1.4 to 1.5.
 
@@ -149,18 +149,19 @@ None of the semantic colors is close to the violet, so a status badge never read
 - Header row `surface_alt`, uppercase header text in `muted`, `rule_strong` line under the header.
 - No vertical lines. A 1 px `rule` line between rows, and `rule_strong` under every fifth row, so the eye keeps its place in long lists. Applies to every list longer than 10 rows.
 - Hover row `surface_alt`. Selected row `primary_soft` with a 3 px `primary` leading edge.
-- Text left-aligned, numbers and money right-aligned in Plex Mono, dates centered.
+- Text left-aligned; numbers, money (Plex Mono) and dates centered. Each header takes its column's alignment, and headers, text and status pills start at the same inset (15 px), so a column reads as one line. On paper (PDF, Excel) amounts stay right-aligned.
 - Debt amounts in `danger` weight 500, zero amounts in `faint`, credit in `info`. Debt is the only red in a list, so it can be found without reading every row.
 - Sticky header, sortable columns with an arrow, empty state with an icon and one French sentence that says how to add the first item.
 
 ### Sidebar
 
-- `sidebar` background, text `chalk` at about 74% opacity, icons 20 px.
+- `sidebar` background, text `chalk` at about 74% opacity, 13 px; Lucide icons 18 px in the same dim chalk.
 - Hover `sidebar_hover` with full `chalk` text.
-- Active item: a light label, `chalk` background with `sidebar` text and weight 500. No edge bar.
+- Active item: a light label, `chalk` background with `sidebar` text and icon, weight 500. No edge bar.
 - Wordmark at the top: "Tadris" in Reem Kufi 700 with "تدريس" beside it.
-- Menu order: Tableau de bord, Élèves, Groupes, Emploi du temps, Présences, Paiements, Enseignants, Paiements enseignants, Rapports, SMS, Paramètres.
-- Role-based items are hidden, not disabled. User name and role at the bottom.
+- Menu, in three parts. The day's work: Aujourd'hui (the Tableau de bord), Élèves, Groupes, Emploi du temps, Présences. **ARGENT**: Abonnements, Paiements, Paie enseignants, Rapports. **ÉCOLE**: Enseignants, SMS, Paramètres. Section headings are small uppercase chalk at 50%.
+- Role-based items are hidden, not disabled; a heading shows only above an item the user has.
+- Footer: a round avatar with two initials, the user name and role, and a log-out icon button on the right (its label in the tooltip).
 
 ### Badges
 
@@ -174,7 +175,6 @@ Pill shape, 4 px radius, 11.5 px text weight 500, soft background plus colored t
 | Session | planned / held / cancelled | Info / Success / Danger |
 | Attendance | present / late / absent / excused | Success / Warning / Danger / Info |
 | Debt | 0 / above 0 / credit | Success / Danger (bold) / Info |
-| Refund | pending / approved / paid / rejected | Warning / Info / Success / Neutral |
 | Payout | draft / approved / paid | Neutral / Info / Success |
 | SMS | pending / sent / failed | Info / Success / Danger |
 
@@ -203,7 +203,8 @@ Pill shape, 4 px radius, 11.5 px text weight 500, soft background plus colored t
 
 - **List page:** title and primary action on one row, filter bar below (search, selects, a "Avec dette" toggle in `danger` when active), then the table, then a footer with the count and pagination.
 - **Detail page:** header card (name, number, badges, key actions) and tabs below: Inscription, Groupes, Abonnements, Paiements, Présences, Contacts.
-- **Dashboard:** a row of 4 stat cards (big number in Reem Kufi, caption, small trend), then two columns: today's sessions and expiring subscriptions on the left, top debtors on the right.
+- **Student page:** no tabs. Two cards side by side, equal halves: « Élève » (name, number, status, birth; « Modifier », « Désactiver »; then Inscription, Groupes, Contacts, each under a small uppercase heading with a rule above) and « Paiements » (what is owed and « Encaisser un paiement », then À payer / Reçus as a segmented switch). Under them, full width, « Scolarité »: Séances et présences / Abonnements. Lists in cards are as tall as their rows (capped, then they scroll), their row actions sit just under them, and the page scrolls as one.
+- **Dashboard (Aujourd'hui):** a 56 px top bar (`surface`, bottom border): « Tableau de bord » and the date on the left; « Ajouter un élève » (secondary) and « Encaisser un paiement » (the screen's primary button; a student picker with the late payers first, then the payment dialog) on the right. Below it, « Bonjour, <name> » and one line (who is late, the next session, the months to renew). Left: « Encaissé par jour » (director only), a bar a day with the average of open days dashed and the hovered day read out top right; then « Plus gros retards » sorted by amount or age, each row with « Encaisser <amount> ». Right: « Séances du jour » on a strip of the opening hours with a now mark, « Places libres » (most free seats first, a thin fill bar), and today's backup (director only). Each card's link opens its page; the lists take the window's height and the page never scrolls; content stops at 1280 px wide.
 - **Attendance screen:** attendance rows as described above, and a sticky save bar.
 - **Payment dialog:** student debt summary at the top, amount and method in the middle, allocation preview below, receipt preview with the stamp after saving.
 
@@ -367,7 +368,6 @@ STATUS_STYLE = {
     "subscription": {"active": "success", "expiring": "warning", "ended": "neutral", "cancelled": "danger"},
     "session":      {"planned": "info", "held": "success", "cancelled": "danger"},
     "attendance":   {"present": "success", "late": "warning", "absent": "danger", "excused": "info"},
-    "refund":       {"pending": "warning", "approved": "info", "paid": "success", "rejected": "neutral"},
     "payout":       {"draft": "neutral", "approved": "info", "paid": "success"},
     "sms":          {"pending": "info", "sent": "success", "failed": "danger"},
 }
@@ -399,6 +399,7 @@ STATUS_STYLE = {
 | Display face | Reem Kufi for page titles, dialog titles, big numbers and the wordmark only. |
 | PAYÉ stamp | Violet on screen, grey outline on paper. |
 | Fifth-row rule | Yes, on every list longer than 10 rows. |
+| Receipt paper | Thermal 80 mm for payment receipts: one column, 72 mm printed, the page as long as the ticket, black only (no grey fills; the stamp in ink). Payout slips, sheets and reports stay A4. |
 
 ### Still open
 
@@ -407,4 +408,3 @@ STATUS_STYLE = {
 | 1 | **Logo.** A logo file (SVG or PNG) for the sidebar, login window and printed documents. If it has its own color, the ink can shift toward it. | Wordmark "Tadris" in Reem Kufi 700 with "تدريس" |
 | 2 | **Density.** Comfortable 40 px rows, or compact 32 px as default at the front desk? | Comfortable (40 px) |
 | 3 | **Dark theme.** Needed in v1, or after the pilot? | After the pilot |
-| 4 | **Receipt paper.** A4 or thermal 80 mm. This changes the print layout. | A4 first |

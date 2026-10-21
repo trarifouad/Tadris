@@ -47,7 +47,33 @@ def item(text: str, sort_key=None, align=LEFT, mono: bool = False, kind: str | N
         cell.setForeground(QColor(tokens()[tone]))
     if item_id is not None:
         cell.setData(ID_ROLE, item_id)
+    if align == LEFT and kind is None and text:
+        cell.setToolTip(text)  # the whole text when the column cuts it short
     return cell
+
+
+def align_headers(table: QTableWidget) -> None:
+    """Each column's header lines up with its cells: a centered date, a right-aligned
+    amount. The first row's cell decides; a table without rows keeps its headers."""
+    for column in range(table.columnCount()):
+        cell, header = table.item(0, column), table.horizontalHeaderItem(column)
+        if cell is None or header is None:
+            continue
+        horizontal = Qt.AlignmentFlag(cell.textAlignment()) & Qt.AlignmentFlag.AlignHorizontal_Mask
+        header.setTextAlignment(horizontal | Qt.AlignmentFlag.AlignVCenter)
+
+
+def _align_headers_soon(table: QTableWidget) -> None:
+    """Once the cells being set are all in: a table filled cell by cell is aligned once."""
+    if table.property("aligning"):
+        return
+    table.setProperty("aligning", True)
+
+    def run() -> None:
+        table.setProperty("aligning", False)
+        align_headers(table)
+
+    QTimer.singleShot(0, table, run)  # dropped if the table is deleted first
 
 
 def ruled_table(headers: list[str], sortable: bool = False) -> QTableWidget:
@@ -68,6 +94,7 @@ def ruled_table(headers: list[str], sortable: bool = False) -> QTableWidget:
     header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
     header.setSortIndicatorShown(sortable)
     header.setSectionsClickable(sortable)
+    table.model().dataChanged.connect(lambda *_args: _align_headers_soon(table))
     return table
 
 
@@ -113,6 +140,7 @@ def fill(table: QTableWidget, rows: list[list[QTableWidgetItem]]) -> None:
             for c, cell in enumerate(cells):
                 table.setItem(r, c, cell)
     table.setSortingEnabled(sorting)
+    align_headers(table)
 
 
 def selected_id(table: QTableWidget) -> int | None:

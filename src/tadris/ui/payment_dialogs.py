@@ -18,7 +18,6 @@ from tadris.ui.widgets.inputs import money_edit, read_money, select_data
 from tadris.ui.widgets.tables import (
     CENTER,
     ID_ROLE,
-    RIGHT,
     ROW_HEIGHT,
     fill,
     fit_columns,
@@ -173,10 +172,10 @@ class PaymentDialog(FormDialog):
         return [
             item(c.description, item_id=c.id),
             item(dates.display_date(c.due_date), align=CENTER),
-            item(format_dzd(c.due), align=RIGHT, mono=True),
-            item("", align=RIGHT, mono=True),
-            item("", align=RIGHT, mono=True),
-            item("", align=RIGHT, mono=True),
+            item(format_dzd(c.due), align=CENTER, mono=True),
+            item("", align=CENTER, mono=True),
+            item("", align=CENTER, mono=True),
+            item("", align=CENTER, mono=True),
         ]
 
     def _set_amounts(self, r: int, line) -> None:

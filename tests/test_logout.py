@@ -36,7 +36,8 @@ def logouts(conn) -> list:
 def test_the_button_sits_under_the_user(qtbot, conn, receptionist):
     window = MainWindow(conn, receptionist)
     qtbot.addWidget(window)
-    assert window.logout_button.text() == "Se déconnecter"
+    assert window.logout_button.accessibleName() == "Se déconnecter"
+    assert window.logout_button.toolTip().startswith("Se déconnecter")
     assert window.logout_button.parent().objectName() == "sidebarFooter"
     assert not window.logout_button.icon().isNull()
 

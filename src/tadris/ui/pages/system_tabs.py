@@ -17,7 +17,7 @@ from tadris.ui.theme.status import kind_for
 from tadris.ui.widgets import common
 from tadris.ui.widgets.common import PageBanner, confirm, primary_button, toast, variant_button
 from tadris.ui.widgets.forms import ListSection, caption
-from tadris.ui.widgets.tables import CENTER, RIGHT, fit_columns, item
+from tadris.ui.widgets.tables import CENTER, fit_columns, item
 
 
 def value_label() -> QLabel:
@@ -194,7 +194,7 @@ class BackupsTab(QWidget):
         return [
             item(display_stamp(b.created_at), b.created_at, item_id=b.id),
             item(kind_text(b)),
-            item(size_text(b.size_bytes), align=RIGHT, mono=True),
+            item(size_text(b.size_bytes), align=CENTER, mono=True),
             item(t[f"backups.status.{b.status}"], kind=kind_for("backup", b.status),
                  align=CENTER),
         ]

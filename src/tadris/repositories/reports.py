@@ -13,18 +13,12 @@ _PAID = """
                  AND NOT EXISTS (SELECT 1 FROM payment_voids v
                                   WHERE v.payment_id = pa.payment_id)), 0)
 """
-_REFUNDED = """
-    COALESCE((SELECT SUM(rf.refunded_amount) FROM refunds rf
-               WHERE rf.charge_id = c.id AND rf.status = 'paid'), 0)
-"""
-
-
 def charges_between(conn, first: str, last: str) -> list:
-    """Charges not cancelled with an accrual date in [first, last]: amount, paid, refunded,
-    and the group for a month (NULL for the registration fee)."""
+    """Charges not cancelled with an accrual date in [first, last]: amount, paid, and the
+    group for a month (NULL for the registration fee)."""
     return conn.execute(
         f"""
-        SELECT c.id, c.accrual_date, c.amount, {_PAID} AS paid, {_REFUNDED} AS refunded,
+        SELECT c.id, c.accrual_date, c.amount, {_PAID} AS paid,
                e.group_id, {_GROUP_TITLE} AS group_title
           FROM charges c
           LEFT JOIN subscriptions s ON s.id = c.subscription_id
@@ -54,18 +48,41 @@ def collected_by_month(conn, first: str, last: str) -> dict[str, int]:
     return {row["month"]: row["amount"] for row in rows}
 
 
-def refunded_by_month(conn, first: str, last: str) -> dict[str, int]:
-    """{'YYYY-MM': amount} handed back (refunds paid out) in [first, last]."""
+def collected_by_day(conn, first: str, last: str) -> dict[str, int]:
+    """{'YYYY-MM-DD': amount} of payments not voided received in [first, last]."""
     rows = conn.execute(
         """
-        SELECT substr(paid_out_at, 1, 7) AS month, SUM(refunded_amount) AS amount
-          FROM refunds
-         WHERE status = 'paid' AND substr(paid_out_at, 1, 10) BETWEEN ? AND ?
-         GROUP BY month
+        SELECT substr(p.paid_at, 1, 10) AS day, SUM(p.amount) AS amount
+          FROM payments p
+         WHERE substr(p.paid_at, 1, 10) BETWEEN ? AND ?
+           AND NOT EXISTS (SELECT 1 FROM payment_voids v WHERE v.payment_id = p.id)
+         GROUP BY day
         """,
         (first, last),
     ).fetchall()
-    return {row["month"]: row["amount"] for row in rows}
+    return {row["day"]: row["amount"] for row in rows}
+
+
+def session_days(conn, first: str, last: str) -> set[str]:
+    """The days in [first, last] with a session, cancelled ones included."""
+    rows = conn.execute("SELECT DISTINCT date FROM sessions WHERE date BETWEEN ? AND ?",
+                        (first, last)).fetchall()
+    return {row["date"] for row in rows}
+
+
+def slot_weekdays(conn, day: str) -> set[int]:
+    """The weekdays (1 = Monday) of the slots of groups not closed, running on day or
+    later."""
+    rows = conn.execute(
+        """
+        SELECT DISTINCT ts.weekday
+          FROM timetable_slots ts
+          JOIN class_groups g ON g.id = ts.group_id
+         WHERE g.status <> 'closed' AND (ts.valid_to IS NULL OR ts.valid_to > ?)
+        """,
+        (day,),
+    ).fetchall()
+    return {row["weekday"] for row in rows}
 
 
 _MARKS = """

@@ -4,7 +4,8 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
-    QTabWidget,
+    QScrollArea,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -19,7 +20,6 @@ from tadris.i18n.fr import t
 from tadris.services import contacts, students
 from tadris.ui.contact_dialog import ContactDialog
 from tadris.ui.pages.payments_tab import PaymentsTab
-from tadris.ui.pages.refunds_tab import RefundsTab
 from tadris.ui.pages.registration_tab import RegistrationTab
 from tadris.ui.pages.student_attendance_tab import StudentAttendanceTab
 from tadris.ui.pages.student_groups_tab import StudentGroupsTab
@@ -27,11 +27,24 @@ from tadris.ui.pages.subscriptions_tab import SubscriptionsTab
 from tadris.ui.student_dialog import StudentDialog
 from tadris.ui.theme.status import kind_for
 from tadris.ui.widgets.common import Badge, ask, confirm, primary_button, toast, variant_button
-from tadris.ui.widgets.tables import ID_ROLE, fill, item, ruled_table, selected_id
+from tadris.ui.widgets.compact import (
+    Segments,
+    compact_empty,
+    compact_list,
+    fit_height,
+    follow_current,
+    heading,
+    hide_empty_columns,
+    row_actions_below,
+    share_width,
+    small,
+)
+from tadris.ui.widgets.tables import ID_ROLE, fill, fit_columns, item, ruled_table, selected_id
 
 
 class StudentDetailView(QWidget):
-    """Header card with the student's identity and actions, and one tab per topic."""
+    """Three cards: the student (identity, registration, groups, contacts) and the money
+    side by side, the study (months, sessions) under them, the whole page scrolling."""
 
     back = Signal()
 
@@ -57,6 +70,7 @@ class StudentDetailView(QWidget):
         self.status = Badge()
         self.born = QLabel()
         self.born.setObjectName("caption")
+        self.born.setWordWrap(True)
         self.notes = QLabel()
         self.notes.setObjectName("caption")
         self.notes.setWordWrap(True)
@@ -64,12 +78,12 @@ class StudentDetailView(QWidget):
         meta.setSpacing(12)
         meta.addWidget(self.number)
         meta.addWidget(self.status)
-        meta.addWidget(self.born)
         meta.addStretch()
         identity = QVBoxLayout()
         identity.setSpacing(6)
         identity.addWidget(self.name)
         identity.addLayout(meta)
+        identity.addWidget(self.born)
         identity.addWidget(self.notes)
 
         self.edit = QPushButton(t["action.edit"])
@@ -81,64 +95,142 @@ class StudentDetailView(QWidget):
         self.reactivate = QPushButton(t["student_detail.reactivate"])
         self.reactivate.setAutoDefault(False)
         self.reactivate.clicked.connect(self._reactivate)
-        actions = QHBoxLayout()
-        actions.setSpacing(8)
-        actions.addWidget(self.edit)
-        actions.addWidget(self.deactivate)
-        actions.addWidget(self.reactivate)
 
-        card = QFrame()
-        card.setObjectName("card")
-        card_layout = QHBoxLayout(card)
-        card_layout.setContentsMargins(20, 16, 20, 16)
-        card_layout.addLayout(identity, 1)
-        card_layout.addLayout(actions)
-        card_layout.setAlignment(actions, Qt.AlignmentFlag.AlignTop)
-
-        self.tabs = QTabWidget()
-        self.tabs.setDocumentMode(True)
+        # Each section keeps its own logic and dialogs; the cards below only arrange them.
         self.registration = RegistrationTab(conn, ctx, student_id)
         self.groups = StudentGroupsTab(conn, ctx, student_id)
         self.subscriptions = SubscriptionsTab(conn, ctx, student_id)
         self.payments = PaymentsTab(conn, ctx, student_id)
-        self.refunds = RefundsTab(conn, ctx, student_id)
-        # Each tab shows what the others change: groups count, who may enroll, the months
-        # an enrollment, a confirmed trial or a switch creates.
+        self.attendance = StudentAttendanceTab(conn, ctx, student_id)
+        self.contacts = ContactsTab(conn, ctx, student_id)
+        # Each section shows what the others change: groups count, who may enroll, the
+        # months an enrollment, a confirmed trial or a switch creates.
         self.registration.changed.connect(self.groups.refresh)
         self.groups.changed.connect(self.registration.refresh)
         self.groups.changed.connect(self.subscriptions.refresh)
         # What is owed and what was paid show on the registration, the months and payments.
-        for tab in (self.registration, self.groups, self.subscriptions):
-            tab.changed.connect(self.payments.refresh)
+        for section in (self.registration, self.groups, self.subscriptions):
+            section.changed.connect(self.payments.refresh)
         self.payments.changed.connect(self.registration.refresh)
         self.payments.changed.connect(self.subscriptions.refresh)
-        # Payments change what can be refunded; a refund lets a month or a registration be
-        # cancelled.
-        for tab in (self.registration, self.subscriptions):
-            self.refunds.changed.connect(tab.refresh)
-        for tab in (self.groups, self.subscriptions, self.payments):
-            tab.changed.connect(self.refunds.refresh)
-        self.tabs.addTab(self.registration, t["student_detail.tab.registration"])
-        self.tabs.addTab(self.groups, t["student_detail.tab.groups"])
-        self.tabs.addTab(self.subscriptions, t["student_detail.tab.subscriptions"])
-        self.tabs.addTab(self.payments, t["student_detail.tab.payments"])
-        self.tabs.addTab(self.refunds, t["student_detail.tab.refunds"])
-        self.attendance = StudentAttendanceTab(conn, ctx, student_id)
-        self.tabs.addTab(self.attendance, t["student_detail.tab.attendance"])
-        self.contacts = ContactsTab(conn, ctx, student_id)
         self.contacts.changed.connect(self.refresh)
-        self.tabs.addTab(self.contacts, t["student_detail.tab.contacts"])
-        self.tabs.setCurrentWidget(self.registration)
+
+        top = QHBoxLayout()
+        top.setSpacing(16)
+        for card, stretch in ((self._student_card(identity), 1), (self._money_card(), 1)):
+            share_width(card)
+            top.addWidget(card, stretch)
+        content = QWidget()
+        content.setObjectName("page")
+        column = QVBoxLayout(content)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(16)
+        column.addLayout(top)
+        column.addWidget(self._study_card())
+        column.addStretch()
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setWidget(content)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 14, 24, 24)
-        layout.setSpacing(16)
+        layout.setContentsMargins(24, 14, 24, 16)
+        layout.setSpacing(12)
         self.error = error_banner()
         layout.addLayout(back_row)
         layout.addWidget(self.error)
-        layout.addWidget(card)
-        layout.addWidget(self.tabs, 1)
+        layout.addWidget(scroll, 1)
         self.refresh()
+
+    # ----- the three cards -----
+
+    def _student_card(self, identity) -> QFrame:
+        """Who the student is: identity, this year's registration, groups, contacts."""
+        card = section_card()
+        head = QHBoxLayout()
+        head.setSpacing(8)
+        head.addLayout(identity, 1)
+        for button in (self.edit, self.deactivate, self.reactivate):
+            head.addWidget(small(button), 0, Qt.AlignmentFlag.AlignTop)
+        body = card.layout()
+        body.addLayout(head)
+        self.registration.make_compact()
+        compact_list(self.groups.list, t["student_detail.tab.groups"], 5)
+        fit_columns(self.groups.list.table, stretch=(0,))
+        hide_empty_columns(self.groups.list.table, (3, 4))  # left on, remark
+        self.contacts.make_compact()
+        for title, section in ((t["student_detail.tab.registration"], self.registration),
+                               (None, self.groups), (None, self.contacts)):
+            body.addWidget(rule())
+            if title is not None:
+                body.addWidget(heading(title))
+            body.addWidget(section)
+        body.addStretch()
+        return card
+
+    def _money_card(self) -> QFrame:
+        """Everything about money: what is owed and « Encaisser »; then what is left to pay
+        and the receipts, one at a time."""
+        card = section_card()
+        body = card.layout()
+        payments = self.payments
+        title = QLabel(t["student_detail.money"])
+        title.setObjectName("sectionTitle")
+        head = QHBoxLayout()
+        head.setSpacing(8)
+        head.addWidget(title)
+        head.addStretch()
+        head.addWidget(small(payments.receive))
+        body.addLayout(head)
+        payments.summary.setObjectName("caption")
+        payments.summary.setWordWrap(True)
+        body.addWidget(payments.summary)
+        compact_list(payments.dues, None, 6)
+        payments.dues.table.setColumnHidden(3, True)  # « Payé » is the amount less what is left
+        compact_list(payments.history, None, 6)
+        for section in (payments.dues, payments.history):
+            # The view's name is the segment's: the list's own title goes.
+            first = section.toolbar.itemAt(0).widget()
+            if isinstance(first, QLabel):
+                first.hide()
+        self.money_views = QStackedWidget()
+        for view in (payments.dues, payments.history):
+            self.money_views.addWidget(view)
+        payments.hide()  # its parts are in this card
+        self.money_tabs = Segments([t["student_detail.money.due"],
+                                    t["student_detail.money.receipts"]])
+        self.money_tabs.changed.connect(self.money_views.setCurrentIndex)
+        follow_current(self.money_views)
+        body.addWidget(self.money_tabs, 0, Qt.AlignmentFlag.AlignLeft)
+        body.addWidget(self.money_views)
+        body.addStretch()
+        return card
+
+    def _study_card(self) -> QFrame:
+        """The year's study: the sessions with attendance, and the months of each group."""
+        card = section_card()
+        title = QLabel(t["student_detail.study"])
+        title.setObjectName("sectionTitle")
+        body = card.layout()
+        self.study_views = QStackedWidget()
+        for section in (self.attendance, self.subscriptions):
+            section.layout().setContentsMargins(0, 0, 0, 0)
+            section.summary.setObjectName("caption")
+            compact_list(section.list, None, 8)
+            self.study_views.addWidget(section)
+        self.study_tabs = Segments([t["student_detail.tab.sessions"],
+                                    t["student_detail.tab.subscriptions"]])
+        self.study_tabs.changed.connect(self.study_views.setCurrentIndex)
+        follow_current(self.study_views)
+        head = QHBoxLayout()
+        head.setSpacing(16)
+        head.addWidget(title)
+        head.addWidget(self.study_tabs)
+        head.addStretch()
+        body.addLayout(head)
+        body.addWidget(self.study_views)
+        return card
 
     def refresh(self) -> None:
         self.student = students.get(self._conn, self._ctx, self.student_id)
@@ -186,6 +278,22 @@ class StudentDetailView(QWidget):
         self.registration.refresh()  # an inactive student cannot be registered or enrolled
         self.groups.refresh()
         toast(self, t[message_key].format(name=self.student.full_name))
+
+
+def section_card() -> QFrame:
+    card = QFrame()
+    card.setObjectName("card")
+    layout = QVBoxLayout(card)
+    layout.setContentsMargins(20, 16, 20, 18)
+    layout.setSpacing(12)
+    return card
+
+
+def rule() -> QFrame:
+    line = QFrame()
+    line.setObjectName("cardRule")
+    line.setFixedHeight(1)
+    return line
 
 
 def error_banner() -> QLabel:
@@ -254,6 +362,25 @@ class ContactsTab(QWidget):
         layout.addWidget(self.empty)
         layout.addStretch(0)
         self.refresh()
+
+    def make_compact(self) -> None:
+        """For the student card: a small heading, the second phone and the SMS column left
+        out (they are in the contact's dialog), the actions under the list."""
+        layout = self.layout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
+        toolbar = layout.itemAt(layout.indexOf(self.error) + 1).layout()
+        for button in (self.edit, self.make_main, self.unlink):
+            toolbar.removeWidget(button)
+        toolbar.insertWidget(0, heading(t["student_detail.tab.contacts"]))
+        small(self.add)
+        for column in (3, 4):
+            self.table.setColumnHidden(column, True)
+        compact_empty(self.empty)
+        fit_height(self.table, 4)
+        self.row_actions = row_actions_below(self.table, [self.edit, self.make_main,
+                                                          self.unlink],
+                                             layout, layout.indexOf(self.table) + 1)
 
     def refresh(self) -> None:
         listed = contacts.list_for_student(self._conn, self._ctx, self._student_id)

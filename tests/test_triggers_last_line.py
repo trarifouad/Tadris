@@ -49,24 +49,6 @@ def group(c, name="G2", year=1) -> int:
                   "capacity,start_date) VALUES(?,1,1,?,2000,10,'2026-09-01')", (year, name))
 
 
-def refund(c, amount=1000, charge=1, subscription=1) -> int:
-    """A pending refund (0012: refunds target a charge; subscription_id is the month's)."""
-    return one(c, "INSERT INTO refunds(charge_id,subscription_id,amount_computed,amount_final,"
-                  "reason) VALUES(?,?,?,?,'Départ')", (charge, subscription, amount, amount))
-
-
-def pay_out(c, refund_id, amount) -> None:
-    """Approve, then mark paid: the allocations must already add up to the amount."""
-    c.execute("UPDATE refunds SET status='approved', approved_by=1 WHERE id=?", (refund_id,))
-    c.execute("UPDATE refunds SET status='paid', refunded_amount=? WHERE id=?",
-              (amount, refund_id))
-
-
-def refund_alloc(c, refund_id, allocation_id, amount) -> int:
-    return one(c, "INSERT INTO refund_allocations(refund_id,payment_allocation_id,amount) "
-                  "VALUES(?,?,?)", (refund_id, allocation_id, amount))
-
-
 def payout(c, teacher=1, status="draft") -> tuple[int, int]:
     """A September payout for group 1, and its line."""
     pid = one(c, "INSERT INTO teacher_payouts(teacher_id,period_start,period_end,base_amount,"
@@ -135,68 +117,6 @@ def test_allocations_voids_and_receipts_are_immutable(seeded):
         seeded.execute("UPDATE payment_voids SET reason='y'")
     with refused("payment_voids are immutable"):
         seeded.execute("DELETE FROM payment_voids")
-
-
-# ----- refunds -----
-
-def test_void_refused_once_refunded(seeded):
-    allocation = alloc(seeded, 1, 1, 3000)
-    refund_alloc(seeded, refund(seeded), allocation, 1000)
-    with refused("payment has refunds"):
-        seeded.execute("INSERT INTO payment_voids(payment_id,reason,voided_by) VALUES(1,'x',1)")
-
-
-def test_refund_closed_takes_no_allocation(seeded):
-    allocation = alloc(seeded, 1, 1, 3000)
-    rejected = refund(seeded)
-    seeded.execute("UPDATE refunds SET status='rejected', approved_by=1 WHERE id=?", (rejected,))
-    with refused("refund is locked"):
-        refund_alloc(seeded, rejected, allocation, 100)
-    paid = refund(seeded, amount=500)
-    refund_alloc(seeded, paid, allocation, 500)
-    pay_out(seeded, paid, 500)
-    with refused("refund is locked"):
-        refund_alloc(seeded, paid, allocation, 1)
-
-
-def test_refund_from_a_voided_payment(seeded):
-    allocation = alloc(seeded, 1, 1, 3000)
-    seeded.execute("INSERT INTO payment_voids(payment_id,reason,voided_by) VALUES(1,'x',1)")
-    with refused("payment is voided"):
-        refund_alloc(seeded, refund(seeded), allocation, 100)
-
-
-def test_refund_of_another_charge(seeded):
-    """Money paid on the fee is not money paid on the month."""
-    payment = pay(seeded, 1, 2000)
-    allocation = alloc(seeded, payment, fee_charge(seeded), 2000)
-    with refused("allocation belongs to another charge"):
-        refund_alloc(seeded, refund(seeded), allocation, 100)
-
-
-def test_refund_allocations_stay_within_the_refund(seeded):
-    allocation = alloc(seeded, 1, 1, 3000)
-    refund_id = refund(seeded, amount=500)
-    refund_alloc(seeded, refund_id, allocation, 500)
-    with refused("refund allocations exceed refund amount"):
-        refund_alloc(seeded, refund_id, allocation, 1)
-
-
-def test_refunds_and_their_allocations_are_locked(seeded):
-    allocation = alloc(seeded, 1, 1, 3000)
-    refund_id = refund(seeded)
-    line = refund_alloc(seeded, refund_id, allocation, 1000)
-    with refused("refund_allocations are immutable"):
-        seeded.execute("UPDATE refund_allocations SET amount=1 WHERE id=?", (line,))
-    with refused("refund_allocations are immutable"):
-        seeded.execute("DELETE FROM refund_allocations WHERE id=?", (line,))
-    with refused("refunds cannot be deleted"):
-        seeded.execute("DELETE FROM refunds WHERE id=?", (refund_id,))
-    with refused("refund is locked"):
-        seeded.execute("UPDATE refunds SET reason='autre' WHERE id=?", (refund_id,))
-    pay_out(seeded, refund_id, 1000)  # allowed: the approval and payout fields
-    with refused("refund is locked"):
-        seeded.execute("UPDATE refunds SET method='cash' WHERE id=?", (refund_id,))
 
 
 # ----- teacher payouts -----

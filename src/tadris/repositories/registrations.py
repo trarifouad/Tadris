@@ -21,9 +21,7 @@ _COLUMNS = f"""
     COALESCE((SELECT SUM(pa.amount) FROM payment_allocations pa
                WHERE pa.charge_id = ({_FEE_CHARGE})
                  AND NOT EXISTS (SELECT 1 FROM payment_voids v
-                                  WHERE v.payment_id = pa.payment_id)), 0) AS fee_paid,
-    COALESCE((SELECT SUM(rf.refunded_amount) FROM refunds rf
-               WHERE rf.charge_id = ({_FEE_CHARGE}) AND rf.status = 'paid'), 0) AS fee_refunded
+                                  WHERE v.payment_id = pa.payment_id)), 0) AS fee_paid
 """
 _FROM = """
     FROM registrations r

@@ -1,4 +1,5 @@
 import json
+import re
 from datetime import date
 
 import pytest
@@ -587,7 +588,12 @@ def test_receipt_pdf_log_and_duplicate(conn, director, receptionist, amine, tmp_
     receipt_id = receipt_of(conn, receptionist, payment_id)
     path = printing.receipt(conn, receptionist, receipt_id, tmp_path)
     assert path.name == "recu_R2026-00001.pdf"
-    assert path.read_bytes().startswith(b"%PDF")
+    pdf = path.read_bytes()
+    assert pdf.startswith(b"%PDF")
+    # An 80 mm ticket, one page as long as its content.
+    assert len(re.findall(rb"/Type /Page(?!s)", pdf)) == 1
+    width = float(re.search(rb"/MediaBox \[\s*0 0 ([\d.]+)", pdf).group(1))
+    assert round(width / 72 * 25.4) == 80
     logged = conn.execute("SELECT document_type, document_id, printed_by FROM print_log"
                           ).fetchall()
     assert [tuple(row) for row in logged] == [("receipt", receipt_id, receptionist.user_id)]

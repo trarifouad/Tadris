@@ -1,5 +1,7 @@
+import re
+
 from PySide6.QtCore import QSize, Qt, Signal
-from PySide6.QtGui import QKeySequence, QShortcut
+from PySide6.QtGui import QFont, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QButtonGroup,
     QFrame,
@@ -28,10 +30,31 @@ from tadris.ui.pages.students import StudentsPage
 from tadris.ui.pages.subscriptions_page import SubscriptionsPage
 from tadris.ui.pages.teachers import TeachersPage
 from tadris.ui.pages.timetable import TimetablePage
-from tadris.ui.theme import icon
+from tadris.ui.theme import nav_icon
 from tadris.ui.widgets.common import confirm, variant_button
 
 SIDEBAR_WIDTH = 216
+NAV_ICONS = {
+    "dashboard": "house", "students": "users", "groups": "layers", "timetable": "calendar",
+    "attendance": "square-check", "subscriptions": "arrow-right-left", "payments": "wallet",
+    "payouts": "banknote", "reports": "chart-column", "teachers": "graduation-cap",
+    "sms": "message-square", "settings": "sliders-vertical",
+}
+# Headed sidebar sections; the items above the first heading are the day's work.
+NAV_SECTIONS = {
+    "nav.section.money": ("subscriptions", "payments", "payouts", "reports"),
+    "nav.section.school": ("teachers", "sms", "settings"),
+}
+SECTION_OF = {key: section for section, keys in NAV_SECTIONS.items() for key in keys}
+
+
+def initials(username: str) -> str:
+    """Two letters for the avatar: the first of two words (« fouad.trari » → FT), else the
+    first two of the name."""
+    words = re.split(r"[\s._-]+", username.strip())
+    if len(words) >= 2:
+        return (words[0][0] + words[1][0]).upper()
+    return username[:2].upper()
 
 
 class PlaceholderPage(QWidget):
@@ -69,7 +92,7 @@ class MainWindow(QMainWindow):
         self.nav_buttons: dict[str, QPushButton] = {}
         self._labels: dict[str, str] = {}
         # Pages opened from another page (« Voir tout », a student double-clicked) can go
-        # back to it: « ← Retour : Tableau de bord » or Alt+←. A click in the sidebar
+        # back to it: « ← Retour : Aujourd'hui » or Alt+←. A click in the sidebar
         # starts afresh. (No application-wide event filter for the mouse's back button: it
         # received objects being deleted and crashed PySide6.)
         self._current: str | None = None
@@ -175,11 +198,16 @@ class MainWindow(QMainWindow):
         return PlaceholderPage(label)
 
     def go_to(self, key: str) -> None:
-        """Show another page from a link (the dashboard's « Voir tout »), if the user has it."""
+        """Show another page from a link (the dashboard's « Voir tout »), if the user has it.
+        « settings/backups » also opens that tab of the page."""
+        key, _, tab = key.partition("/")
         button = self.nav_buttons.get(key)
         if button is not None:
             self._move = "link"
             button.click()
+            page = self.pages.widget(self._slots[key])
+            if tab and hasattr(page, "show_tab"):
+                page.show_tab(tab)
 
     def open_student(self, student_id: int) -> None:
         """Show a student's page from another page (e.g. a list of months to renew)."""
@@ -196,7 +224,7 @@ class MainWindow(QMainWindow):
         layout.setSpacing(2)
 
         brand = QHBoxLayout()
-        brand.setContentsMargins(10, 0, 10, 16)
+        brand.setContentsMargins(10, 0, 10, 12)
         brand.setSpacing(8)
         latin = QLabel("Tadris")
         latin.setObjectName("wordmark")
@@ -207,7 +235,13 @@ class MainWindow(QMainWindow):
         brand.addStretch()
         layout.addLayout(brand)
 
+        # Role-based items are hidden, so a heading shows only above an item the user has.
+        current = None
         for key, label_key in nav_for(self.ctx):
+            section = SECTION_OF.get(key)
+            if section != current and section is not None:
+                layout.addWidget(self._section_heading(t[section]))
+            current = section
             label = t[label_key]
             self._labels[key] = label
             # Pages are built on first visit: startup stays fast and each page loads fresh.
@@ -215,6 +249,11 @@ class MainWindow(QMainWindow):
             button = QPushButton(label)
             button.setObjectName("navItem")
             button.setCheckable(True)
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            if key in NAV_ICONS:
+                # Drawn 18 px with 5 px of room before the label (40 + 11 at 2.2×).
+                button.setIcon(nav_icon(NAV_ICONS[key], gap=11))
+                button.setIconSize(QSize(23, 18))
             button.clicked.connect(lambda _checked, k=key, lb=label: self._show(k, lb))
             self._group.addButton(button)
             self.nav_buttons[key] = button
@@ -224,26 +263,45 @@ class MainWindow(QMainWindow):
 
         footer = QFrame()
         footer.setObjectName("sidebarFooter")
-        footer_layout = QVBoxLayout(footer)
-        footer_layout.setContentsMargins(12, 12, 12, 0)
-        footer_layout.setSpacing(0)
+        footer_layout = QHBoxLayout(footer)
+        footer_layout.setContentsMargins(6, 10, 0, 0)
+        footer_layout.setSpacing(10)
+        avatar = QLabel(initials(self.ctx.username))
+        avatar.setObjectName("sidebarAvatar")
+        avatar.setFixedSize(30, 30)
+        avatar.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        who = QVBoxLayout()
+        who.setContentsMargins(0, 0, 0, 0)
+        who.setSpacing(0)
         user = QLabel(self.ctx.username)
         user.setObjectName("sidebarUser")
         role = QLabel(t[f"role.{self.ctx.role}"])
         role.setObjectName("sidebarRole")
-        footer_layout.addWidget(user)
-        footer_layout.addWidget(role)
-        footer_layout.addSpacing(10)
-        self.logout_button = QPushButton(t["main.logout"])
+        who.addWidget(user)
+        who.addWidget(role)
+        # An icon on its own: the label stays as the accessible name and the tooltip.
+        self.logout_button = QPushButton()
         self.logout_button.setObjectName("sidebarLogout")
-        self.logout_button.setIcon(icon("log-out", "on_primary"))
-        self.logout_button.setIconSize(QSize(16, 16))
+        self.logout_button.setAccessibleName(t["main.logout"])
+        self.logout_button.setIcon(nav_icon("log-out"))
+        self.logout_button.setIconSize(QSize(18, 18))
         self.logout_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.logout_button.setToolTip(t["main.logout_tip"])
+        self.logout_button.setToolTip(f"{t['main.logout']}\n{t['main.logout_tip']}")
         self.logout_button.clicked.connect(self.logout)
+        footer_layout.addWidget(avatar)
+        footer_layout.addLayout(who, 1)
         footer_layout.addWidget(self.logout_button)
         layout.addWidget(footer)
         return sidebar
+
+    @staticmethod
+    def _section_heading(text: str) -> QLabel:
+        heading = QLabel(text.upper())
+        heading.setObjectName("navSection")
+        font = heading.font()
+        font.setLetterSpacing(QFont.SpacingType.PercentageSpacing, 108)
+        heading.setFont(font)
+        return heading
 
     def has_unsaved(self) -> bool:
         return any(getattr(self.pages.widget(self._slots[key]), "has_unsaved", lambda: False)()

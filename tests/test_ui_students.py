@@ -217,18 +217,28 @@ def test_edit_dialog_prefills_and_saves(qtbot, conn, director, amine):
 
 # ----- detail -----
 
-def test_detail_header_and_tabs(qtbot, conn, director, amine):
+def test_detail_cards(qtbot, conn, director, amine):
+    """The student (identity, registration, groups, contacts) and the money side by side,
+    the study under them: no tabs left."""
+    from PySide6.QtWidgets import QTabWidget
+
     view = StudentDetailView(conn, director, amine)
     qtbot.addWidget(view)
+    assert view.findChildren(QTabWidget) == []
     assert view.name.text() == "Benali Amine"
     assert view.number.text() == t["student_detail.number"].format(number="2026-0001")
     assert view.status.kind() == "success"
-    assert [view.tabs.tabText(i) for i in range(view.tabs.count())] == [
-        t[f"student_detail.tab.{key}"] for key in
-        ("registration", "groups", "subscriptions", "payments", "refunds", "attendance",
-         "contacts")
-    ]
-    assert view.tabs.currentWidget() is view.registration
+    for section in (view.registration, view.groups, view.contacts):
+        assert section.isVisibleTo(view)
+    assert [b.text() for b in view.money_tabs.buttons] == ["À payer", "Reçus"]
+    assert view.money_views.count() == 2
+    assert [view.money_views.widget(i) for i in range(2)] == [
+        view.payments.dues, view.payments.history]
+    assert [b.text() for b in view.study_tabs.buttons] == ["Séances et présences",
+                                                          "Abonnements"]
+    view.study_tabs.select(1)
+    assert view.study_views.currentWidget() is view.subscriptions
+    assert view.contacts.table.isColumnHidden(3) and view.contacts.table.isColumnHidden(4)
     assert table_rows(view.contacts.table)[0][:3] == [
         "Karim Benali", t["relation.father"], "0661 90 25 47"
     ]

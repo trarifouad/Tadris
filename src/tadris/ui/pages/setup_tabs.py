@@ -40,7 +40,7 @@ from tadris.ui.widgets.common import (
 )
 from tadris.ui.widgets.forms import ListSection, row
 from tadris.ui.widgets.inputs import money_edit, read_money, time_combo
-from tadris.ui.widgets.tables import CENTER, RIGHT, item
+from tadris.ui.widgets.tables import CENTER, item
 
 
 class SetupTab(QWidget):
@@ -107,7 +107,7 @@ class YearsTab(SetupTab):
             item(display_date(y.start_date), y.start_date, align=CENTER),
             item(display_date(y.end_date), y.end_date, align=CENTER),
             item(t[f"year_state.{y.state}"], kind=kind_for("year", y.state)),
-            item(str(y.group_count), y.group_count, align=RIGHT),
+            item(str(y.group_count), y.group_count, align=CENTER),
         ] for y in years])
 
     def selected(self):
@@ -179,7 +179,7 @@ class CatalogTab(SetupTab):
             item(i.name, item_id=i.id),
             item(t["active.yes" if i.is_active else "active.no"],
                  kind=kind_for("flag", "yes" if i.is_active else "no")),
-            item(str(i.group_count), i.group_count, align=RIGHT),
+            item(str(i.group_count), i.group_count, align=CENTER),
         ] for i in listed])
 
     def selected(self):
@@ -241,10 +241,10 @@ class RoomsTab(SetupTab):
         self._rooms = {r.id: r for r in listed}
         self.list.set_rows([[
             item(r.name, item_id=r.id),
-            item(str(r.capacity), r.capacity, align=RIGHT, mono=True),
+            item(str(r.capacity), r.capacity, align=CENTER, mono=True),
             item(t[f"active.{'yes' if r.status == 'active' else 'no'}"],
                  kind=kind_for("room", r.status)),
-            item(str(r.slot_count), r.slot_count, align=RIGHT),
+            item(str(r.slot_count), r.slot_count, align=CENTER),
         ] for r in listed])
 
     def selected(self):
@@ -297,7 +297,7 @@ class HolidaysTab(SetupTab):
             item(h.label, item_id=h.id),
             item(display_date(h.start_date), h.start_date, align=CENTER),
             item(display_date(h.end_date), h.end_date, align=CENTER),
-            item(str(h.days), h.days, align=RIGHT),
+            item(str(h.days), h.days, align=CENTER),
         ] for h in listed])
 
     def selected(self):

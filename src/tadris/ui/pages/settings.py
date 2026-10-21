@@ -64,6 +64,12 @@ class SettingsPage(QWidget):
     def refresh(self) -> None:
         self.tabs.currentWidget().refresh()
 
+    def show_tab(self, name: str) -> None:
+        """Bring a tab forward by its attribute name (« backups »)."""
+        tab = getattr(self, name, None)
+        if tab is not None and self.tabs.indexOf(tab) >= 0:
+            self.tabs.setCurrentWidget(tab)
+
     def _refresh_tab(self, index: int) -> None:
         # Counts (groups, slots) change elsewhere; reload when a tab comes into view.
         self.tabs.widget(index).refresh()

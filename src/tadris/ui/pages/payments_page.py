@@ -18,15 +18,14 @@ from tadris.core.errors import BusinessRuleError
 from tadris.core.money import format_dzd
 from tadris.domain.models import CashReport, Payment
 from tadris.i18n.fr import t
-from tadris.services import debt, groups, payments, refunds
+from tadris.services import debt, groups, payments
 from tadris.ui.pages.payments_tab import payment_state
-from tadris.ui.pages.refunds_section import RefundsSection
 from tadris.ui.theme.status import kind_for
 from tadris.ui.widgets.common import labeled
 from tadris.ui.widgets.date_edit import DateLineEdit
 from tadris.ui.widgets.forms import ListSection, caption, padded
 from tadris.ui.widgets.inputs import count_spin, fill_combo, id_combo, money_edit, read_money
-from tadris.ui.widgets.tables import CENTER, RIGHT, fit_columns, item
+from tadris.ui.widgets.tables import CENTER, fit_columns, item
 
 MAX_DAYS = 365
 
@@ -90,11 +89,11 @@ class DebtorsView(QWidget):
         self.list.set_rows([[
             item(d.student_name, d.student_name.casefold(), item_id=d.student_id),
             item(d.student_number, mono=True),
-            item(format_dzd(d.owed_now), d.owed_now, align=RIGHT, mono=True, tone="danger"),
-            item(format_dzd(d.due), d.due, align=RIGHT, mono=True),
+            item(format_dzd(d.owed_now), d.owed_now, align=CENTER, mono=True, tone="danger"),
+            item(format_dzd(d.due), d.due, align=CENTER, mono=True),
             item(display_date(d.oldest_overdue) if d.oldest_overdue else "—",
                  d.oldest_overdue or "", align=CENTER),
-            item(str(d.days_overdue), d.days_overdue, align=RIGHT, mono=True),
+            item(str(d.days_overdue), d.days_overdue, align=CENTER, mono=True),
         ] for d in listed])
 
 
@@ -127,8 +126,6 @@ class CashView(QWidget):
         self.by_cashier = caption()
         self.voided = caption()
         self.voided.setWordWrap(True)
-        self.refunded = caption()
-        self.refunded.setWordWrap(True)
         self.teachers_paid = caption()
         self.teachers_paid.setWordWrap(True)
         self.list = ListSection([t["cash.col.time"], t["cash.col.receipt"],
@@ -146,7 +143,6 @@ class CashView(QWidget):
         layout.addWidget(self.by_method)
         layout.addWidget(self.by_cashier)
         layout.addWidget(self.voided)
-        layout.addWidget(self.refunded)
         layout.addWidget(self.teachers_paid)
         layout.addSpacing(4)
         layout.addWidget(self.list, 1)
@@ -171,10 +167,6 @@ class CashView(QWidget):
         self.voided.setText(t["cash.voided"].format(
             count=len(report.voided), total=format_dzd(sum(p.amount for p in report.voided))))
         self.voided.setVisible(bool(report.voided))
-        self.refunded.setText(t["cash.refunded"].format(
-            count=len(report.refunds), total=format_dzd(report.refunded),
-            drawer=format_dzd(report.cash_in_drawer)))
-        self.refunded.setVisible(bool(report.refunds))
         self.teachers_paid.setText(t["cash.teachers_paid"].format(
             count=len(report.payouts), total=format_dzd(report.paid_to_teachers),
             drawer=format_dzd(report.cash_in_drawer)))
@@ -189,7 +181,7 @@ class CashView(QWidget):
             item(p.paid_at[11:16], p.paid_at, item_id=p.id, align=CENTER),
             item(p.receipt_number or "—", mono=True),
             item(p.student_name),
-            item(format_dzd(p.amount), align=RIGHT, mono=True),
+            item(format_dzd(p.amount), align=CENTER, mono=True),
             item(t[f"payment_method.{p.method}"]),
             item(p.cashier),
             item(t[f"payment_state.{state}"], kind=kind_for("payment", state)),
@@ -214,16 +206,12 @@ class PaymentsPage(QWidget):
         intro.setWordWrap(True)
         self.debtors = DebtorsView(conn, ctx)
         self.cash = CashView(conn, ctx)
-        self.refunds = RefundsSection(conn, ctx, lambda: refunds.queue(conn, ctx),
-                                      show_student=True, empty_text=t["refunds.queue_empty"])
-        self.refunds.changed.connect(self._refunds_changed)
-        for view in (self.debtors, self.cash, self.refunds):
+        for view in (self.debtors, self.cash):
             view.open_student.connect(self.open_student.emit)
         self.tabs = QTabWidget()
         self.tabs.setDocumentMode(True)
         self.tabs.addTab(padded(self.debtors), t["payments_page.tab.debtors"])
         self.tabs.addTab(padded(self.cash), t["payments_page.tab.cash"])
-        self.tabs.addTab(padded(self.refunds), "")
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 20, 24, 24)
         layout.setSpacing(12)
@@ -235,12 +223,4 @@ class PaymentsPage(QWidget):
     def refresh(self) -> None:
         self.debtors.load_filters()
         self.debtors.refresh()
-        self.cash.refresh()
-        self._refunds_changed()
-
-    def _refunds_changed(self) -> None:
-        """A decision or a payout: the queue's count, and the day's cash."""
-        self.refunds.refresh()
-        self.tabs.setTabText(2, t["payments_page.tab.refunds"].format(
-            count=len(self.refunds.ids())))
         self.cash.refresh()

@@ -13,8 +13,8 @@ from tadris.services import audit
 REPORT_DAYS = 30  # an export is a snapshot: made again from the app at any time
 PRINT_DAYS = 90  # receipts, slips and sheets: printed again from the app (« DUPLICATA »)
 REPORTS = ("rapport_",)
-PRINTS = ("recu_", "remboursement_", "paiement-enseignant_", "presence_",
-          "presence-semaine_")
+PRINTS = ("recu_", "remboursement_",  # refund slips printed before 0015 (none since)
+          "paiement-enseignant_", "presence_", "presence-semaine_")
 SUFFIXES = (".pdf", ".xlsx")
 DAY = 24 * 60 * 60
 

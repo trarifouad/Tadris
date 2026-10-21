@@ -33,10 +33,11 @@ from tadris.ui.widgets.common import (
     variant_button,
 )
 from tadris.ui.widgets.forms import HeaderCard, ListDetailPage, ListSection, caption, padded
-from tadris.ui.widgets.inputs import fill_combo, id_combo
-from tadris.ui.widgets.tables import CENTER, RIGHT, item
+from tadris.ui.widgets.inputs import FilterButton, fill_combo, id_combo
+from tadris.ui.widgets.tables import CENTER, item
 
 SEARCH_DELAY_MS = 250
+SEARCH_WIDTH = 420
 OPEN, CLOSED, ALL = "open", "closed", "all"
 
 
@@ -75,19 +76,25 @@ class GroupListView(QWidget):
         self.search = QLineEdit()
         self.search.setPlaceholderText(t["groups.search"])
         self.search.setClearButtonEnabled(True)
+        self.search.setMaximumWidth(SEARCH_WIDTH)
         self._debounce = QTimer(self)
         self._debounce.setSingleShot(True)
         self._debounce.setInterval(SEARCH_DELAY_MS)
         self._debounce.timeout.connect(self.refresh)
         self.search.textChanged.connect(self._debounce.start)
+        self.filters = FilterButton()
+        self.filters.add_filter(t["groups.filter.year"], self.year)
+        self.filters.add_filter(t["groups.filter.level_label"], self.level)
+        self.filters.add_filter(t["groups.filter.subject_label"], self.subject)
+        self.filters.add_filter(t["groups.filter.status_label"], self.status, OPEN)
         self._load_filters()
         for combo in (self.year, self.level, self.subject, self.status):
             combo.currentIndexChanged.connect(self.refresh)
         filters = QHBoxLayout()
         filters.setSpacing(12)
-        filters.addWidget(self.search, 3)
-        for combo in (self.year, self.level, self.subject, self.status):
-            filters.addWidget(combo, 1)
+        filters.addWidget(self.search, 1)
+        filters.addWidget(self.filters)
+        filters.addStretch(1)
 
         self.list = ListSection([
             t["groups.col.name"], t["groups.col.subject"], t["groups.col.level"],
@@ -109,15 +116,16 @@ class GroupListView(QWidget):
     def _load_filters(self) -> None:
         """Years (open year first by default), levels and subjects, keeping the choices."""
         years = school_years.list_years(self._conn, self._ctx)
-        default = self.year.currentData() if self.year.count() else next(
-            (y.id for y in years if y.state == "open"), years[0].id if years else None)
-        fill_combo(self.year, [(y.label, y.id) for y in years], default)
+        default = next((y.id for y in years if y.state == "open"), years[0].id if years else None)
+        fill_combo(self.year, [(y.label, y.id) for y in years],
+                   self.year.currentData() if self.year.count() else default)
         fill_combo(self.level, [(t["groups.filter.level"], None)] + [
             (i.name, i.id) for i in catalog.list_items(self._conn, self._ctx, "level")],
             self.level.currentData())
         fill_combo(self.subject, [(t["groups.filter.subject"], None)] + [
             (i.name, i.id) for i in catalog.list_items(self._conn, self._ctx, "subject")],
             self.subject.currentData())
+        self.filters.set_default(self.year, default)  # also recounts: fill_combo is silent
 
     def refresh(self) -> None:
         self._debounce.stop()
@@ -150,8 +158,8 @@ class GroupListView(QWidget):
             item(g.subject, fold(g.subject)),
             item(g.level, fold(g.level)),
             item(g.teacher or "", fold(g.teacher or "")),
-            item(format_dzd(g.price), g.price, align=RIGHT, mono=True),
-            item(f"{g.enrolled} / {g.seats}", (g.enrolled, g.seats), align=RIGHT, mono=True),
+            item(format_dzd(g.price), g.price, align=CENTER, mono=True),
+            item(f"{g.enrolled} / {g.seats}", (g.enrolled, g.seats), align=CENTER, mono=True),
             item(display_date(g.start_date), g.start_date, align=CENTER),
             item(t[f"group_state.{g.state}"], g.state, kind=kind_for("group", g.state)),
         ]

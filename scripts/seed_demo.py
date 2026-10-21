@@ -8,9 +8,8 @@ the services, as the desk would: students register and enter their groups on the
 students stay), and each student pays as they usually do: on the day, late, half now and the
 rest later, or not at all, so the debtors have every age. Every past session has its
 attendance (each student with their own habit); today's sessions are marked once started.
-Then: holidays, a cancelled session with its makeup, a substitute, a voided payment, refunds
-(paid out, approved, pending) and the teachers paid up to the end of last month (one paid,
-the others approved).
+Then: holidays, a cancelled session with its makeup, a substitute, a voided payment and the
+teachers paid up to the end of last month (one paid, the others approved).
 
 Usage: python scripts/seed_demo.py PATH.db
 The path is required so the real database is never seeded by accident. Creates the director
@@ -49,7 +48,6 @@ from tadris.services import (
     holidays,
     payments,
     payouts,
-    refunds,
     registrations,
     rooms,
     school_years,
@@ -437,22 +435,6 @@ def seed_void(conn, director, rng: random.Random) -> None:
             continue
 
 
-def seed_refunds(conn, director, desk, rng: random.Random) -> int:
-    """Three refunds of 1 000 DA: paid out, approved, pending. Returns how many."""
-    asked = 0
-    paid = [option for row in students.search(conn, director)
-            for option in refunds.options(conn, director, row.id) if option.refundable >= 1000]
-    rng.shuffle(paid)
-    for step, option in zip(("paid", "approved", "pending"), paid, strict=False):
-        refund_id = refunds.request(conn, desk, option.charge_id, 1000, "Démo : départ")
-        if step in ("paid", "approved"):
-            refunds.approve(conn, director, refund_id)
-        if step == "paid":
-            refunds.pay_out(conn, desk, refund_id, "cash")
-        asked += 1
-    return asked
-
-
 def seed_payouts(conn, director, today: date) -> int:
     """The monthly run up to the end of last month: the first teacher paid in cash, the
     others approved. Returns how many payouts."""
@@ -490,13 +472,12 @@ def main(path: Path) -> None:
     year = live_the_year(conn, director, desk, rng, today)
     seed_void(conn, director, rng)  # before the payouts lock their months
     seed_changes(conn, director, today)
-    asked = seed_refunds(conn, director, desk, rng)
     teachers_paid = seed_payouts(conn, director, today)
     conn.close()
     print(f"{created} students created in {path}: {year.registered} registered for the year, "
           f"{year.placed} placed in groups, {year.renewed} month(s) renewed, "
           f"{year.marked} attendance line(s), {year.paid} payment(s) received, "
-          f"{asked} refund(s), {teachers_paid} teacher payout(s)")
+          f"{teachers_paid} teacher payout(s)")
 
 
 if __name__ == "__main__":

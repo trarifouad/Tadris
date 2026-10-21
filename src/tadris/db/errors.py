@@ -59,6 +59,7 @@ _TRIGGER_MESSAGES = (
     ("refund subscription differs from its charge", "db.refund_subscription_mismatch"),
     ("refund must be approved before it is paid", "db.refund_not_approved"),
     ("refunded amount must match its allocations", "db.refund_amount_mismatch"),
+    ("archived refunds are read-only", "db.archived_refunds"),  # 0015
     ("charge is not an open subscription charge", "db.payout_charge_not_open"),
     ("amount must equal the charge amount", "db.payout_amount_mismatch"),
     ("charge belongs to another group", "db.payout_charge_other_group"),

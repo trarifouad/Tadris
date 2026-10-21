@@ -12,7 +12,7 @@ from tadris.ui.main_window import MainWindow
 from tadris.ui.pages.settings import SettingsPage
 from tadris.ui.theme import ICONS_DIR, apply_theme, load_fonts, tokens
 from tadris.ui.user_dialog import UserDialog
-from tadris.ui.widgets.tables import fill, item, ruled_table
+from tadris.ui.widgets.tables import CENTER, RIGHT, fill, item, ruled_table
 
 
 @pytest.fixture(autouse=True)
@@ -293,3 +293,28 @@ def test_closed_dialogs_and_calendars_do_not_pile_up(qtbot, conn, director, monk
         page.list._create()  # opened, then Annuler
         field.open_calendar().close()
     assert live() == before
+
+
+def test_headers_line_up_with_their_cells(qtbot):
+    """A centered date or a right-aligned amount has its header above it, whether the
+    table is filled at once or cell by cell."""
+    left = Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+    center = Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter
+    right = Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+
+    def headers(table):
+        return [Qt.AlignmentFlag(table.horizontalHeaderItem(c).textAlignment())
+                for c in range(table.columnCount())]
+
+    filled = ruled_table(["Nom", "Naissance", "Montant"])
+    qtbot.addWidget(filled)
+    fill(filled, [[item("Benali"), item("12/08/2016", align=CENTER),
+                   item("2 500 DA", align=RIGHT)]])
+    assert headers(filled) == [left, center, right]
+
+    by_cell = ruled_table(["Nom", "Naissance"])
+    qtbot.addWidget(by_cell)
+    by_cell.setRowCount(1)
+    by_cell.setItem(0, 0, item("Benali"))
+    by_cell.setItem(0, 1, item("12/08/2016", align=CENTER))
+    qtbot.waitUntil(lambda: headers(by_cell) == [left, center])

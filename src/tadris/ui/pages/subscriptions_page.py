@@ -14,7 +14,7 @@ from tadris.services import enrollments, subscriptions
 from tadris.ui.subscription_dialogs import BulkRenewDialog, StartDialog, period_text
 from tadris.ui.widgets.common import ask, primary_button, toast
 from tadris.ui.widgets.forms import ListSection, padded
-from tadris.ui.widgets.tables import RIGHT, fit_columns, item
+from tadris.ui.widgets.tables import CENTER, fit_columns, item
 
 HEADERS = ("subscriptions_page.col.student", "subscriptions_page.col.number",
            "subscriptions_page.col.group")
@@ -94,7 +94,7 @@ class SubscriptionsPage(QWidget):
             item(m.student_number, mono=True),
             item(m.group_title),
             item(period_text(m.start_date, m.end_date), m.end_date),
-            item(format_dzd(m.due), m.due, align=RIGHT, mono=True),
+            item(format_dzd(m.due), m.due, align=CENTER, mono=True),
         ] for m in months])
 
     @staticmethod
@@ -104,7 +104,7 @@ class SubscriptionsPage(QWidget):
             item(m.student_number, mono=True),
             item(m.group_title),
             item(display_date(m.enrolled_on), m.enrolled_on),
-            item("—", align=RIGHT),
+            item("—", align=CENTER),
         ]
 
     def _open(self, key: str, row_id: int) -> None:

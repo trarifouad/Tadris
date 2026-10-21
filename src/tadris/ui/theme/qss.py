@@ -14,6 +14,10 @@ def build_qss(t: dict, chevron: str = "", check: str = "") -> str:
         f'    QLabel#badge[kind="{kind}"] {{ background: {t[kind + "_bg"]}; color: {t[kind]}; }}'
         for kind in BADGE_KINDS
     )
+    status_icons = "\n".join(
+        f'    QLabel#statusIcon[kind="{kind}"] {{ background: {t[kind + "_bg"]}; }}'
+        for kind in BADGE_KINDS
+    )
     # Attendance marks: a checked mark takes its status colour, like the badges.
     marks = "\n".join(
         f'    QPushButton#mark[kind="{kind}"]:checked {{ background: {t[kind + "_bg"]}; '
@@ -37,6 +41,10 @@ def build_qss(t: dict, chevron: str = "", check: str = "") -> str:
     QPushButton[variant="danger"] {{ color: {t['danger']}; border: 1px solid {t['danger']}; }}
     QPushButton[variant="danger"]:hover {{ background: {t['danger_bg']}; }}
     QPushButton[variant="ghost"] {{ border: none; background: transparent; color: {t['muted']}; }}
+    QPushButton[active="true"] {{ color: {t['primary']}; border-color: {t['primary']};
+                                  background: {t['primary_soft']}; }}
+    QFrame#filterPanel {{ background: {t['surface']}; border: 1px solid {t['border']};
+                          border-radius: 10px; }}
     QPushButton#backLink {{ border: none; background: transparent; color: {t['primary']};
         font-weight: 600; padding: 0 10px; min-height: 30px; border-radius: 6px; }}
     QPushButton#backLink:hover {{ background: {t['primary_soft']}; }}
@@ -92,7 +100,7 @@ def build_qss(t: dict, chevron: str = "", check: str = "") -> str:
     /* Row hover and selection are painted by RuledDelegate, so they span the whole row. */
     QTableView::item {{ padding: 0 12px; }}
     QHeaderView::section {{ background: {t['surface_alt']}; border: none;
-        border-bottom: 1px solid {t['rule_strong']}; padding: 9px 12px;
+        border-bottom: 1px solid {t['rule_strong']}; padding: 9px 15px;
         font-size: 11.5px; font-weight: 500; color: {t['muted']}; }}
 
     QFrame#sidebar {{ background: {t['sidebar']}; }}
@@ -100,19 +108,21 @@ def build_qss(t: dict, chevron: str = "", check: str = "") -> str:
                        color: {t['chalk']}; }}
     QLabel#wordmarkAr {{ font-family: "Reem Kufi"; font-size: 16px; color: {chalk_dim}; }}
     QPushButton#navItem {{ background: transparent; border: none; color: {chalk_dim};
-        text-align: left; padding: 0 12px; min-height: 38px; border-radius: 6px;
-        font-weight: 400; }}
+        text-align: left; padding: 0 10px; min-height: 34px; border-radius: 6px;
+        font-size: 13px; font-weight: 400; }}
     QPushButton#navItem:hover {{ background: {t['sidebar_hover']}; color: {t['chalk']}; }}
     QPushButton#navItem:checked {{ background: {t['chalk']}; color: {t['sidebar']};
                                    font-weight: 500; }}
-    QFrame#sidebarFooter {{ border-top: 1px solid {rgba(t['chalk'], 0.14)}; }}
+    QLabel#navSection {{ color: {rgba(t['chalk'], 0.5)}; font-size: 10.5px; font-weight: 500;
+        padding: 14px 10px 4px 10px; }}
+    QLabel#sidebarAvatar {{ background: {rgba(t['chalk'], 0.14)}; color: {t['chalk']};
+        border-radius: 15px; font-size: 11px; font-weight: 600; }}
     QLabel#sidebarUser {{ color: {t['chalk']}; font-size: 13px; font-weight: 500; }}
-    QLabel#sidebarRole {{ color: {chalk_dim}; font-size: 12px; }}
-    QPushButton#sidebarLogout {{ background: {t['danger']}; color: {t['on_primary']};
-        border: none; border-radius: 6px; padding: 0 12px; min-height: 34px;
-        font-size: 13px; font-weight: 600; text-align: left; }}
-    QPushButton#sidebarLogout:hover {{ background: {rgba(t['danger'], 0.86)}; }}
-    QPushButton#sidebarLogout:pressed {{ background: {rgba(t['danger'], 0.72)}; }}
+    QLabel#sidebarRole {{ color: {chalk_dim}; font-size: 11.5px; }}
+    QPushButton#sidebarLogout {{ background: transparent; border: none; border-radius: 6px;
+        min-height: 30px; max-height: 30px; min-width: 30px; max-width: 30px; padding: 0; }}
+    QPushButton#sidebarLogout:hover {{ background: {t['sidebar_hover']}; }}
+    QPushButton#sidebarLogout:pressed {{ background: {rgba(t['chalk'], 0.2)}; }}
     QPushButton#sidebarLogout:focus {{ outline: none; border: 2px solid {t['chalk']}; }}
 
     QLabel#brandWordmark {{ font-family: "Reem Kufi"; font-size: 30px; font-weight: 700;
@@ -137,6 +147,41 @@ def build_qss(t: dict, chevron: str = "", check: str = "") -> str:
         border-radius: 10px; padding: 48px 24px; color: {t['muted']}; font-size: 13px; }}
     QLabel#badge {{ border-radius: 4px; padding: 2px 8px; font-size: 11.5px; font-weight: 500; }}
 {badges}
+
+    QPushButton#link {{ background: transparent; border: none; padding: 0; min-height: 0;
+        color: {t['primary']}; font-size: 13px; font-weight: 500; }}
+    QPushButton#link:hover {{ color: {t['primary_hover']}; text-decoration: underline; }}
+    QPushButton#link:focus {{ outline: none; text-decoration: underline; }}
+    QPushButton#rowAction {{ min-height: 28px; max-height: 28px; padding: 0 12px;
+        font-size: 13px; }}
+    QFrame#topbar {{ background: {t['surface']}; border: none;
+        border-bottom: 1px solid {t['border']}; }}
+    QLabel#topbarTitle {{ font-family: "Reem Kufi"; font-size: 20px; font-weight: 600; }}
+    QLabel#cardSection {{ font-size: 11.5px; font-weight: 600; color: {t['muted']}; }}
+    QFrame#cardRule {{ border: none; border-top: 1px solid {t['border']}; }}
+    QFrame#segments {{ background: {t['surface_alt']}; border-radius: 6px; }}
+    QPushButton#segment {{ background: transparent; border: none; border-radius: 5px;
+        min-height: 28px; padding: 0 12px; color: {t['muted']}; font-size: 13px; }}
+    QPushButton#segment:hover {{ color: {t['text']}; }}
+    QPushButton#segment:checked {{ background: {t['surface']}; color: {t['text']};
+        border: 1px solid {t['border']}; }}
+    QFrame#tableHead {{ background: {t['surface_alt']}; border: none;
+        border-top: 1px solid {t['border']}; border-bottom: 1px solid {t['rule_strong']}; }}
+    QLabel#colHead {{ font-size: 11.5px; font-weight: 500; color: {t['muted']}; }}
+    QFrame#dashRow {{ background: transparent; border: none;
+        border-bottom: 1px solid {t['rule']}; }}
+    QFrame#dashRow:hover {{ background: {t['surface_alt']}; }}
+    QFrame#cardFoot {{ border: none; border-top: 1px solid {t['border']}; }}
+    QLabel#rowTitle {{ font-size: 13px; font-weight: 500; }}
+    QLabel#rowTitle[struck="true"] {{ color: {t['muted']}; }}
+    QLabel#rowTime {{ font-family: "IBM Plex Mono"; font-size: 13px; font-weight: 500; }}
+    QLabel#rowTime[struck="true"] {{ color: {t['faint']}; }}
+    QLabel#owed {{ font-family: "IBM Plex Mono"; font-size: 13px; font-weight: 500;
+        color: {t['danger']}; }}
+    QLabel#figure {{ font-family: "IBM Plex Mono"; font-size: 13px; font-weight: 500; }}
+    QLabel#readout {{ font-family: "IBM Plex Mono"; font-size: 17px; font-weight: 500; }}
+    QLabel#statusIcon {{ border-radius: 14px; }}
+{status_icons}
     QFrame#datePopup {{ background: {t['surface']}; border: 1px solid {t['border']};
         border-radius: 10px; }}
     QToolButton#calendarNav {{ border: none; border-radius: 6px; padding: 6px; }}

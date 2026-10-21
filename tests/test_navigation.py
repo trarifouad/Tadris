@@ -110,7 +110,7 @@ def test_see_all_can_go_back_to_the_dashboard(qtbot, window):
     window.go_to("groups")
     assert current(window) == "groups"
     assert window.back_bar.isVisible()
-    assert window.back_button.text() == "← Retour : Tableau de bord"
+    assert window.back_button.text() == "← Retour : Aujourd'hui"
     qtbot.mouseClick(window.back_button, Qt.MouseButton.LeftButton)
     assert current(window) == "dashboard"
     assert window.back_bar.isHidden()
@@ -122,7 +122,7 @@ def test_links_stack_and_unwind(window):
     assert window.back_button.text() == "← Retour : Paiements"
     window.back()
     assert current(window) == "payments"
-    assert window.back_button.text() == "← Retour : Tableau de bord"
+    assert window.back_button.text() == "← Retour : Aujourd'hui"
     window.back()
     assert current(window) == "dashboard" and window.back_bar.isHidden()
     window.back()  # nothing left: stays
@@ -148,6 +148,6 @@ def test_a_student_opened_from_the_dashboard_can_go_back(conn, director, window)
     student = students.create(conn, director, StudentInput("Amine", "Benali"))
     window.open_student(student)
     assert current(window) == "students"
-    assert window.back_button.text() == "← Retour : Tableau de bord"
+    assert window.back_button.text() == "← Retour : Aujourd'hui"
     window.back()
     assert current(window) == "dashboard"

@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from PySide6.QtCore import QByteArray, Qt
+from PySide6.QtCore import QByteArray, QRectF, Qt
 from PySide6.QtGui import QColor, QFont, QFontDatabase, QIcon, QPainter, QPalette, QPixmap
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import QApplication
@@ -20,24 +20,46 @@ def tokens() -> dict:
     return _current
 
 
-def _render_svg(svg: str, color: str, size: int) -> QPixmap:
+def _render_svg(svg: str, color: str, size: int, gap: int = 0) -> QPixmap:
+    """`gap` adds transparent room on the right, in the same units as `size`: QSS cannot set
+    the space between a button's icon and its text. Pair it with an icon size that wide."""
     renderer = QSvgRenderer(QByteArray(svg.replace("currentColor", color).encode("utf-8")))
-    pixmap = QPixmap(size, size)
+    pixmap = QPixmap(size + gap, size)
     pixmap.fill(Qt.GlobalColor.transparent)
     painter = QPainter(pixmap)
-    renderer.render(painter)
+    renderer.render(painter, QRectF(0, 0, size, size))
     painter.end()
     return pixmap
 
 
-def icon(name: str, color: str = "muted", size: int = 40) -> QIcon:
+def icon(name: str, color: str = "muted", size: int = 40, gap: int = 0) -> QIcon:
     """Lucide icon from resources/icons/<name>.svg, its currentColor set to a theme token.
 
     The disabled state uses the faint token, so a disabled arrow visibly fades.
     """
     svg = (ICONS_DIR / f"{name}.svg").read_text(encoding="utf-8")
-    result = QIcon(_render_svg(svg, _current[color], size))
-    result.addPixmap(_render_svg(svg, _current["faint"], size), QIcon.Mode.Disabled)
+    result = QIcon(_render_svg(svg, _current[color], size, gap))
+    result.addPixmap(_render_svg(svg, _current["faint"], size, gap), QIcon.Mode.Disabled)
+    return result
+
+
+def blend(color: str, under: str, alpha: float) -> str:
+    """`color` laid over `under` at `alpha`, as a hex an SVG renderer accepts."""
+    top, bottom = QColor(color), QColor(under)
+    mix = [round(a * alpha + b * (1 - alpha)) for a, b in
+           zip(top.getRgb()[:3], bottom.getRgb()[:3], strict=True)]
+    return QColor(*mix).name()
+
+
+def nav_icon(name: str, size: int = 40, gap: int = 0) -> QIcon:
+    """Sidebar icon: dim chalk like the item's label, sidebar ink once the item is checked.
+    `gap`: as for icon()."""
+    svg = (ICONS_DIR / f"{name}.svg").read_text(encoding="utf-8")
+    result = QIcon()
+    off = blend(_current["chalk"], _current["sidebar"], 0.74)
+    result.addPixmap(_render_svg(svg, off, size, gap), QIcon.Mode.Normal, QIcon.State.Off)
+    result.addPixmap(_render_svg(svg, _current["sidebar"], size, gap), QIcon.Mode.Normal,
+                     QIcon.State.On)
     return result
 
 

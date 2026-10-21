@@ -49,7 +49,8 @@ t = {
         "groupes."
     ),
     "registration.fee_paid": (
-        "Des frais d'inscription ont déjà été payés ({amount}). Remboursez-les avant d'annuler."
+        "Des frais d'inscription ont déjà été payés ({amount}) : l'inscription ne peut pas être "
+        "annulée. Si ce paiement est une erreur, la direction peut l'annuler d'abord."
     ),
     "registration.level_required": "Choisissez le niveau.",
     "registration.reason_required": "Indiquez le motif de l'annulation.",
@@ -72,7 +73,7 @@ t = {
     "enrollment.level_mismatch": (
         "Le groupe {group} est de niveau {group_level}, l'élève est inscrit en {level}. Un élève "
         "ne suit que des groupes de son niveau. Pour changer de niveau, retirez-le de ses groupes "
-        "puis utilisez « Changer le niveau » (onglet Inscription)."
+        "puis utilisez « Changer le niveau » (fiche de l'élève, partie Inscription)."
     ),
     "enrollment.time_clash": (
         "Conflit d'horaire : {group} a cours le {day} de {start} à {end}, et l'élève est déjà en "
@@ -120,7 +121,8 @@ t = {
     ),
     "subscription.already_cancelled": "Cet abonnement est déjà annulé.",
     "subscription.paid": (
-        "Cet abonnement a déjà été payé en partie ({amount}). Remboursez d'abord le paiement."
+        "Cet abonnement a déjà été payé en partie ({amount}) : il ne peut pas être annulé. Si "
+        "ce paiement est une erreur, la direction peut l'annuler d'abord."
     ),
     "subscription.in_payout": "Cet abonnement est déjà compté dans un paiement enseignant.",
     "subscription.reason_required": "Indiquez le motif de l'annulation.",
@@ -210,6 +212,7 @@ t = {
     "payouts.pay": "Payer",
     "payouts.paid": "Paiement {number} : {teacher}, {amount} versés",
     "payouts.print": "Imprimer",
+    "payouts.title": "Paiements enseignants",
     "payouts.back": "← Paiements enseignants",
     "payouts.detail_title": "{teacher} · {amount}",
     "payouts.detail_period": "Mois commencés {period} · {months} mois · recettes {revenue}",
@@ -253,21 +256,6 @@ t = {
     ),
     "payout.not_draft": "Ce paiement enseignant n'est plus un brouillon : il est verrouillé.",
     "payout.not_approved": "Ce paiement enseignant doit d'abord être approuvé.",
-    "refund.not_found": "Remboursement introuvable.",
-    "refund.charge_not_found": "Ligne à rembourser introuvable.",
-    "refund.amount_invalid": "Le montant doit être un nombre entier de dinars supérieur à 0.",
-    "refund.reason_required": "Indiquez le motif (ex. : départ de l'élève, erreur de paiement).",
-    "refund.exceeds": (
-        "Le remboursement dépasse ce qui a été payé sur cette ligne et n'est ni remboursé ni "
-        "déjà demandé ({amount})."
-    ),
-    "refund.not_pending": "Ce remboursement a déjà été décidé.",
-    "refund.not_approved": "Ce remboursement doit d'abord être approuvé par la direction.",
-    "refund.closed": "Ce remboursement est déjà versé ou refusé.",
-    "refund.money_gone": (
-        "Un paiement de cette ligne a été annulé depuis l'approbation : seuls {amount} peuvent "
-        "être rendus. Refusez ce remboursement et faites une nouvelle demande."
-    ),
     "debt.warning": (
         "Attention : cet élève doit déjà {amount} en retard (seuil d'alerte : {threshold})."
     ),
@@ -338,16 +326,6 @@ t = {
     "receipt.stamp_voided": "ANNULÉ",
     "receipt.thanks": "Merci. Conservez ce reçu.",
     "receipt.signature": "Cachet et signature",
-    "refund_slip.title": "Bon de remboursement",
-    "refund_slip.method": "Rendu en",
-    "refund_slip.reason": "Motif",
-    "refund_slip.approved_by": "Approuvé par",
-    "refund_slip.paid_out_by": "Remis par",
-    "refund_slip.total": "Total remboursé",
-    "refund_slip.stamp": "REMBOURSÉ",
-    "refund_slip.thanks": "Le bénéficiaire reconnaît avoir reçu la somme ci-dessus.",
-    "refund_slip.signature": "Signature du bénéficiaire",
-    "refund.not_paid_yet": "Le bon s'imprime une fois le remboursement versé.",
     "payment_method.cash": "Espèces",
     "payment_method.transfer": "Virement",
     "payment_method.cheque": "Chèque",
@@ -530,6 +508,7 @@ t = {
     "db.refund_amount_mismatch": (
         "Le montant versé ne correspond pas aux paiements remboursés."
     ),
+    "db.archived_refunds": "Les remboursements archivés ne peuvent pas être modifiés.",
     "db.payout_charge_not_open": "Cette charge n'est pas une charge d'abonnement ouverte.",
     "db.payout_amount_mismatch": "Le montant doit être égal à celui de la charge.",
     "db.payout_charge_other_group": "Cette charge appartient à un autre groupe.",
@@ -543,7 +522,7 @@ t = {
     "db.payout_totals_mismatch": "Les totaux du paiement enseignant ne correspondent pas à ses lignes.",
     "db.payout_not_approved": "Ce paiement enseignant doit être approuvé avant d'être versé.",
     "db.payout_paid_mismatch": "Le montant versé doit être le montant dû, avec son numéro.",
-    "nav.dashboard": "Tableau de bord",
+    "nav.dashboard": "Aujourd'hui",
     "nav.students": "Élèves",
     "nav.groups": "Groupes",
     "nav.subscriptions": "Abonnements",
@@ -551,7 +530,9 @@ t = {
     "nav.attendance": "Présences",
     "nav.payments": "Paiements",
     "nav.teachers": "Enseignants",
-    "nav.payouts": "Paiements enseignants",
+    "nav.payouts": "Paie enseignants",
+    "nav.section.money": "Argent",
+    "nav.section.school": "École",
     "nav.reports": "Rapports",
     "nav.sms": "SMS",
     "nav.settings": "Paramètres",
@@ -651,9 +632,13 @@ t = {
     "student_detail.tab.groups": "Groupes",
     "student_detail.tab.subscriptions": "Abonnements",
     "student_detail.tab.payments": "Paiements",
-    "student_detail.tab.refunds": "Remboursements",
     "student_detail.tab.attendance": "Présences",
     "student_detail.tab.contacts": "Contacts",
+    "student_detail.tab.sessions": "Séances et présences",
+    "student_detail.money": "Paiements",
+    "student_detail.money.due": "À payer",
+    "student_detail.money.receipts": "Reçus",
+    "student_detail.study": "Scolarité",
     "attendance_status.present": "Présent",
     "attendance_status.late": "En retard",
     "attendance_status.absent": "Absent",
@@ -836,7 +821,6 @@ t = {
     ),
     "payments_page.tab.debtors": "Élèves en retard",
     "payments_page.tab.cash": "Caisse du jour",
-    "payments_page.tab.refunds": "Remboursements à traiter ({count})",
     "debtors.group": "Groupe",
     "debtors.all_groups": "Tous les groupes",
     "debtors.min_amount": "Montant minimum",
@@ -854,10 +838,6 @@ t = {
     "cash.by_method": "Par mode : {parts}",
     "cash.by_cashier": "Par caissier : {parts}",
     "cash.voided": "Annulés (non comptés) : {count} paiement(s), {total}",
-    "cash.refunded": (
-        "Remboursements versés : {count}, {total}. Espèces à avoir en caisse pour la "
-        "journée : {drawer}."
-    ),
     "cash.teachers_paid": (
         "Enseignants payés : {count}, {total}. Espèces à avoir en caisse pour la journée : "
         "{drawer}."
@@ -870,62 +850,6 @@ t = {
     "cash.col.method": "Mode",
     "cash.col.cashier": "Reçu par",
     "cash.col.status": "Statut",
-    "refund_status.pending": "En attente",
-    "refund_status.approved": "Approuvé",
-    "refund_status.paid": "Versé",
-    "refund_status.rejected": "Refusé",
-    "refunds.title": "Remboursements",
-    "refunds.empty": "Aucun remboursement.",
-    "refunds.queue_empty": "Aucun remboursement en attente de décision ou de versement.",
-    "refunds.request": "Demander un remboursement",
-    "refunds.requested": "Demande de remboursement enregistrée : la direction doit l'approuver",
-    "refunds.approve": "Approuver",
-    "refunds.reject": "Refuser",
-    "refunds.pay": "Rembourser",
-    "refunds.print": "Imprimer le bon",
-    "refunds.approved": "Remboursement approuvé : {line}",
-    "refunds.rejected": "Remboursement refusé : {line}",
-    "refunds.paid": "Remboursement {number} de {amount} versé",
-    "refunds.col.date": "Demandé le",
-    "refunds.col.student": "Élève",
-    "refunds.col.line": "Ligne",
-    "refunds.col.amount": "Montant",
-    "refunds.col.status": "Statut",
-    "refunds.col.number": "N°",
-    "refund_dialog.title": "Demander un remboursement",
-    "refund_dialog.submit": "Envoyer la demande",
-    "refund_dialog.caption": (
-        "Rend de l'argent déjà payé sur une ligne, après approbation de la direction. Le "
-        "montant proposé est ce qui a été payé pour les jours non utilisés."
-    ),
-    "refund_dialog.charge": "Ligne",
-    "refund_dialog.unused_from": "Non utilisé à partir du",
-    "refund_dialog.amount": "Montant à rendre",
-    "refund_dialog.reason": "Motif",
-    "refund_dialog.reason_placeholder": "Ex. : départ de l'élève, inscrit par erreur",
-    "refund_dialog.info": (
-        "Payé {paid} · déjà rendu {refunded} · déjà demandé {reserved} · peut être rendu "
-        "{refundable}. Proposé : {suggestion}."
-    ),
-    "refund_dialog.nothing": "Rien à rendre : aucune ligne n'a de montant payé et non rendu.",
-    "refund_decision.caption": (
-        "{student} · {line} : {amount} demandés par {by} (proposé : {suggestion}). Motif : "
-        "{reason}."
-    ),
-    "approve_refund.title": "Approuver le remboursement",
-    "approve_refund.submit": "Approuver",
-    "approve_refund.amount": "Montant approuvé",
-    "reject_refund.title": "Refuser le remboursement",
-    "reject_refund.submit": "Refuser",
-    "reject_refund.reason": "Motif du refus",
-    "reject_refund.placeholder": "Ex. : le mois est déjà bien entamé",
-    "pay_out.title": "Rembourser",
-    "pay_out.submit": "Rembourser {amount}",
-    "pay_out.method": "Rendu en",
-    "pay_out.caption": (
-        "Remettre {amount} pour {student} ({line}). Le bon de remboursement s'imprime pour "
-        "être signé par la personne qui reçoit l'argent."
-    ),
     "subscriptions_page.col.student": "Élève",
     "subscriptions_page.col.number": "N°",
     "subscriptions_page.col.group": "Groupe",
@@ -991,7 +915,7 @@ t = {
     "student_groups.note.from": "Vient de {group}",
     "student_groups.note.after_trial": "Commencé en essai",
     "student_groups.not_registered": (
-        "Inscrivez d'abord l'élève pour l'année (onglet Inscription), puis dans ses groupes."
+        "Inscrivez d'abord l'élève pour l'année (ci-dessus), puis dans ses groupes."
     ),
     "student_groups.empty": (
         "Aucun groupe pour l'instant. Cliquez sur « Inscrire dans un groupe ». Un élève peut être "
@@ -1051,6 +975,7 @@ t = {
     "registration_tab.student_inactive": (
         "Cet élève est désactivé. Réactivez-le pour l'inscrire."
     ),
+    "registration_tab.summary": "Niveau {level} · frais {fee}, reste {due} · inscrit(e) le {date}",
     "registration_tab.history": "Inscriptions annuelles",
     "registration_tab.col.year": "Année",
     "registration_tab.col.level": "Niveau",
@@ -1143,6 +1068,9 @@ t = {
     "active.no": "Désactivé",
     "filter.all": "Tous",
     "filter.all_f": "Toutes",
+    "filters.button": "Filtres",
+    "filters.button_count": "Filtres ({count})",
+    "filters.reset": "Réinitialiser",
     "settings.tab.school": "École",
     "settings.tab.users": "Utilisateurs",
     "settings.tab.holidays": "Vacances",
@@ -1194,7 +1122,7 @@ t = {
     "school.receipts": "Reçus",
     "school.receipts_caption": (
         "Deux lignes facultatives : l'une sous l'adresse, en tête des reçus et des bons "
-        "(n° d'agrément, NIF…), l'autre en bas des reçus et des bons de remboursement."
+        "(n° d'agrément, NIF…), l'autre en bas des reçus."
     ),
     "school.receipt_header": "Ligne d'en-tête",
     "school.receipt_header_hint": "Ex. : Agrément n° 123/2024 · NIF 000123456789",
@@ -1391,6 +1319,9 @@ t = {
     "groups.filter.subject": "Toutes les matières",
     "groups.filter.open": "Ouverts",
     "groups.filter.closed": "Clôturés",
+    "groups.filter.level_label": "Niveau",
+    "groups.filter.subject_label": "Matière",
+    "groups.filter.status_label": "Statut",
     "groups.col.name": "Groupe",
     "groups.col.subject": "Matière",
     "groups.col.level": "Niveau",
@@ -1442,11 +1373,11 @@ t = {
     "group_students.col.note": "Remarque",
     "group_students.note.switched_in": "Changement de groupe",
     "group_students.empty": (
-        "Aucun élève dans ce groupe. Les élèves s'inscrivent depuis leur fiche, onglet Groupes."
+        "Aucun élève dans ce groupe. Les élèves s'inscrivent depuis leur fiche, partie Groupes."
     ),
     "group_students.hint": (
         "Pour inscrire, changer de groupe ou faire sortir un élève, ouvrez sa fiche (Élèves → "
-        "onglet Groupes)."
+        "partie Groupes)."
     ),
     "group_detail.confirm_close_title": "Clôturer le groupe",
     "group_detail.confirm_close": (
@@ -1588,8 +1519,6 @@ t = {
     "report.col.settled": "Réglé",
     "report.col.left": "Reste à payer",
     "report.col.collected": "Encaissé",
-    "report.col.refunded": "Remboursé",
-    "report.col.net": "Net encaissé",
     "report.col.group": "Groupe",
     "report.col.groups": "Groupes",
     "report.col.charges": "Mois et frais",
@@ -1628,8 +1557,7 @@ t = {
     "report.revenue.note": (
         "Facturé : les mois et frais qui commencent dans le mois (annulés exclus). Réglé : ce "
         "que les paiements non annulés ont payé sur ces mois et frais, quelle que soit la date "
-        "du paiement. Encaissé : l'argent reçu dans le mois, quel que soit ce qu'il paie. "
-        "Remboursé : l'argent rendu dans le mois."
+        "du paiement. Encaissé : l'argent reçu dans le mois, quel que soit ce qu'il paie."
     ),
     "report.revenue_group.title": "Recettes par groupe",
     "report.revenue_group.note": (
@@ -1686,45 +1614,77 @@ t = {
     "audit.family.teacher": "Enseignants",
     "audit.family.user": "Utilisateurs",
     "dashboard.title": "Tableau de bord",
-    "dashboard.today": "Aujourd'hui, {date}",
-    "dashboard.see_all": "Voir tout",
-    "dashboard.see_count": "Voir les {count}",
-    "dashboard.card.sessions": "Séances aujourd'hui",
-    "dashboard.card.sessions_left": "{count} encore à venir",
-    "dashboard.card.renew": "Abonnements à renouveler",
-    "dashboard.card.renew_detail": "{ending} finissent dans 7 jours · {lapsed} non renouvelés",
-    "dashboard.card.debt": "Retards de paiement",
-    "dashboard.card.debt_detail": "{count} élève(s) en retard",
-    "dashboard.card.money": "Encaissé ce mois",
-    "dashboard.card.money_detail": "Facturé {charged} · réglé {settled} · remboursé {refunded}",
-    "dashboard.card.fill": "Remplissage des groupes",
-    "dashboard.card.fill_detail": "{enrolled} élèves pour {seats} places",
+    "dashboard.add_student": "Ajouter un élève",
+    "dashboard.collect_payment": "Encaisser un paiement",
+    "picker.title": "Encaisser un paiement",
+    "picker.submit": "Continuer",
+    "picker.col.student": "Élève",
+    "picker.col.owed": "En retard",
+    "picker.debtors_first": "Les élèves en retard d'abord, le plus gros retard en premier. Tapez un nom, un numéro ou un téléphone pour chercher parmi tous.",
+    "picker.found": "Choisissez l'élève, puis « Continuer ».",
+    "picker.none_found": "Aucun élève actif ne correspond à « {query} ».",
+    "picker.choose": "Choisissez un élève dans la liste.",
+    "dashboard.hello": "Bonjour, {name}",
+    "dashboard.evening": "Bonsoir, {name}",
+    "dashboard.long_date": "{weekday} {day} {month} {year}",
+    "dashboard.cash": "Encaissé par jour · {month}",
+    "dashboard.cash_hint": "Survolez une barre pour voir le jour",
+    "dashboard.closed": "Fermé",
+    "dashboard.cash_total": "Total",
+    "dashboard.cash_link": "Caisse du jour",
+    "dashboard.debtors": "Plus gros retards",
+    "dashboard.debtors_detail_1": "1 élève · {amount} en retard",
+    "dashboard.debtors_detail_n": "{count} élèves · {amount} en retard",
+    "dashboard.debtors_empty": "Aucun retard de paiement.",
+    "dashboard.sort.amount": "Montant",
+    "dashboard.sort.age": "Ancienneté",
+    "dashboard.collect": "Encaisser {amount}",
+    "dashboard.debtors_foot": "{shown} sur {total} · double-clic sur un élève pour ouvrir sa fiche",
+    "dashboard.debtors_link": "Tous les retards",
+    "dashboard.days_1": "1 jour",
+    "dashboard.days_n": "{days} jours",
     "dashboard.sessions": "Séances du jour",
     "dashboard.sessions_empty": "Aucune séance aujourd'hui.",
-    "dashboard.ending": "Abonnements qui finissent cette semaine",
-    "dashboard.ending_empty": "Aucun abonnement ne finit dans les 7 jours.",
-    "dashboard.debtors": "Plus gros retards",
-    "dashboard.debtors_empty": "Aucun retard de paiement.",
-    "dashboard.groups": "Remplissage des groupes",
+    "dashboard.sessions_link": "Présences",
+    "dashboard.session_line": "{start}–{end} · {room} · {teacher}",
+    "dashboard.session_ongoing": "En cours",
+    "dashboard.free": "Places libres",
+    "dashboard.free_1": "1 libre",
+    "dashboard.free_n": "{count} libres",
+    "dashboard.full": "Complet",
     "dashboard.groups_empty": "Aucun groupe en cours.",
-    "dashboard.days": "{days} j",
-    "dashboard.col.time": "Heure",
-    "dashboard.col.group": "Groupe",
-    "dashboard.col.room": "Salle",
-    "dashboard.col.teacher": "Enseignant",
-    "dashboard.col.status": "Statut",
+    "dashboard.groups_link_1": "Le groupe",
+    "dashboard.groups_link_n": "Les {count} groupes",
+    "dashboard.backup.verified": "Sauvegarde du jour vérifiée",
+    "dashboard.backup.failed": "La sauvegarde du jour a échoué",
+    "dashboard.backup.none": "Pas encore de sauvegarde aujourd'hui",
+    "dashboard.backup_link": "Sauvegardes",
     "dashboard.col.student": "Élève",
-    "dashboard.col.period": "Mois",
-    "dashboard.col.due": "Reste à payer",
     "dashboard.col.owed": "En retard",
-    "dashboard.col.since": "Retard",
-    "dashboard.col.enrolled": "Élèves",
-    "dashboard.col.seats": "Places",
-    "dashboard.col.fill": "Remplissage",
+    "dashboard.col.since": "Depuis",
+    "day_short.1": "lun.",
+    "day_short.2": "mar.",
+    "day_short.3": "mer.",
+    "day_short.4": "jeu.",
+    "day_short.5": "ven.",
+    "day_short.6": "sam.",
+    "day_short.7": "dim.",
+    "month_short.1": "janv.",
+    "month_short.2": "févr.",
+    "month_short.3": "mars",
+    "month_short.4": "avr.",
+    "month_short.5": "mai",
+    "month_short.6": "juin",
+    "month_short.7": "juil.",
+    "month_short.8": "août",
+    "month_short.9": "sept.",
+    "month_short.10": "oct.",
+    "month_short.11": "nov.",
+    "month_short.12": "déc.",
     "reports_page.title": "Rapports",
     "reports_page.caption": (
         "Chaque rapport s'affiche ici et s'exporte en PDF (pour l'imprimer) ou en Excel. "
-        "Les montants viennent des paiements, mois et remboursements enregistrés."
+        "Les montants viennent des paiements et des mois enregistrés."
     ),
     "report.tab.revenue": "Recettes",
     "report.tab.debtors": "Retards",

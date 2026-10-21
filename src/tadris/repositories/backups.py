@@ -21,6 +21,13 @@ def verified_auto_on(conn, day: str):
     ).fetchone()
 
 
+def statuses_on(conn, day: str) -> list[str]:
+    """The status of each copy taken on day ('YYYY-MM-DD'), the latest first."""
+    rows = conn.execute("SELECT status FROM backups WHERE substr(created_at, 1, 10) = ? "
+                        "ORDER BY id DESC", (day,)).fetchall()
+    return [row["status"] for row in rows]
+
+
 def insert(conn, file_path: str, kind: str) -> int:
     cur = conn.execute("INSERT INTO backups(file_path, type) VALUES (?, ?)", (file_path, kind))
     return int(cur.lastrowid)

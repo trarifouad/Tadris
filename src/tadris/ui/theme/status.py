@@ -15,7 +15,6 @@ STATUS_STYLE = {
     "session": {"planned": "info", "held": "success", "cancelled": "danger"},
     "attendance": {"present": "success", "late": "warning", "absent": "danger", "excused": "info"},
     "payment": {"kept": "success", "voided": "danger"},
-    "refund": {"pending": "warning", "approved": "info", "paid": "success", "rejected": "neutral"},
     "payout": {"draft": "neutral", "approved": "info", "paid": "success"},
     "sms": {"pending": "info", "sent": "success", "failed": "danger"},
     "backup": {"verified": "success", "done": "warning", "running": "info", "failed": "danger"},

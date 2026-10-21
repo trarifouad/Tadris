@@ -19,7 +19,6 @@ from tadris.ui.widgets.forms import ListSection
 from tadris.ui.widgets.tables import (
     CENTER,
     PAGE_SIZE,
-    RIGHT,
     MoreOnScroll,
     fit_columns,
     frozen_columns,
@@ -93,9 +92,9 @@ class PaymentsTab(QWidget):
         self.dues.set_rows([[
             item(c.description, item_id=c.id),
             item(display_date(c.due_date), c.due_date, align=CENTER),
-            item(format_dzd(c.amount), align=RIGHT, mono=True),
-            item(format_dzd(c.paid), align=RIGHT, mono=True),
-            item(format_dzd(c.due), align=RIGHT, mono=True,
+            item(format_dzd(c.amount), align=CENTER, mono=True),
+            item(format_dzd(c.paid), align=CENTER, mono=True),
+            item(format_dzd(c.due), align=CENTER, mono=True,
                  tone="danger" if c.due_date <= current.as_of else None),
         ] for c in current.charges])
         # The latest page, or as many as were shown: a payment voided far down stays in view.
@@ -125,7 +124,7 @@ class PaymentsTab(QWidget):
         return [
             item(f"{display_date(p.paid_at)} {p.paid_at[11:16]}", p.paid_at, item_id=p.id),
             item(p.receipt_number or "—", mono=True),
-            item(format_dzd(p.amount), align=RIGHT, mono=True),
+            item(format_dzd(p.amount), align=CENTER, mono=True),
             item(t[f"payment_method.{p.method}"]),
             item(p.cashier),
             item(t[f"payment_state.{state}"], kind=kind_for("payment", state)),

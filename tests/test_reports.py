@@ -17,7 +17,6 @@ from tadris.services import (
     payments,
     payouts,
     printing,
-    refunds,
     registrations,
     reports,
     school_years,
@@ -54,11 +53,10 @@ class School:
     02/10  Karim's September (3 600) paid; Samia's September (2 000) left as a draft.
     03/10  Amine pays 6 000 (October).
     05/10  Chahinez: fee 1 000, A from 05/10.  06/10  she pays 8 000 (1 000 left as credit).
-    12/10  1 000 of Amine's October handed back.
     Today 18/10.
 
     By hand: September charged 12 000, settled 9 000, collected 9 000.
-             October charged 17 000, settled 13 000, collected 14 000, refunded 1 000.
+             October charged 17 000, settled 13 000, collected 14 000.
              Badis owes 3 000 from 01/09 (47 days) and 4 000 from 01/10 (17 days).
     """
 
@@ -101,12 +99,6 @@ class School:
         self.chahinez = self.pupil("Chahinez", "Djebbar", self.a)
         move_to(monkeypatch, date(2026, 10, 6))
         payments.record(conn, ctx, self.chahinez, 8000, "transfer")
-        move_to(monkeypatch, date(2026, 10, 12))
-        october = max(subscriptions.for_student(conn, ctx, self.amine),
-                      key=lambda s: s.start_date)
-        refund = refunds.request(conn, ctx, october.charge_id, 1000, "Geste commercial")
-        refunds.approve(conn, ctx, refund)
-        refunds.pay_out(conn, ctx, refund, "cash")
         move_to(monkeypatch, TODAY)
 
     def group(self, name, subject, price, teacher):
@@ -135,31 +127,31 @@ def column(table, label):
 def test_revenue_by_month_matches_the_hand_count(conn, director, school):
     table = reports.revenue_by_month(conn, director, school.year)
     assert [c.label for c in table.columns] == [
-        "Mois", "Facturé", "Réglé", "Reste à payer", "Encaissé", "Remboursé", "Net encaissé"]
+        "Mois", "Facturé", "Réglé", "Reste à payer", "Encaissé"]
     assert len(table.rows) == 10  # September to June
-    assert table.rows[0] == ("Septembre 2026", 12000, 9000, 3000, 9000, 0, 9000)
-    assert table.rows[1] == ("Octobre 2026", 17000, 13000, 4000, 14000, 1000, 13000)
-    assert all(row[1:] == (0, 0, 0, 0, 0, 0) for row in table.rows[2:])
+    assert table.rows[0] == ("Septembre 2026", 12000, 9000, 3000, 9000)
+    assert table.rows[1] == ("Octobre 2026", 17000, 13000, 4000, 14000)
+    assert all(row[1:] == (0, 0, 0, 0) for row in table.rows[2:])
     assert table.rows[-1][0] == "Juin 2027"
-    assert table.total == ("Total", 29000, 22000, 7000, 23000, 1000, 22000)
+    assert table.total == ("Total", 29000, 22000, 7000, 23000)
     assert table.period == "Année 2026-2027"
 
 
 def test_revenue_by_group_over_the_year_and_one_month(conn, director, school):
     year = reports.revenue_by_group(conn, director, school.year)
     assert year.rows == (
-        ("A · Maths 4AM", 3, 18000, 18000, 0, 1000),
-        ("B · Physique 4AM", 2, 8000, 1000, 7000, 0),
-        ("Frais d'inscription", 3, 3000, 3000, 0, 0),
+        ("A · Maths 4AM", 3, 18000, 18000, 0),
+        ("B · Physique 4AM", 2, 8000, 1000, 7000),
+        ("Frais d'inscription", 3, 3000, 3000, 0),
     )
-    assert year.total == ("Total", 8, 29000, 22000, 7000, 1000)
+    assert year.total == ("Total", 8, 29000, 22000, 7000)
 
     october = reports.revenue_by_group(conn, director, school.year, date(2026, 10, 1))
     assert october.period == "Octobre 2026"
     assert october.rows == (
-        ("A · Maths 4AM", 2, 12000, 12000, 0, 1000),
-        ("B · Physique 4AM", 1, 4000, 0, 4000, 0),
-        ("Frais d'inscription", 1, 1000, 1000, 0, 0),
+        ("A · Maths 4AM", 2, 12000, 12000, 0),
+        ("B · Physique 4AM", 1, 4000, 0, 4000),
+        ("Frais d'inscription", 1, 1000, 1000, 0),
     )
     assert october.total[2:4] == (17000, 13000)  # = October in the monthly report
 
@@ -341,10 +333,9 @@ def test_dashboard_for_the_director(conn, director, school, monkeypatch):
     board = reports.dashboard(conn, director)
     assert (board.debt_total, board.debtors) == (7000, 1)
     assert [d.student_id for d in board.top_debtors] == [school.badis]
-    assert (board.charged, board.settled, board.collected, board.refunded) == (
-        17000, 13000, 14000, 1000)
+    assert (board.charged, board.settled, board.collected) == (17000, 13000, 14000)
     assert [(g.title, g.enrolled, g.seats, g.rate_bp) for g in board.groups] == [
-        ("A · Maths 4AM", 2, 20, 1000), ("B · Physique 4AM", 1, 20, 500)]
+        ("A", 2, 20, 1000), ("B", 1, 20, 500)]
     assert (board.enrolled, board.seats) == (3, 40)
 
 
@@ -368,6 +359,58 @@ def test_todays_sessions_left_and_cancelled(conn, director, school, monkeypatch)
     assert [s.start_time for s in board.sessions] == ["09:00", "17:00", "19:00"]
     assert board.sessions_held == 2
     assert [s.start_time for s in board.sessions_left] == ["17:00"]
+
+
+def test_dashboard_money_by_day(conn, director, school):
+    """October to the 18th: 6 000 on the 3rd, 8 000 on the 6th. A day is open when it had a
+    session (a cancelled one too) or a payment."""
+    conn.execute("INSERT INTO rooms(name, capacity) VALUES ('Salle 1', 20)")
+    conn.execute(
+        "INSERT INTO sessions(group_id, room_id, teacher_id, date, start_time, end_time, "
+        "status, source, cancellation_reason) VALUES (?, 1, ?, '2026-10-12', '17:00', "
+        "'18:30', 'cancelled', 'manual', 'Absent')", (school.a, school.karim))
+    board = reports.dashboard(conn, director)
+    assert [d.day for d in board.daily] == [f"2026-10-{d:02d}" for d in range(1, 19)]
+    assert sum(d.amount for d in board.daily) == board.collected == 14000
+    assert [(d.day[8:], d.amount) for d in board.daily if d.open] == [
+        ("03", 6000), ("06", 8000), ("12", 0)]
+
+
+def test_dashboard_closed_weekdays(conn, director, school):
+    assert reports.dashboard(conn, director).closed_weekdays == ()  # no timetable yet
+    conn.execute("INSERT INTO rooms(name, capacity) VALUES ('Salle 1', 20)")
+    for weekday in (1, 3):
+        conn.execute(
+            "INSERT INTO timetable_slots(group_id, room_id, weekday, start_time, end_time, "
+            "valid_from) VALUES (?, 1, ?, '17:00', '18:30', '2026-09-01')", (school.a, weekday))
+    conn.execute(
+        "INSERT INTO timetable_slots(group_id, room_id, weekday, start_time, end_time, "
+        "valid_from, valid_to) VALUES (?, 1, 5, '17:00', '18:30', '2026-09-01', '2026-10-01')",
+        (school.b,))  # Fridays ended: the school is closed then now
+    assert reports.dashboard(conn, director).closed_weekdays == (2, 4, 5, 6, 7)
+
+
+def test_dashboard_backup_of_the_day(conn, director, school, desk):
+    def copy(status: str, day: str = "2026-10-18") -> None:
+        conn.execute("INSERT INTO backups(file_path, type, status, created_at) "
+                     "VALUES ('x.db', 'auto', ?, ?)", (status, f"{day}T09:00:00"))
+
+    assert reports.dashboard(conn, director).backup == "none"
+    copy("verified", "2026-10-17")  # yesterday's does not count
+    assert reports.dashboard(conn, director).backup == "none"
+    copy("failed")
+    assert reports.dashboard(conn, director).backup == "failed"
+    copy("verified")
+    copy("failed")  # one verified copy today is enough
+    assert reports.dashboard(conn, director).backup == "verified"
+    assert reports.dashboard(conn, desk).backup is None
+
+
+def test_dashboard_for_the_receptionist_has_no_daily_money(conn, desk, school):
+    board = reports.dashboard(conn, desk)
+    assert board.daily is None
+    assert [d.student_id for d in board.oldest_debtors] == [school.badis]
+    assert (board.opens_at, board.closes_at) == ("08:00", "20:00")
 
 
 # ----- audit log -----
@@ -467,10 +510,10 @@ def test_audit_fields_show_changes(conn, director, school):
     from tadris.services.journal import Field
 
     approved = reports.audit_log(conn, director, date(2020, 1, 1), date(2030, 1, 1),
-                                 family="refund.approve")[0]
+                                 family="payout.approve")[0]
     assert reports.audit_fields(conn, director, approved) == [
-        Field("Statut", "Approuvé", before="En attente"),
-        Field("Montant accordé", "1 000 DA")]
+        Field("Statut", "Approuvé", before="Brouillon"),
+        Field("À payer", "3 600 DA")]
 
 
 def test_audit_fields_do_not_repeat_the_item(conn, director, desk, school):

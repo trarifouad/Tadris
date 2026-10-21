@@ -12,14 +12,25 @@ from tadris.domain.models import (
     AuditEntry,
     Dashboard,
     DashboardSession,
+    DayCash,
     GroupFill,
     ReportColumn,
     ReportTable,
 )
 from tadris.i18n.fr import t
+from tadris.repositories import backups as backups_repo
 from tadris.repositories import reports as repo
 from tadris.repositories import school_years as years_repo
-from tadris.services import debt, groups, journal, payouts, sessions, subscriptions, teachers
+from tadris.services import (
+    debt,
+    groups,
+    journal,
+    payouts,
+    sessions,
+    settings,
+    subscriptions,
+    teachers,
+)
 
 # The dashboard and the reports only read. Each report is a ReportTable of raw values (amounts
 # in DA, rates in basis points, ISO dates): the screen, the PDF and the Excel file show the same
@@ -28,7 +39,7 @@ from tadris.services import debt, groups, journal, payouts, sessions, subscripti
 # Money, by month: « Facturé » is the months and fees starting in the month (accrual date),
 # cancelled ones left out; « Réglé » is what payments not voided paid on them, whenever it was
 # paid; « Encaissé » is the money received in the month (payments not voided), whatever it
-# paid; « Remboursé » is what was handed back in the month. Money reports are for the director.
+# paid. V1 has no refunds (archived since 0015). Money reports are for the director.
 #
 # Attendance: the rate is (present + late) / (present + late + absent); an excused absence is
 # left out. Only sessions not cancelled count.
@@ -96,30 +107,64 @@ def dashboard(conn, ctx: UserContext) -> Dashboard:
     today = dates.today()
     day_sessions = tuple(
         DashboardSession(id=s.id, start_time=s.start_time, end_time=s.end_time,
-                         group_title=s.group_title, room=s.room, teacher=s.teacher,
+                         group_title=s.group_name, room=s.room, teacher=s.teacher,
                          status=s.status)
         for s in sorted(sessions.listing(conn, ctx, today, today),
-                        key=lambda s: (s.start_time, s.group_title.casefold())))
+                        key=lambda s: (s.start_time, s.group_name.casefold())))
     owing = debt.debtors(conn, ctx)
     running = [g for g in groups.search(conn, ctx, status="active") if g.state == "active"]
-    fills = sorted((GroupFill(group_id=g.id, title=g.title, enrolled=g.enrolled, seats=g.seats)
+    fills = sorted((GroupFill(group_id=g.id, title=g.name, enrolled=g.enrolled, seats=g.seats)
                     for g in running), key=lambda f: (-f.rate_bp, f.title.casefold()))
     money = {}
+    first, last = month_bounds(today)
     if allowed(ctx, "report.finance"):
-        first, last = month_bounds(today)
         charges = repo.charges_between(conn, _iso(first), _iso(last))
         month = _iso(first)[:7]
         money = {
             "charged": sum(c["amount"] for c in charges),
             "settled": sum(c["paid"] for c in charges),
             "collected": repo.collected_by_month(conn, _iso(first), _iso(last)).get(month, 0),
-            "refunded": repo.refunded_by_month(conn, _iso(first), _iso(last)).get(month, 0)}
+            "daily": daily_cash(conn, first, today)}
+    extra = {}
+    if allowed(ctx, "backup.create"):
+        extra["backup"] = backup_status(conn, today)
+    opens_at, closes_at = settings.school_hours(conn)
+    weekdays = repo.slot_weekdays(conn, _iso(today))
     return Dashboard(
         today=_iso(today), now=_now_time(), sessions=day_sessions,
         ending=tuple(subscriptions.ending_soon(conn, ctx)),
         lapsed=len(subscriptions.lapsed(conn, ctx)),
         debt_total=sum(d.owed_now for d in owing), debtors=len(owing),
-        top_debtors=tuple(owing[:TOP_DEBTORS]), groups=tuple(fills), **money)
+        top_debtors=tuple(owing[:TOP_DEBTORS]), groups=tuple(fills),
+        oldest_debtors=tuple(sorted(owing, key=lambda d: (-d.days_overdue, -d.owed_now))
+                             [:TOP_DEBTORS]),
+        opens_at=opens_at, closes_at=closes_at,
+        closed_weekdays=tuple(d for d in range(1, 8) if weekdays and d not in weekdays),
+        **money, **extra)
+
+
+def daily_cash(conn, first: date, last: date) -> tuple[DayCash, ...]:
+    """Each day from first to last: what was received, and whether the school was open (a
+    session, even cancelled, or a payment)."""
+    received = repo.collected_by_day(conn, _iso(first), _iso(last))
+    held = repo.session_days(conn, _iso(first), _iso(last))
+    days = []
+    day = first
+    while day <= last:
+        key = _iso(day)
+        amount = received.get(key, 0)
+        days.append(DayCash(day=key, amount=amount, open=key in held or amount > 0))
+        day += timedelta(days=1)
+    return tuple(days)
+
+
+def backup_status(conn, day: date) -> str:
+    """'verified' once a copy of the day is checked, 'failed' when the latest failed, else
+    'none'."""
+    statuses = backups_repo.statuses_on(conn, _iso(day))
+    if "verified" in statuses:
+        return "verified"
+    return "failed" if statuses and statuses[0] == "failed" else "none"
 
 
 # ----- money -----
@@ -129,7 +174,7 @@ def _money_columns(*keys: str) -> tuple[ReportColumn, ...]:
 
 
 def revenue_by_month(conn, ctx: UserContext, year_id: int) -> ReportTable:
-    """Every month of the school year: charged, settled, left, collected, refunded, net."""
+    """Every month of the school year: charged, settled, left, collected."""
     require(ctx, "report.finance")
     year = _year(conn, year_id)
     start, end = date.fromisoformat(year["start_date"]), date.fromisoformat(year["end_date"])
@@ -141,26 +186,23 @@ def revenue_by_month(conn, ctx: UserContext, year_id: int) -> ReportTable:
         totals[0] += c["amount"]
         totals[1] += c["paid"]
     collected = repo.collected_by_month(conn, first, last)
-    refunded = repo.refunded_by_month(conn, first, last)
     rows = []
     for month in months:
         key = _iso(month)[:7]
         amount, paid = charged.get(key, [0, 0])
-        cash_in, cash_out = collected.get(key, 0), refunded.get(key, 0)
-        rows.append((month_label(month), amount, paid, amount - paid, cash_in, cash_out,
-                     cash_in - cash_out))
+        rows.append((month_label(month), amount, paid, amount - paid, collected.get(key, 0)))
     return _report(
         key="recettes-par-mois", title=t["report.revenue_month.title"],
         period=t["report.year"].format(label=year["label"]),
         columns=(ReportColumn(t["report.col.month"]),) + _money_columns(
-            "charged", "settled", "left", "collected", "refunded", "net"),
+            "charged", "settled", "left", "collected"),
         rows=rows, total_label=t["report.total"], note=t["report.revenue.note"])
 
 
 def revenue_by_group(conn, ctx: UserContext, year_id: int,
                      month: date | None = None) -> ReportTable:
-    """Per group (and the registration fees apart): months charged, charged, settled, left,
-    refunded; over the school year or one month of it."""
+    """Per group (and the registration fees apart): months charged, charged, settled, left;
+    over the school year or one month of it."""
     require(ctx, "report.finance")
     year = _year(conn, year_id)
     if month is None:
@@ -173,22 +215,21 @@ def revenue_by_group(conn, ctx: UserContext, year_id: int,
     lines: dict[int | None, list] = {}
     for c in repo.charges_between(conn, _iso(first), _iso(last)):
         line = lines.setdefault(c["group_id"], [c["group_title"] or t["report.fees"],
-                                                0, 0, 0, 0])
+                                                0, 0, 0])
         line[1] += 1
         line[2] += c["amount"]
         line[3] += c["paid"]
-        line[4] += c["refunded"]
     ordered = sorted((key for key in lines if key is not None),
                      key=lambda key: lines[key][0].casefold())
     if None in lines:
         ordered.append(None)  # the fees last
-    rows = [(title, count, amount, paid, amount - paid, back)
-            for title, count, amount, paid, back in (lines[key] for key in ordered)]
+    rows = [(title, count, amount, paid, amount - paid)
+            for title, count, amount, paid in (lines[key] for key in ordered)]
     return _report(
         key="recettes-par-groupe", title=t["report.revenue_group.title"], period=period,
         columns=(ReportColumn(t["report.col.group"]),
                  ReportColumn(t["report.col.charges"], "number"))
-        + _money_columns("charged", "settled", "left", "refunded"),
+        + _money_columns("charged", "settled", "left"),
         rows=rows, total_label=t["report.total"], note=t["report.revenue_group.note"])
 
 

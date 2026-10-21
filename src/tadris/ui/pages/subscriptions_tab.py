@@ -18,7 +18,7 @@ from tadris.ui.subscription_dialogs import (
 from tadris.ui.theme.status import kind_for
 from tadris.ui.widgets.common import ask, primary_button, toast, variant_button
 from tadris.ui.widgets.forms import ListSection
-from tadris.ui.widgets.tables import RIGHT, fit_columns, item
+from tadris.ui.widgets.tables import CENTER, fit_columns, item
 
 
 class SubscriptionsTab(QWidget):
@@ -87,8 +87,8 @@ class SubscriptionsTab(QWidget):
         return [
             item(s.group_title, item_id=s.id),
             item(period_text(s.start_date, s.end_date)),
-            item(format_dzd(s.price), align=RIGHT, mono=True),
-            item(due, align=RIGHT, mono=True),
+            item(format_dzd(s.price), align=CENTER, mono=True),
+            item(due, align=CENTER, mono=True),
             item(t[f"subscription_state.{s.state}"], kind=kind_for("subscription", s.state)),
         ]
 
@@ -100,8 +100,8 @@ class SubscriptionsTab(QWidget):
         s = self.selected()
         self.renew.setEnabled(s is not None and s.id in self._latest
                               and s.enrollment_status == "active")
-        # Money paid and not refunded keeps the month (refund it first).
-        self.cancel.setEnabled(s is not None and s.status != "cancelled" and not s.kept
+        # Money paid on the month keeps it (V1 has no refunds).
+        self.cancel.setEnabled(s is not None and s.status != "cancelled" and not s.paid
                                and not s.in_payout)
 
     def _done(self, message: str, select: int | None = None) -> None:

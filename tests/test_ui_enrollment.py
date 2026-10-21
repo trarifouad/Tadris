@@ -269,7 +269,6 @@ def test_tabs_refresh_each_other(qtbot, conn, receptionist, school, amine, monke
     auto_exec(monkeypatch, EnrollDialog, fill)
     view = StudentDetailView(conn, receptionist, amine)
     qtbot.addWidget(view)
-    assert view.tabs.tabText(1) == t["student_detail.tab.groups"]
     assert shown(view.registration.change_level)
     click(qtbot, view.groups.enroll)
     assert view.registration.groups.text() == "1"

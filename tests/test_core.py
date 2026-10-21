@@ -132,8 +132,6 @@ RECEPTIONIST_DENIED = {
     "enrollment.override",
     "subscription.cancel",
     "payment.void",
-    "refund.approve",
-    "refund.reject",
     "payout.view",
     "payout.manage",
     "teacher.manage",

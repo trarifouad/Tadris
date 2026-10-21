@@ -34,7 +34,7 @@ from tadris.ui.widgets.common import (
     variant_button,
 )
 from tadris.ui.widgets.forms import HeaderCard, ListDetailPage, ListSection, caption, padded
-from tadris.ui.widgets.tables import CENTER, RIGHT, fit_columns, item
+from tadris.ui.widgets.tables import CENTER, fit_columns, item
 
 SEARCH_DELAY_MS = 250
 STATUS_FILTERS = (("teachers.filter.active", "active"),
@@ -121,9 +121,9 @@ class TeacherListView(QWidget):
         if self.sees_rates:
             rate = x.current_rate_bp
             cells.append(item("" if rate is None else format_percent(rate), rate or 0,
-                              align=RIGHT, mono=True))
+                              align=CENTER, mono=True))
         cells += [
-            item(str(x.group_count), x.group_count, align=RIGHT),
+            item(str(x.group_count), x.group_count, align=CENTER),
             item(t[f"teacher_status.{x.status}"], x.status, kind=kind_for("teacher", x.status)),
         ]
         return cells
@@ -223,8 +223,8 @@ class TeacherDetailView(QWidget):
             item(g.name, item_id=g.id),
             item(g.subject),
             item(g.level),
-            item(f"{g.enrolled} / {g.seats}", g.enrolled, align=RIGHT, mono=True),
-            item(format_dzd(g.price), g.price, align=RIGHT, mono=True),
+            item(f"{g.enrolled} / {g.seats}", g.enrolled, align=CENTER, mono=True),
+            item(format_dzd(g.price), g.price, align=CENTER, mono=True),
             item(t[f"group_state.{g.state}"], kind=kind_for("group", g.state)),
         ] for g in groups.search(self._conn, self._ctx, teacher_id=x.id)])
         if manages:
@@ -237,8 +237,8 @@ class TeacherDetailView(QWidget):
         if allowed(self._ctx, "payout.view"):
             self.payouts.set_rows([[
                 item(period_text(p), item_id=p.id),
-                item(str(p.months), align=RIGHT, mono=True),
-                item(format_dzd(p.amount_due), align=RIGHT, mono=True),
+                item(str(p.months), align=CENTER, mono=True),
+                item(format_dzd(p.amount_due), align=CENTER, mono=True),
                 item(t[f"payout_status.{p.status}"], kind=kind_for("payout", p.status)),
                 item(p.receipt_number or "—", mono=True),
             ] for p in payouts.for_teacher(self._conn, self._ctx, x.id)])

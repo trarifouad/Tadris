@@ -255,6 +255,20 @@ def test_groups_list_and_filters(qtbot, conn, director, school):
     assert [r[0] for r in rows(page.list.table)] == ["Maths 4AM G1"]
 
 
+def test_groups_filter_button_counts_and_resets(qtbot, conn, director, school):
+    owner = keep(qtbot, GroupsPage(conn, director))
+    page = owner.list
+    assert page.filters.text() == t["filters.button"]
+    page.level.setCurrentIndex(page.level.findData(school["3as"]))
+    page.status.setCurrentIndex(page.status.findData("all"))
+    assert page.filters.text() == "Filtres (2)"
+    assert rows(page.list.table) == []
+    page.filters.reset.click()
+    assert page.filters.text() == t["filters.button"]
+    assert (page.level.currentData(), page.status.currentData()) == (None, "open")
+    assert [r[0] for r in rows(page.list.table)] == ["Maths 4AM G1"]
+
+
 def test_receptionist_cannot_create_groups(qtbot, conn, receptionist, school):
     page = keep(qtbot, GroupsPage(conn, receptionist))
     assert page.list.new_group.isHidden()

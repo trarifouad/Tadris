@@ -254,7 +254,6 @@ class Registration:
     live_enrollments: int  # groups the student is in (trial or active)
     fee_charge_id: int | None  # None when the fee was 0
     fee_paid: int  # by payments not voided
-    fee_refunded: int = 0  # handed back (phase 8)
 
     @property
     def fee_due(self) -> int:
@@ -262,11 +261,6 @@ class Registration:
         if self.status != "active" or self.fee_charge_id is None:
             return 0
         return max(self.fee_amount - self.fee_paid, 0)
-
-    @property
-    def fee_kept(self) -> int:
-        """Paid and not handed back: what stops a cancellation."""
-        return self.fee_paid - self.fee_refunded
 
 
 @dataclass(frozen=True)
@@ -346,7 +340,6 @@ class Subscription:
     charge_id: int | None  # None for a free group
     paid: int  # by payments not voided
     in_payout: bool
-    refunded: int = 0  # handed back (phase 8)
 
     @property
     def due(self) -> int:
@@ -354,11 +347,6 @@ class Subscription:
         if self.status == "cancelled" or self.charge_id is None:
             return 0
         return max(self.price - self.paid, 0)
-
-    @property
-    def kept(self) -> int:
-        """Paid and not handed back: what stops a cancellation."""
-        return self.paid - self.refunded
 
 
 @dataclass(frozen=True)
@@ -572,7 +560,6 @@ class CashReport:
 
     day: str
     payments: tuple[Payment, ...]  # every payment of the day, voided ones included
-    refunds: tuple["Refund", ...] = ()  # refunds paid out that day
     payouts: tuple["Payout", ...] = ()  # teachers paid that day (the director's view only)
 
     @property
@@ -601,76 +588,15 @@ class CashReport:
         return dict(sorted(totals.items()))
 
     @property
-    def refunded(self) -> int:
-        return sum(r.refunded_amount for r in self.refunds)
-
-    def refunded_by_method(self) -> dict[str, int]:
-        totals = dict.fromkeys(PAYMENT_METHODS, 0)
-        for r in self.refunds:
-            totals[r.method] += r.refunded_amount
-        return totals
-
-    @property
     def paid_to_teachers(self) -> int:
         return sum(p.amount_paid for p in self.payouts)
 
     @property
     def cash_in_drawer(self) -> int:
-        """Cash received minus cash handed back and cash paid to teachers: what the drawer
-        should hold from the day."""
+        """Cash received minus cash paid to teachers: what the drawer should hold from the
+        day."""
         cash_out = sum(p.amount_paid for p in self.payouts if p.method == "cash")
-        return self.by_method()["cash"] - self.refunded_by_method()["cash"] - cash_out
-
-
-# ----- refunds -----
-
-REFUND_STATUSES = ("pending", "approved", "paid", "rejected")
-
-
-@dataclass(frozen=True)
-class Refund:
-    id: int
-    charge_id: int
-    subscription_id: int | None  # None: the registration fee
-    student_id: int
-    description: str  # the charge's
-    amount_computed: int  # the suggestion when asked
-    amount_final: int
-    refunded_amount: int  # what was handed back (once paid)
-    reason: str
-    status: str  # REFUND_STATUSES
-    requested_by: str | None
-    decided_by: str | None
-    decided_at: str | None
-    number: str | None  # RB2026-00001, once paid
-    method: str | None
-    paid_out_by: str | None
-    paid_out_at: str | None
-    created_at: str
-
-    @property
-    def open(self) -> bool:
-        """Still waiting: for the director's decision or for the money to go out."""
-        return self.status in ("pending", "approved")
-
-
-@dataclass(frozen=True)
-class RefundableCharge:
-    """A charge the student paid something on, with what can still be handed back."""
-
-    charge_id: int
-    subscription_id: int | None
-    description: str
-    amount: int
-    status: str  # the charge's: 'open' or 'cancelled'
-    paid: int
-    refunded: int
-    reserved: int  # asked or approved, not paid out yet
-    suggestion: int  # computed: what was paid for the days not used
-
-    @property
-    def refundable(self) -> int:
-        return max(self.paid - self.refunded - self.reserved, 0)
+        return self.by_method()["cash"] - cash_out
 
 
 # ----- teacher payouts -----
@@ -809,6 +735,13 @@ class GroupFill:
 
 
 @dataclass(frozen=True)
+class DayCash:
+    day: str  # 'YYYY-MM-DD'
+    amount: int  # payments received that day, not voided
+    open: bool  # a session (cancelled ones too) or a payment that day
+
+
+@dataclass(frozen=True)
 class Dashboard:
     today: str
     now: str  # 'HH:MM'
@@ -823,13 +756,31 @@ class Dashboard:
     charged: int | None = None  # months and fees starting this month
     settled: int | None = None  # paid on those
     collected: int | None = None  # payments received this month, not voided
-    refunded: int | None = None  # handed back this month
+    daily: tuple[DayCash, ...] | None = None  # each day of the month so far (director)
+    # The rest of the page: debts by age, the day's hours, the weekdays without any slot in
+    # the timetable, and today's backup ('verified', 'failed', 'none'; None: not shown).
+    oldest_debtors: tuple[Debtor, ...] = ()
+    opens_at: str = "08:00"
+    closes_at: str = "20:00"
+    closed_weekdays: tuple[int, ...] = ()
+    backup: str | None = None
 
     @property
     def sessions_left(self) -> tuple[DashboardSession, ...]:
         """Still to come today (or under way), not cancelled."""
         return tuple(s for s in self.sessions
                      if s.status != "cancelled" and s.end_time > self.now)
+
+    @property
+    def next_session(self) -> DashboardSession | None:
+        """The next one to start today, not cancelled."""
+        return next((s for s in self.sessions
+                     if s.status != "cancelled" and s.start_time > self.now), None)
+
+    @property
+    def ongoing(self) -> bool:
+        return any(s.status != "cancelled" and s.start_time <= self.now < s.end_time
+                   for s in self.sessions)
 
     @property
     def sessions_held(self) -> int:

@@ -5,6 +5,9 @@ from PySide6.QtWidgets import QAbstractItemView, QStyle, QStyledItemDelegate, QS
 # Item data role holding a badge kind ("success", "neutral", ...) for BadgeDelegate.
 KIND_ROLE = Qt.ItemDataRole.UserRole + 10
 EDGE_WIDTH = 3
+# Where a cell's text starts: the item padding (12, qss.py) plus Qt's text margin (3). The
+# headers (padding 15) and the status pills start there too, so a column reads as one line.
+TEXT_INSET = 15
 # Qt paints these per cell, which shows squares; the delegate paints them per row instead.
 _ROW_STATES = (QStyle.StateFlag.State_Selected | QStyle.StateFlag.State_MouseOver
                | QStyle.StateFlag.State_HasFocus)
@@ -108,7 +111,7 @@ class BadgeDelegate(RuledDelegate):
         metrics = QFontMetrics(font)
         width = metrics.horizontalAdvance(text) + 16
         height = metrics.height() + 4
-        rect = QRect(option.rect.left() + 12, option.rect.center().y() - height // 2 + 1,
+        rect = QRect(option.rect.left() + TEXT_INSET, option.rect.center().y() - height // 2 + 1,
                      width, height)
         painter.save()
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)

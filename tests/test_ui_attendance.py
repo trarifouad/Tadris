@@ -172,7 +172,7 @@ def test_student_attendance_tab(qtbot, conn, desk, school):
     view = StudentDetailView(conn, desk, school["amine_student"])
     qtbot.addWidget(view)
     tab = view.attendance
-    assert view.tabs.tabText(view.tabs.indexOf(tab)) == t["student_detail.tab.attendance"]
+    assert view.study_views.currentWidget() is tab  # the study card opens on the sessions
     table = tab.list.table
     assert [table.item(0, c).text() for c in range(4)] == [
         "19/10/2026", "17:00 – 18:30", "M1 · Maths 4AM", "En retard"]

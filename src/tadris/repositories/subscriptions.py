@@ -1,6 +1,6 @@
 """SQL for subscriptions: one month of an enrollment, half-open [start_date, end_date), with its
 charge. The price is a snapshot of the group's price. What was paid on the charge is derived
-from allocations of payments not voided; refunded is what was handed back.
+from allocations of payments not voided.
 """
 
 _NOW = "strftime('%Y-%m-%dT%H:%M:%S','now','localtime')"
@@ -17,9 +17,7 @@ _COLUMNS = f"""
     e.group_id, g.name AS group_name, sb.name AS subject, l.name AS level,
     s.renewal_of_id, s.price, s.start_date, s.end_date, s.status,
     c.id AS charge_id, c.status AS charge_status, {_PAID} AS paid,
-    EXISTS (SELECT 1 FROM payout_line_charges plc WHERE plc.charge_id = c.id) AS in_payout,
-    COALESCE((SELECT SUM(rf.refunded_amount) FROM refunds rf
-               WHERE rf.charge_id = c.id AND rf.status = 'paid'), 0) AS refunded
+    EXISTS (SELECT 1 FROM payout_line_charges plc WHERE plc.charge_id = c.id) AS in_payout
 """
 _FROM = """
     FROM subscriptions s

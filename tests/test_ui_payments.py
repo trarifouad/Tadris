@@ -296,7 +296,7 @@ def test_student_page_tabs_follow_each_other(qtbot, conn, receptionist, amine, m
     auto_exec(monkeypatch, PaymentDialog, fill)
     view = StudentDetailView(conn, receptionist, amine)
     qtbot.addWidget(view)
-    assert view.tabs.tabText(view.tabs.indexOf(view.payments)) == t["student_detail.tab.payments"]
+    assert view.money_views.currentWidget() is view.payments.dues  # what is left to pay
     click(qtbot, view.payments.receive)
     # the month and the fee show as paid on their own tabs
     assert view.subscriptions.list.table.item(0, 3).text() == "0 DA"

@@ -37,10 +37,10 @@ from tadris.ui.widgets.date_edit import DateLineEdit
 from tadris.ui.widgets.forms import caption, padded
 from tadris.ui.widgets.inputs import fill_combo, id_combo
 from tadris.ui.widgets.tables import (
+    CENTER,
     ID_ROLE,
     LEFT,
     PAGE_SIZE,
-    RIGHT,
     MoreOnScroll,
     fill,
     fit_columns,
@@ -146,7 +146,7 @@ class ReportView(QWidget):
         fit_columns(self.table, stretch=self._stretch or (next(
             (i for i, c in enumerate(report.columns) if c.kind == "text"), 0),))
         for index, column in enumerate(report.columns):
-            align = RIGHT if column.kind in NUMERIC else LEFT
+            align = CENTER if column.kind in NUMERIC else LEFT
             self.table.horizontalHeaderItem(index).setTextAlignment(align)
         self.table.setVisible(bool(report.rows))
         self.empty.setVisible(not report.rows)
@@ -196,7 +196,7 @@ class ReportView(QWidget):
         out = []
         for index, (column, value) in enumerate(zip(self.report.columns, values, strict=True)):
             text = "" if bold and value is None else display(column.kind, value)
-            cell = item(text, align=RIGHT if column.kind in NUMERIC else LEFT,
+            cell = item(text, align=CENTER if column.kind in NUMERIC else LEFT,
                         mono=column.kind in MONO, item_id=row_id if index == 0 else None)
             if bold:
                 font = cell.font()

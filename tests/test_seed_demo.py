@@ -28,10 +28,7 @@ def test_seed_fills_phases_4_to_9(tmp_path, capsys):
         "SELECT COUNT(*) FROM payments").fetchone()[0]
     assert conn.execute("SELECT COUNT(*) FROM payment_voids").fetchone()[0] == 1
     assert conn.execute("SELECT COUNT(DISTINCT received_by) FROM payments").fetchone()[0] == 2
-    statuses = [row[0] for row in conn.execute("SELECT status FROM refunds ORDER BY id")]
-    assert statuses == ["paid", "approved", "pending"]
-    assert conn.execute("SELECT number FROM refunds WHERE status = 'paid'").fetchone()[0] == (
-        f"RB{date.today().year}-00001")
+    assert conn.execute("SELECT COUNT(*) FROM archived_refunds").fetchone()[0] == 0  # no refunds in V1
     statuses = [row[0] for row in conn.execute("SELECT status FROM teacher_payouts ORDER BY id")]
     assert statuses and statuses[0] == "paid" and set(statuses[1:]) <= {"approved"}
     assert conn.execute("SELECT COUNT(*) FROM payout_line_charges").fetchone()[0] > 0

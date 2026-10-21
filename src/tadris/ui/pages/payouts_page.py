@@ -36,7 +36,7 @@ from tadris.ui.widgets.common import (
 )
 from tadris.ui.widgets.date_edit import DateLineEdit
 from tadris.ui.widgets.forms import HeaderCard, ListDetailPage, ListSection, caption, padded
-from tadris.ui.widgets.tables import CENTER, RIGHT, fit_columns, item
+from tadris.ui.widgets.tables import CENTER, fit_columns, item
 
 FILTERS = (("open", ("draft", "approved")), ("paid", ("paid",)),
            ("all", ("draft", "approved", "paid")))
@@ -51,9 +51,9 @@ def payout_cells(p: Payout) -> list:
     return [
         item(p.teacher, p.teacher.casefold(), item_id=p.id),
         item(period_text(p), p.period_end),
-        item(str(p.months), p.months, align=RIGHT, mono=True),
-        item(format_dzd(p.base_amount), p.base_amount, align=RIGHT, mono=True),
-        item(format_dzd(p.amount_due), p.amount_due, align=RIGHT, mono=True),
+        item(str(p.months), p.months, align=CENTER, mono=True),
+        item(format_dzd(p.base_amount), p.base_amount, align=CENTER, mono=True),
+        item(format_dzd(p.amount_due), p.amount_due, align=CENTER, mono=True),
         item(t[f"payout_status.{p.status}"], kind=kind_for("payout", p.status)),
         item(p.receipt_number or "—", mono=True),
     ]
@@ -70,7 +70,7 @@ class PayoutListView(QWidget):
         self._payouts: dict[int, Payout] = {}
         self._due: dict[int, PayoutDue] = {}
 
-        title = QLabel(t["nav.payouts"])
+        title = QLabel(t["payouts.title"])
         title.setObjectName("pageTitle")
         intro = caption(t["payouts.caption"])
         intro.setWordWrap(True)
@@ -154,8 +154,8 @@ class PayoutListView(QWidget):
         self._due = {d.teacher_id: d for d in listed}
         self.due.set_rows([[
             item(d.teacher, item_id=d.teacher_id),
-            item(str(d.months), align=RIGHT, mono=True),
-            item(format_dzd(d.revenue), align=RIGHT, mono=True),
+            item(str(d.months), align=CENTER, mono=True),
+            item(format_dzd(d.revenue), align=CENTER, mono=True),
             item(t["payouts.has_draft"] if d.draft_id else "—"),
         ] for d in listed])
 
@@ -312,20 +312,20 @@ class PayoutDetailView(QWidget):
         self.stale.setVisible(bool(late))
         self.lines.set_rows([[
             item(line.group_title, item_id=line.id),
-            item(str(line.students), align=RIGHT, mono=True),
-            item(str(line.months), align=RIGHT, mono=True),
-            item(format_dzd(line.revenue_basis), align=RIGHT, mono=True),
-            item(format_percent(line.percentage_bp), align=RIGHT, mono=True),
-            item(format_dzd(line.amount), align=RIGHT, mono=True),
+            item(str(line.students), align=CENTER, mono=True),
+            item(str(line.months), align=CENTER, mono=True),
+            item(format_dzd(line.revenue_basis), align=CENTER, mono=True),
+            item(format_percent(line.percentage_bp), align=CENTER, mono=True),
+            item(format_dzd(line.amount), align=CENTER, mono=True),
         ] for line in payouts.lines(self._conn, self._ctx, p.id)])
         self.months.set_rows([[
             item(m.student_name, m.student_name.casefold(), item_id=m.charge_id),
             item(m.student_number, mono=True),
             item(m.group_title),
             item(display_date(m.accrual_date), m.accrual_date, align=CENTER),
-            item(format_dzd(m.amount), m.amount, align=RIGHT, mono=True),
-            item(format_percent(m.percentage_bp), align=RIGHT, mono=True),
-            item(format_dzd(m.share), m.share, align=RIGHT, mono=True),
+            item(format_dzd(m.amount), m.amount, align=CENTER, mono=True),
+            item(format_percent(m.percentage_bp), align=CENTER, mono=True),
+            item(format_dzd(m.share), m.share, align=CENTER, mono=True),
         ] for m in payouts.months(self._conn, self._ctx, p.id)])
 
     def _act(self, name: str) -> None:

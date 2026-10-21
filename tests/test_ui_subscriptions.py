@@ -220,7 +220,6 @@ def test_enrolling_from_the_groups_tab_shows_the_month(qtbot, conn, receptionist
     auto_exec(monkeypatch, EnrollDialog, fill)
     view = StudentDetailView(conn, receptionist, amine)
     qtbot.addWidget(view)
-    assert view.tabs.tabText(2) == t["student_detail.tab.subscriptions"]
     click(qtbot, view.groups.enroll)
     assert rows(view.subscriptions)[0][0] == "P1 · Physique 4AM"
 

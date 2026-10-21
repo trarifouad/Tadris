@@ -25,7 +25,7 @@ from tadris.ui.registration_dialogs import (
 )
 from tadris.ui.theme.status import kind_for
 from tadris.ui.widgets.common import Badge, PageBanner, ask, primary_button, toast, variant_button
-from tadris.ui.widgets.tables import RIGHT, fill, item, ruled_table
+from tadris.ui.widgets.tables import CENTER, fill, item, ruled_table
 
 
 class RegistrationTab(QWidget):
@@ -69,6 +69,14 @@ class RegistrationTab(QWidget):
             grid.addWidget(label, r, 0)
             grid.addWidget(value, r, 1)
         grid.setColumnStretch(2, 1)
+        self.grid = QWidget()
+        self.grid.setLayout(grid)
+        grid.setContentsMargins(0, 0, 0, 0)
+        # One line instead of the grid when the tab sits in a card (make_compact()).
+        self.summary = QLabel()
+        self.summary.setObjectName("caption")
+        self.summary.setWordWrap(True)
+        self.summary.hide()
         heading = QHBoxLayout()
         heading.setSpacing(12)
         heading.addWidget(self.title)
@@ -82,7 +90,8 @@ class RegistrationTab(QWidget):
         card_layout.setContentsMargins(20, 16, 20, 16)
         card_layout.setSpacing(12)
         card_layout.addLayout(heading)
-        card_layout.addLayout(grid)
+        card_layout.addWidget(self.grid)
+        card_layout.addWidget(self.summary)
 
         # Not registered for the open year (or no open year): a message and the button.
         self.empty = QLabel()
@@ -90,6 +99,7 @@ class RegistrationTab(QWidget):
         self.empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.empty.setWordWrap(True)
         empty_row = QHBoxLayout()
+        self._empty_row = empty_row
         empty_row.addStretch()
         empty_row.addWidget(self.register)
         empty_row.addStretch()
@@ -130,6 +140,9 @@ class RegistrationTab(QWidget):
             self.due.setText(format_dzd(reg.fee_due))
             self.registered_on.setText(display_date(reg.registered_at))
             self.groups.setText(str(reg.live_enrollments))
+            self.summary.setText(t["registration_tab.summary"].format(
+                level=reg.level, fee=format_dzd(reg.fee_amount), due=format_dzd(reg.fee_due),
+                date=display_date(reg.registered_at)))
         can_register = allowed(self._ctx, "registration.create")
         in_year = reg is not None and reg.live_enrollments == 0
         self.change_level.setVisible(in_year and can_register)
@@ -154,12 +167,35 @@ class RegistrationTab(QWidget):
         self.history.setVisible(bool(past))
         self.history_title.setVisible(bool(past))
 
+    def make_compact(self) -> None:
+        """For a card of the student page (which gives it its heading): no card of its own,
+        one line instead of the grid, small buttons, the past years only when there are
+        some."""
+        from tadris.ui.widgets.compact import compact_empty, fit_height, small
+
+        self.layout().setContentsMargins(0, 0, 0, 0)
+        self.layout().setSpacing(8)
+        self.card.setObjectName("")
+        self.card.layout().setContentsMargins(0, 0, 0, 0)
+        self.card.layout().setSpacing(4)
+        self.title.setObjectName("rowTitle")
+        self.grid.hide()
+        self.summary.show()
+        for button in (self.register, self.change_level, self.cancel):
+            small(button)
+        compact_empty(self.empty)
+        self._empty_row.takeAt(0)  # the button on the left, under its line
+        self.history_title.setObjectName("cardSection")
+        self.history_title.setText(self.history_title.text().upper())
+        fit_height(self.history, 3)
+        self.refresh()
+
     @staticmethod
     def _cells(r: Registration) -> list:
         return [
             item(r.year_label, item_id=r.id),
             item(r.level),
-            item(format_dzd(r.fee_amount), align=RIGHT, mono=True),
+            item(format_dzd(r.fee_amount), align=CENTER, mono=True),
             item(t[f"registration_status.{r.status}"], kind=kind_for("registration", r.status)),
             item(display_date(r.registered_at)),
         ]

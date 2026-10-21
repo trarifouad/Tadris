@@ -108,11 +108,11 @@ def test_inactive_student_cannot_be_registered(qtbot, conn, director, year, amin
     assert not shown(tab.register)
 
 
-def test_student_page_opens_on_registration(qtbot, conn, director, year, amine):
+def test_student_card_shows_the_registration(qtbot, conn, director, year, amine):
     view = StudentDetailView(conn, director, amine)
     qtbot.addWidget(view)
-    assert view.tabs.currentWidget() is view.registration
-    assert view.tabs.tabText(0) == t["student_detail.tab.registration"]
+    assert view.registration.isVisibleTo(view)
+    assert view.registration.grid.isHidden() and not view.registration.summary.isHidden()
 
 
 def test_reactivating_offers_the_registration_again(qtbot, conn, director, year, amine,

@@ -1,4 +1,4 @@
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QTabWidget, QVBoxLayout, QWidget
 
 from tadris.core.context import UserContext
@@ -6,14 +6,17 @@ from tadris.core.dates import display_date
 from tadris.i18n.fr import t
 from tadris.services import auth
 from tadris.ui.pages.setup_tabs import CatalogTab, HolidaysTab, RoomsTab, SchoolTab, YearsTab
-from tadris.ui.pages.system_tabs import AboutTab
+from tadris.ui.pages.system_tabs import AboutTab, BackupsTab
 from tadris.ui.user_dialog import UserDialog
 from tadris.ui.widgets.common import ask, primary_button, toast
 from tadris.ui.widgets.tables import fill, item, ruled_table
 
 
 class SettingsPage(QWidget):
-    """Director-only settings: user accounts and the school structure."""
+    """Director-only settings: user accounts, the school structure, backups. `restored`: a
+    copy of the database was put back (the window goes back to the login screen)."""
+
+    restored = Signal(str)  # the safety copy taken before
 
     def __init__(self, conn, ctx: UserContext):
         super().__init__()
@@ -31,13 +34,15 @@ class SettingsPage(QWidget):
         self.subjects = CatalogTab(conn, ctx, "subject")
         self.rooms = RoomsTab(conn, ctx)
         self.holidays = HolidaysTab(conn, ctx)
+        self.backups = BackupsTab(conn, ctx)
+        self.backups.restored.connect(self.restored.emit)
         self.about = AboutTab(conn, ctx)
         self.tabs = QTabWidget()
         self.tabs.setDocumentMode(True)
         for tab, key in ((self.school, "school"), (self.users, "users"), (self.years, "years"),
                          (self.levels, "levels"), (self.subjects, "subjects"),
                          (self.rooms, "rooms"), (self.holidays, "holidays"),
-                         (self.about, "about")):
+                         (self.backups, "backups"), (self.about, "about")):
             self.tabs.addTab(tab, t[f"settings.tab.{key}"])
         self.tabs.currentChanged.connect(self._refresh_tab)
 

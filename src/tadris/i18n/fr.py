@@ -1189,6 +1189,65 @@ t = {
     "school.debt_warning": "Alerte de dette à partir de",
     "school.debt_warning_off": "Vide : pas d'alerte",
     "school.debt_warning_invalid": "Le seuil d'alerte de dette est invalide.",
+    "settings.tab.backups": "Sauvegardes",
+    "backups.caption": (
+        "Une copie de la base est faite chaque jour à l'ouverture et à chaque fermeture, puis "
+        "vérifiée. Sont gardées : les 3 dernières, une par jour sur 14 jours et une par mois "
+        "sur 12 mois. Les copies manuelles et celles d'avant une restauration sont toujours "
+        "gardées."
+    ),
+    "backups.where": "Dossier des sauvegardes : {folder}",
+    "backups.in_memory": "Base en mémoire (test) : pas de sauvegarde.",
+    "backups.open_folder": "Ouvrir le dossier",
+    "backups.second_title": "Second emplacement",
+    "backups.second_none": (
+        "Aucun : les copies restent sur cet ordinateur. Choisissez une clé USB, un disque "
+        "externe ou un dossier synchronisé (Google Drive, OneDrive) pour ne pas tout perdre "
+        "si l'ordinateur tombe en panne."
+    ),
+    "backups.second_set": "Chaque copie est aussi écrite dans : {folder}",
+    "backups.second_choose": "Choisir le dossier…",
+    "backups.second_remove": "Retirer",
+    "backups.second_remove_confirm": (
+        "Ne plus copier les sauvegardes vers le second emplacement ? Les copies déjà "
+        "écrites y restent."
+    ),
+    "backups.second_saved": "Second emplacement : {folder}",
+    "backups.second_removed": "Second emplacement retiré",
+    "backups.second_warning": "{error} Vérifiez le second emplacement.",
+    "backups.list_title": "Copies",
+    "backups.col.date": "Date",
+    "backups.col.kind": "Type",
+    "backups.col.size": "Taille",
+    "backups.col.status": "État",
+    "backups.empty": "Aucune sauvegarde pour l'instant.",
+    "backups.size": "{size} Mo",
+    "backups.kind.auto": "Automatique",
+    "backups.kind.manual": "Manuelle",
+    "backups.kind.safety": "Avant restauration",
+    "backups.status.verified": "Vérifiée",
+    "backups.status.done": "Non vérifiée",
+    "backups.status.running": "Interrompue",
+    "backups.status.failed": "Échouée",
+    "backups.take_now": "Sauvegarder maintenant",
+    "backups.taken": "Sauvegarde faite : {name}",
+    "backups.restore": "Restaurer…",
+    "backups.restore_file": "Restaurer depuis un fichier…",
+    "backups.file_filter": "Sauvegardes Tadris (*.db);;Tous les fichiers (*)",
+    "restore.confirm_title": "Restaurer une sauvegarde",
+    "restore.confirm": (
+        "Remplacer toutes les données actuelles par cette sauvegarde ?\n\n"
+        "Sauvegarde : {name}\nÉcole : {school}\nÉlèves : {students}\n"
+        "Dernière opération enregistrée : {last}\n\n"
+        "Une copie de sécurité des données actuelles est faite d'abord. Vous serez ensuite "
+        "déconnecté."
+    ),
+    "restore.action": "Restaurer",
+    "restore.done_title": "Restauration terminée",
+    "restore.done": (
+        "Les données de la sauvegarde sont en place.\n\nCopie de sécurité des données "
+        "d'avant : {safety}\n\nReconnectez-vous."
+    ),
     "settings.tab.about": "À propos",
     "about.caption": (
         "La version de l'application et de la base de données, et l'endroit où sont "
@@ -1457,6 +1516,25 @@ t = {
         "{error}\n\nBranchez le support, ou changez le dossier dans Paramètres → "
         "Sauvegardes."
     ),
+    "restore.missing": "Fichier introuvable : {path}",
+    "restore.not_a_copy": "Ce fichier n'est pas une sauvegarde de Tadris.",
+    "restore.damaged": (
+        "Cette sauvegarde est abîmée (le contrôle d'intégrité a échoué). Choisissez-en une autre."
+    ),
+    "restore.newer": (
+        "Cette sauvegarde vient d'une version plus récente de Tadris (version {version} de "
+        "la base ; celle-ci connaît jusqu'à la version {latest}). Installez la dernière "
+        "version de Tadris avant de la restaurer."
+    ),
+    "restore.no_director": "Cette sauvegarde n'a aucun compte directeur actif.",
+    "restore.failed": (
+        "La restauration a échoué : {error}\n\nLa base est revenue à son état d'avant la "
+        "restauration."
+    ),
+    "restore.failed_badly": (
+        "La restauration a échoué ({error}) et la base n'a pas pu être remise en état. "
+        "Fermez l'application et restaurez la copie de sécurité : {safety}"
+    ),
     "migration.title": "Mise à jour de la base",
     "migration.newer": (
         "Cette base de données vient d'une version plus récente de Tadris (version {version} "
@@ -1687,6 +1765,8 @@ t = {
     "audit.action.backup.create": "Sauvegarde créée",
     "audit.action.backup.failed": "Sauvegarde échouée",
     "audit.action.backup.prune": "Anciennes sauvegardes supprimées",
+    "audit.action.backup.manual": "Sauvegarde manuelle",
+    "audit.action.backup.restore": "Sauvegarde restaurée",
     "audit.action.backup.mirror": "Sauvegarde copiée au second emplacement",
     "audit.action.backup.mirror_failed": "Copie au second emplacement échouée",
     "audit.action.contact.create": "Contact créé",
@@ -1804,6 +1884,9 @@ t = {
     "audit.key.fee_amount": "Frais d'inscription",
     "audit.key.file": "Fichier",
     "audit.key.folder": "Dossier",
+    "audit.key.safety": "Copie de sécurité",
+    "audit.key.by": "Par",
+    "audit.key.result": "Résultat",
     "audit.key.error": "Erreur",
     "audit.key.first_name": "Prénom",
     "audit.key.format": "Format",
@@ -1888,6 +1971,9 @@ t = {
     "audit.setting.school.closes_at": "Fermeture",
     "audit.setting.defaults.registration_fee": "Frais d'inscription par défaut",
     "audit.setting.defaults.max_debt_warning": "Seuil d'alerte de dette",
+    "audit.setting.backup.second_dir": "Second emplacement des sauvegardes",
+    "audit.result.success": "Réussie",
+    "audit.result.failed": "Échouée",
     "audit.entity_named": "{kind} : {name}",
     "audit.entity_number": "{kind} n° {id}",
     "audit.number": "n° {id}",

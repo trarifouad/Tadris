@@ -109,6 +109,12 @@ def open_database(conn, folder, parent=None) -> bool:
     return True
 
 
+def start_of_day(conn) -> None:
+    """At start, and again after a restore (the copy may be days old)."""
+    subscriptions.mark_ended(conn)  # months whose last day has passed
+    sessions.generate_at_start(conn)  # the next 14 days from the timetable
+
+
 def main() -> int:
     _choose_linux_platform()
     _choose_scale()
@@ -127,8 +133,7 @@ def main() -> int:
         return 1
     _backup(lambda: backup.daily(conn, folder))
     _clean_documents(conn)
-    subscriptions.mark_ended(conn)  # months whose last day has passed
-    sessions.generate_at_start(conn)  # the next 14 days from the timetable
+    start_of_day(conn)
 
     code = run_sessions(app, conn, folder, override)
     if code is None:
@@ -152,6 +157,8 @@ def run_sessions(app, conn, folder, override) -> int | None:
         timer.start(DAILY_CHECK_MS)
         code = app.exec()  # returns when the window closes
         logged_out = window.logging_out
+        if window.restored:
+            start_of_day(conn)
         window.deleteLater()
         if not logged_out:
             break

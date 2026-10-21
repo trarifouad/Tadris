@@ -51,6 +51,8 @@ ACTIONS: dict[str, frozenset[str]] = {
     "user.create": DIRECTOR_ONLY,
     "user.disable": DIRECTOR_ONLY,
     "audit.view": DIRECTOR_ONLY,
+    "backup.create": DIRECTOR_ONLY,
+    "backup.restore": DIRECTOR_ONLY,
     "print.document": BOTH,
 }
 

@@ -63,12 +63,12 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _target(folder: Path, kind: str) -> Path:
+def _target(folder: Path, label: str) -> Path:
     stamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
-    path = folder / f"tadris-{stamp}-{kind}.db"
+    path = folder / f"tadris-{stamp}-{label}.db"
     n = 2
     while path.exists():
-        path = folder / f"tadris-{stamp}-{kind}-{n}.db"
+        path = folder / f"tadris-{stamp}-{label}-{n}.db"
         n += 1
     return path
 
@@ -99,14 +99,15 @@ def _check(path: Path, checksum: str | None) -> bool:
         return False
 
 
-def take(conn, folder: Path, kind: str = "auto") -> Backup:
+def take(conn, folder: Path, kind: str = "auto", label: str | None = None) -> Backup:
     """Copy the database into folder and verify the copy. Raises BackupFailed (the row stays,
-    marked failed, and the failure is in the audit log)."""
+    marked failed, and the failure is in the audit log). label: the file name's last part
+    (the kind by default, e.g. 'avant-restauration' for the copy a restore takes first)."""
     try:
         folder.mkdir(parents=True, exist_ok=True)
     except OSError as exc:
         raise BackupFailed(t["backup.failed"].format(path=folder)) from exc
-    path = _target(folder, kind)
+    path = _target(folder, label or kind)
     with transaction(conn):
         backup_id = repo.insert(conn, str(path), kind)
     try:
@@ -163,6 +164,25 @@ def get(conn, backup_id: int) -> Backup:
 def list_backups(conn) -> list[Backup]:
     """Latest first."""
     return [_to_backup(row) for row in repo.list_all(conn)]
+
+
+def take_now(conn, ctx: UserContext, folder: Path) -> Backup:
+    """« Sauvegarder maintenant »: a manual copy (never removed by retention). Raises
+    BackupFailed, or MirrorFailed when only the second location is missing."""
+    require(ctx, "backup.create")
+    try:
+        taken = take(conn, folder, "manual")
+    except MirrorFailed as exc:
+        _log_manual(conn, ctx, exc.backup)
+        raise
+    _log_manual(conn, ctx, taken)
+    return taken
+
+
+def _log_manual(conn, ctx: UserContext, taken: Backup) -> None:
+    with transaction(conn):
+        audit.log(conn, ctx, "backup.manual", "backups", taken.id,
+                  new={"file": Path(taken.file_path).name})
 
 
 def daily_due(conn) -> bool:

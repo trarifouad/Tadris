@@ -145,6 +145,8 @@ RECEPTIONIST_DENIED = {
     "user.create",
     "user.disable",
     "audit.view",
+    "backup.create",
+    "backup.restore",
 }
 
 

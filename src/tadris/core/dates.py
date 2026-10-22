@@ -1,6 +1,6 @@
 import calendar
 import re
-from datetime import date
+from datetime import date, timedelta
 
 from tadris.core.errors import ValidationError
 from tadris.i18n.fr import t
@@ -20,6 +20,20 @@ def today() -> date:
 def weekday_1_to_7(value: date) -> int:
     """Monday = 1 ... Sunday = 7."""
     return value.weekday() + 1
+
+
+def week_start(day: date) -> date:
+    """The Saturday that starts the (Algerian) week of a day."""
+    return day - timedelta(days=(weekday_1_to_7(day) - 6) % 7)
+
+
+def short_period(start: str, end: str) -> str:
+    """A month in a list, where room is short: '2026-09-25', '2026-10-25' -> « 25 sept. au
+    25 oct. » (the end as stored: the day after the last day)."""
+    def day_month(iso_date: str) -> str:
+        day = date.fromisoformat(iso_date[:10])
+        return f"{day.day} {t[f'month_short.{day.month}']}"
+    return t["period.short"].format(start=day_month(start), end=day_month(end))
 
 
 def display_date(value: str) -> str:

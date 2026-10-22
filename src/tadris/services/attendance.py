@@ -101,6 +101,16 @@ def for_student(conn, ctx: UserContext, student_id: int, limit: int | None = Non
     ]
 
 
+def summary_by_enrollment(conn, ctx: UserContext,
+                          student_id: int) -> dict[int, AttendanceSummary]:
+    """The counts of each of the student's enrollments (one group each)."""
+    require(ctx, "student.view")
+    return {enrollment_id: AttendanceSummary(**{status: counts.get(status, 0)
+                                                for status in ("present", "late", "absent",
+                                                               "excused")})
+            for enrollment_id, counts in repo.counts_by_enrollment(conn, student_id).items()}
+
+
 def summary_for_student(conn, ctx: UserContext, student_id: int) -> AttendanceSummary:
     """The counts over the student's whole history, counted by the database."""
     require(ctx, "student.view")

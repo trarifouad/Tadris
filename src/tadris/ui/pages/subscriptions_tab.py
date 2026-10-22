@@ -4,6 +4,7 @@ from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QLabel, QPushButton, QVBoxLayout, QWidget
 
 from tadris.core.context import UserContext
+from tadris.core.dates import short_period
 from tadris.core.money import format_dzd
 from tadris.core.permissions import allowed
 from tadris.domain.models import Enrollment, Subscription
@@ -84,9 +85,11 @@ class SubscriptionsTab(QWidget):
             due = t["subscriptions.free"]
         else:
             due = format_dzd(s.due)
+        group = item(s.group_title, item_id=s.id)
+        group.setToolTip(s.group_title)  # the column is narrow on the student page
         return [
-            item(s.group_title, item_id=s.id),
-            item(period_text(s.start_date, s.end_date)),
+            group,
+            item(short_period(s.start_date, s.end_date), s.start_date, align=CENTER),
             item(format_dzd(s.price), align=CENTER, mono=True),
             item(due, align=CENTER, mono=True),
             item(t[f"subscription_state.{s.state}"], kind=kind_for("subscription", s.state)),

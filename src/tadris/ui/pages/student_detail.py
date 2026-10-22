@@ -5,11 +5,13 @@ from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
 
+from tadris.core import dates
 from tadris.core.context import UserContext
 from tadris.core.dates import display_date
 from tadris.core.errors import BusinessRuleError
@@ -17,12 +19,13 @@ from tadris.core.permissions import allowed
 from tadris.core.phones import format_phone
 from tadris.domain.models import StudentContact
 from tadris.i18n.fr import t
-from tadris.services import contacts, students
+from tadris.services import attendance, contacts, enrollments, payments, students, subscriptions
 from tadris.ui.contact_dialog import ContactDialog
 from tadris.ui.pages.payments_tab import PaymentsTab
 from tadris.ui.pages.registration_tab import RegistrationTab
 from tadris.ui.pages.student_attendance_tab import StudentAttendanceTab
 from tadris.ui.pages.student_groups_tab import StudentGroupsTab
+from tadris.ui.pages.student_overview import GroupLines, SectionWindow, link_button
 from tadris.ui.pages.subscriptions_tab import SubscriptionsTab
 from tadris.ui.student_dialog import StudentDialog
 from tadris.ui.theme.status import kind_for
@@ -34,17 +37,19 @@ from tadris.ui.widgets.compact import (
     fit_height,
     follow_current,
     heading,
-    hide_empty_columns,
     row_actions_below,
     share_width,
     small,
 )
-from tadris.ui.widgets.tables import ID_ROLE, fill, fit_columns, item, ruled_table, selected_id
+from tadris.ui.widgets.tables import ID_ROLE, fill, item, ruled_table, selected_id
 
 
 class StudentDetailView(QWidget):
-    """Three cards: the student (identity, registration, groups, contacts) and the money
-    side by side, the study (months, sessions) under them, the whole page scrolling."""
+    """Three cards: the student (identity, registration, contacts) and the study side by
+    side, the money under them, the whole page scrolling. Only the essentials stay on the
+    page: the study is one line per group (its month, its attendance) and the money what is
+    left to pay and the latest receipts. The whole lists (groups with their history, every
+    session, every month, every payment) open in a window, with all their actions."""
 
     back = Signal()
 
@@ -103,6 +108,7 @@ class StudentDetailView(QWidget):
         self.payments = PaymentsTab(conn, ctx, student_id)
         self.attendance = StudentAttendanceTab(conn, ctx, student_id)
         self.contacts = ContactsTab(conn, ctx, student_id)
+        self.all_payments = PaymentsTab(conn, ctx, student_id)  # the window's, whole
         # Each section shows what the others change: groups count, who may enroll, the
         # months an enrollment, a confirmed trial or a switch creates.
         self.registration.changed.connect(self.groups.refresh)
@@ -113,11 +119,27 @@ class StudentDetailView(QWidget):
             section.changed.connect(self.payments.refresh)
         self.payments.changed.connect(self.registration.refresh)
         self.payments.changed.connect(self.subscriptions.refresh)
+        self.all_payments.changed.connect(self.payments.refresh)
+        self.all_payments.changed.connect(self.registration.refresh)
+        self.all_payments.changed.connect(self.subscriptions.refresh)
         self.contacts.changed.connect(self.refresh)
+        # The study card's lines follow every change.
+        for section in (self.registration, self.groups, self.subscriptions, self.payments,
+                        self.all_payments):
+            section.changed.connect(self.refresh_overview)
+
+        self.windows = {
+            "groups": SectionWindow(t["overview.window.groups"], self.groups, self),
+            "sessions": SectionWindow(t["overview.window.sessions"], self.attendance, self),
+            "subscriptions": SectionWindow(t["overview.window.subscriptions"],
+                                           self.subscriptions, self),
+            "payments": SectionWindow(t["overview.window.payments"], self.all_payments,
+                                      self),
+        }
 
         top = QHBoxLayout()
         top.setSpacing(16)
-        for card, stretch in ((self._student_card(identity), 1), (self._money_card(), 1)):
+        for card, stretch in ((self._student_card(identity), 1), (self._study_card(), 1)):
             share_width(card)
             top.addWidget(card, stretch)
         content = QWidget()
@@ -126,7 +148,7 @@ class StudentDetailView(QWidget):
         column.setContentsMargins(0, 0, 0, 0)
         column.setSpacing(16)
         column.addLayout(top)
-        column.addWidget(self._study_card())
+        column.addWidget(self._money_card())
         column.addStretch()
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -142,11 +164,12 @@ class StudentDetailView(QWidget):
         layout.addWidget(self.error)
         layout.addWidget(scroll, 1)
         self.refresh()
+        self.refresh_overview()
 
     # ----- the three cards -----
 
     def _student_card(self, identity) -> QFrame:
-        """Who the student is: identity, this year's registration, groups, contacts."""
+        """Who the student is: identity, this year's registration, contacts."""
         card = section_card()
         head = QHBoxLayout()
         head.setSpacing(8)
@@ -156,12 +179,11 @@ class StudentDetailView(QWidget):
         body = card.layout()
         body.addLayout(head)
         self.registration.make_compact()
-        compact_list(self.groups.list, t["student_detail.tab.groups"], 5)
-        fit_columns(self.groups.list.table, stretch=(0,))
-        hide_empty_columns(self.groups.list.table, (3, 4))  # left on, remark
+        # Its own height only: the card's room left over goes below the contacts.
+        self.registration.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
         self.contacts.make_compact()
         for title, section in ((t["student_detail.tab.registration"], self.registration),
-                               (None, self.groups), (None, self.contacts)):
+                               (None, self.contacts)):
             body.addWidget(rule())
             if title is not None:
                 body.addWidget(heading(title))
@@ -187,8 +209,8 @@ class StudentDetailView(QWidget):
         payments.summary.setWordWrap(True)
         body.addWidget(payments.summary)
         compact_list(payments.dues, None, 6)
-        payments.dues.table.setColumnHidden(3, True)  # « Payé » is the amount less what is left
-        compact_list(payments.history, None, 6)
+        payments.dues.table.setColumnHidden(4, True)  # « Payé » is the amount less what is left
+        compact_list(payments.history, None, 3)
         for section in (payments.dues, payments.history):
             # The view's name is the segment's: the list's own title goes.
             first = section.toolbar.itemAt(0).widget()
@@ -202,35 +224,75 @@ class StudentDetailView(QWidget):
                                     t["student_detail.money.receipts"]])
         self.money_tabs.changed.connect(self.money_views.setCurrentIndex)
         follow_current(self.money_views)
-        body.addWidget(self.money_tabs, 0, Qt.AlignmentFlag.AlignLeft)
+        self.open_payments = link_button()
+        self.open_payments.clicked.connect(lambda: self.open_window("payments"))
+        switch = QHBoxLayout()
+        switch.addWidget(self.money_tabs)
+        switch.addStretch()
+        switch.addWidget(self.open_payments)
+        body.addLayout(switch)
         body.addWidget(self.money_views)
         body.addStretch()
         return card
 
     def _study_card(self) -> QFrame:
-        """The year's study: the sessions with attendance, and the months of each group."""
+        """The year's study at a glance: one line per group (its month, its attendance);
+        the groups with their history, every session and every month open in a window."""
         card = section_card()
         title = QLabel(t["student_detail.study"])
         title.setObjectName("sectionTitle")
-        body = card.layout()
-        self.study_views = QStackedWidget()
-        for section in (self.attendance, self.subscriptions):
-            section.layout().setContentsMargins(0, 0, 0, 0)
-            section.summary.setObjectName("caption")
-            compact_list(section.list, None, 8)
-            self.study_views.addWidget(section)
-        self.study_tabs = Segments([t["student_detail.tab.sessions"],
-                                    t["student_detail.tab.subscriptions"]])
-        self.study_tabs.changed.connect(self.study_views.setCurrentIndex)
-        follow_current(self.study_views)
+        # « Inscrire dans un groupe » here does what the groups list's own button does.
+        self.enroll = small(primary_button(t["student_groups.enroll"]))
+        self.enroll.setDefault(False)
+        self.enroll.clicked.connect(self.groups.enroll.click)
         head = QHBoxLayout()
-        head.setSpacing(16)
+        head.setSpacing(8)
         head.addWidget(title)
-        head.addWidget(self.study_tabs)
         head.addStretch()
+        head.addWidget(self.enroll)
+        self.group_lines = GroupLines()
+        self.open_groups = link_button()
+        self.open_sessions = link_button()
+        self.open_subscriptions = link_button()
+        links = QHBoxLayout()
+        links.setSpacing(20)
+        for key, button in (("groups", self.open_groups), ("sessions", self.open_sessions),
+                            ("subscriptions", self.open_subscriptions)):
+            button.clicked.connect(lambda _checked=False, k=key: self.open_window(k))
+            links.addWidget(button)
+        links.addStretch()
+        body = card.layout()
         body.addLayout(head)
-        body.addWidget(self.study_views)
+        body.addWidget(self.group_lines)
+        body.addWidget(rule())
+        body.addLayout(links)
+        body.addStretch()
         return card
+
+    def refresh_overview(self) -> None:
+        """The study card's lines and the counts on the links to the whole lists."""
+        today = dates.iso(dates.today())
+        groups = enrollments.for_student(self._conn, self._ctx, self.student_id)
+        months = subscriptions.for_student(self._conn, self._ctx, self.student_id)
+        marks = attendance.summary_by_enrollment(self._conn, self._ctx, self.student_id)
+        self.group_lines.set_lines(groups, months, marks, today)
+        self.open_groups.setText(t["overview.groups"].format(count=len(groups)))
+        self.open_sessions.setText(t["overview.sessions"].format(
+            count=sum(s.total for s in marks.values())))
+        self.open_subscriptions.setText(t["overview.subscriptions"].format(count=len(months)))
+        self.open_payments.setText(t["overview.payments"].format(
+            count=payments.count_for_student(self._conn, self._ctx, self.student_id)))
+        self.enroll.setVisible(not self.groups.enroll.isHidden())
+        self.enroll.setEnabled(self.groups.enroll.isEnabled())
+
+    def open_window(self, key: str) -> None:
+        """A whole list in a window; the page follows what was done there."""
+        window = self.windows[key]
+        window.section.refresh()
+        window.exec()
+        self.registration.refresh()
+        self.payments.refresh()
+        self.refresh_overview()
 
     def refresh(self) -> None:
         self.student = students.get(self._conn, self._ctx, self.student_id)

@@ -156,11 +156,11 @@ def test_leaving_with_unsaved_marks_asks(qtbot, conn, desk, school, monkeypatch)
     assert left == [True]
 
 
-def test_double_click_opens_the_attendance_and_back(qtbot, conn, desk, school):
+def test_a_card_opens_the_attendance_and_back(qtbot, conn, desk, school):
     page = AttendancePage(conn, desk)
     qtbot.addWidget(page)
-    first = page.sessions.list.ids()[0]
-    page.sessions.list.activated.emit(first)
+    first = page.sessions.cards[0].session.id
+    click(qtbot, page.sessions.cards[0])
     assert isinstance(page.detail, AttendanceView) and page.detail.session_id == first
     click(qtbot, page.detail.back_button)  # nothing changed: no question
     assert page.detail is None and page.stack.currentWidget() is page.list
@@ -172,7 +172,11 @@ def test_student_attendance_tab(qtbot, conn, desk, school):
     view = StudentDetailView(conn, desk, school["amine_student"])
     qtbot.addWidget(view)
     tab = view.attendance
-    assert view.study_views.currentWidget() is tab  # the study card opens on the sessions
+    assert view.windows["sessions"].section is tab  # every session opens in a window
+    assert view.open_sessions.text() == t["overview.sessions"].format(count=1)
+    [line] = view.group_lines.lines
+    assert line.attendance.text() == t["overview.attendance"].format(
+        rate="100 %", sessions=1, absent=0)  # late counts as there
     table = tab.list.table
     assert [table.item(0, c).text() for c in range(4)] == [
         "19/10/2026", "17:00 – 18:30", "M1 · Maths 4AM", "En retard"]

@@ -443,6 +443,85 @@ def test_grid_geometry_and_clicks(qtbot, conn, director, school, monkeypatch):
     assert grid.cell_at(QPointF(10, 100)) is None
 
 
+def test_reschedule_one_session_from_the_timetable(qtbot, conn, director, school,
+                                                   monkeypatch):
+    """Tuesday 20/10 17:00 moves to Thursday 22/10 18:00, this week only: the slot stays, the
+    grid shows it moved and its makeup at the new place; next week runs as usual."""
+    from tadris.ui.pages import timetable as timetable_page
+    from tadris.ui.session_dialogs import RescheduleDialog
+
+    timetable.add_slot(conn, director, SlotInput(school["g1"], school["room_a"], 2, "17:00",
+                                                 "18:30"))
+    page = keep(qtbot, TimetablePage(conn, director))
+    page.resize(1100, 700)
+    page.show()
+    page.mode.setCurrentIndex(page.mode.findData("group"))
+    page.entity.setCurrentIndex(page.entity.findData(school["g1"]))
+    grid = page.grid
+    [slot] = grid.slots
+    session = grid.week[slot.id]
+    assert (session.date, session.status) == ("2026-10-20", "planned")
+    assert page.slot_actions(slot) == ["reschedule", "edit"]
+
+    seen = {}
+
+    def fill(dialog):
+        seen["range"] = (dialog.first, dialog.last)
+        dialog.date.setText("24/10/2026")  # next week: refused
+        dialog.reason.setText("Enseignant en formation")
+        dialog._submit()
+        seen["banner"] = dialog.banner.text()
+        dialog.date.setText("22/10/2026")
+        dialog.start.setCurrentText("18:00")
+        dialog.end.setCurrentText("19:30")
+        dialog.room.setCurrentIndex(dialog.room.findData(school["room_b"]))
+        dialog._submit()
+    auto_exec(monkeypatch, RescheduleDialog, fill)
+    page.run_action("reschedule", slot, session.id)
+    assert seen["range"] == (date(2026, 10, 18), date(2026, 10, 23))  # from today to Friday
+    assert seen["banner"] == t["session.reschedule_week"].format(first="18/10/2026",
+                                                                 last="23/10/2026")
+    [slot] = grid.slots  # the slot is still there, unchanged
+    assert (slot.weekday, slot.start_time, slot.room) == (2, "17:00", "Salle A")
+    assert grid.moved(slot)
+    [makeup] = grid.makeups
+    assert (makeup.date, makeup.start_time, makeup.room, makeup.makeup_of_date) == (
+        "2026-10-22", "18:00", "Salle B", "2026-10-20")
+    assert page.slot_actions(slot) == ["undo", "edit"]
+    assert page.makeup_actions(makeup) == ["undo"]
+    answers = []
+    monkeypatch.setattr(timetable_page, "confirm",
+                        lambda *args: answers.append(args[3]) or False)
+    clicked = []
+    grid.makeup_clicked.connect(clicked.append)
+    qtbot.mouseClick(grid, Qt.MouseButton.LeftButton,
+                     pos=grid.makeup_rect(makeup).center().toPoint())
+    assert clicked == [makeup]
+    assert answers == [t["timetable.action.undo"]]  # its one action asks first; « no » here
+    assert grid.makeups == [makeup]
+
+    page.on.set_value(date(2026, 10, 27))  # next week: as usual
+    assert not grid.moved(grid.slots[0]) and grid.makeups == []
+    page.on.set_value(TODAY)
+
+    monkeypatch.setattr(timetable_page, "confirm", lambda *args: True)
+    page.run_action("undo", None, makeup.makeup_of_session_id)
+    assert not grid.moved(grid.slots[0]) and grid.makeups == []
+    assert grid.week[slot.id].status == "planned"
+
+
+def test_the_desk_can_reschedule_too(qtbot, conn, director, receptionist, school):
+    timetable.add_slot(conn, director, SlotInput(school["g1"], school["room_a"], 2, "17:00",
+                                                 "18:30"))
+    page = keep(qtbot, TimetablePage(conn, receptionist))
+    page.mode.setCurrentIndex(page.mode.findData("group"))
+    page.entity.setCurrentIndex(page.entity.findData(school["g1"]))
+    [slot] = page.grid.slots
+    assert page.slot_actions(slot) == ["reschedule", "edit"]
+    page.on.set_value(date(2026, 11, 24))  # no session generated yet that far: the slot only
+    assert page.slot_actions(page.grid.slots[0]) == ["edit"]
+
+
 def test_double_click_on_grid_prefills_new_slot(qtbot, conn, director, school, monkeypatch):
     page = keep(qtbot, TimetablePage(conn, director))
     page.entity.setCurrentIndex(page.entity.findData(school["room_b"]))

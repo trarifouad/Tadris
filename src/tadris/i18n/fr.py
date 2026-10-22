@@ -274,6 +274,17 @@ t = {
     ),
     "session.group_closed_reason": "Groupe clôturé",
     "session.makeup_needs_cancel": "Seule une séance annulée peut être rattrapée.",
+    "session.reschedule_past": "Seule une séance d'aujourd'hui ou à venir peut être reportée.",
+    "session.reschedule_week": (
+        "La séance de rattrapage doit avoir lieu la même semaine, entre le {first} et le {last}."
+    ),
+    "session.reschedule_same": "Choisissez un autre jour, une autre heure ou une autre salle.",
+    "session.not_rescheduled": "Cette séance n'a pas été reportée.",
+    "session.makeup_held": (
+        "La séance de rattrapage a déjà eu lieu (présences notées) : le report ne peut plus "
+        "être annulé."
+    ),
+    "session.reschedule_undone": "Report annulé",
     "session.makeup_outside": (
         "Le rattrapage doit avoir lieu entre le {start} (début du groupe) et le {end} (fin de "
         "l'année)."
@@ -579,6 +590,7 @@ t = {
     "action.save": "Enregistrer",
     "action.edit": "Modifier",
     "action.back": "← Élèves",
+    "action.close": "Fermer",
     "student_status.active": "Actif",
     "student_status.inactive": "Inactif",
     "students.new": "Nouvel élève",
@@ -675,24 +687,34 @@ t = {
     "session_status.planned": "Prévue",
     "session_status.held": "Tenue",
     "session_status.cancelled": "Annulée",
-    "sessions_page.day": "Jour",
-    "sessions_page.week": "Semaine",
     "sessions_page.today": "Aujourd'hui",
     "sessions_page.all_groups": "Tous les groupes",
     "sessions_page.all_teachers": "Tous les enseignants",
-    "sessions_page.period_day": "{day} {date}",
-    "sessions_page.period_week": "Semaine du {first} au {last}",
-    "sessions_page.col.date": "Date",
-    "sessions_page.col.time": "Horaire",
-    "sessions_page.col.group": "Groupe",
-    "sessions_page.col.room": "Salle",
-    "sessions_page.col.teacher": "Enseignant",
-    "sessions_page.col.status": "Statut",
-    "sessions_page.col.attendance": "Présences",
-    "sessions_page.col.note": "Remarque",
+    "sessions_page.filter.group": "Groupe",
+    "sessions_page.filter.teacher": "Enseignant",
+    "sessions_page.previous_week": "Semaine précédente (Page précédente)",
+    "sessions_page.next_week": "Semaine suivante (Page suivante)",
+    "sessions_page.more": "Plus d'actions",
+    "sessions_page.day_title": "{weekday} {day} {month}",
+    "sessions_page.count_1": "1 séance",
+    "sessions_page.count_n": "{count} séances",
+    "sessions_page.count_cancelled": "{count} annulée(s)",
+    "sessions_page.count_due": "{count} appel(s) à faire",
+    "sessions_page.none": "Aucune séance",
+    "sessions_page.day_empty": "Aucune séance ce jour. Les jours qui en ont portent un point.",
+    "sessions_page.now": "Maintenant · {time}",
+    "sessions_page.state.planned": "Prévue",
+    "sessions_page.state.ongoing": "En cours",
+    "sessions_page.state.due": "Appel à faire",
+    "sessions_page.state.held": "Tenue",
+    "sessions_page.state.cancelled": "Annulée",
+    "sessions_page.take": "Faire l'appel",
+    "sessions_page.view": "Voir l'appel",
+    "sessions_page.roster": "Voir la liste",
+    "sessions_page.substitute_badge": "Remplaçant",
     "sessions_page.empty": (
-        "Aucune séance sur cette période. Les séances sont créées à partir de l'emploi du temps "
-        "pour les 14 prochains jours (« Régénérer »)."
+        "Aucune séance cette semaine. Les séances sont créées à partir de l'emploi du temps "
+        "pour les 14 prochains jours (menu « ⋯ », « Régénérer les séances »)."
     ),
     "sessions_page.recorded": "{done} / {total}",
     "sessions_page.substitute_mark": "remplaçant",
@@ -703,8 +725,8 @@ t = {
     "sessions_page.makeup": "Rattrapage…",
     "sessions_page.substitute": "Remplaçant…",
     "sessions_page.week_sheet": "Feuille de la semaine",
-    "sessions_page.week_sheet_hint": "Choisissez d'abord un groupe dans le filtre.",
-    "sessions_page.regenerate": "Régénérer",
+    "sessions_page.week_sheet_none": "Aucune séance cette semaine",
+    "sessions_page.regenerate": "Régénérer les séances",
     "sessions_page.generated": "{count} séance(s) créée(s) à partir de l'emploi du temps",
     "sessions_page.conflicts": "{count} séance(s) non créée(s) à cause d'un conflit :\n{lines}",
     "sessions_page.conflict_line": "• {date} : {message}",
@@ -724,6 +746,14 @@ t = {
     "makeup_dialog.end": "Fin",
     "makeup_dialog.room": "Salle",
     "makeup_dialog.teacher": "Enseignant",
+    "reschedule_dialog.title": "Reporter la séance",
+    "reschedule_dialog.submit": "Reporter",
+    "reschedule_dialog.caption": (
+        "{what}. Cette séance seulement est remplacée par une séance de rattrapage, entre le "
+        "{first} et le {last} : l'emploi du temps des autres semaines ne change pas."
+    ),
+    "reschedule_dialog.reason": "Motif",
+    "reschedule_dialog.placeholder": "Ex. : enseignant absent, salle indisponible",
     "substitute_dialog.title": "Remplaçant",
     "substitute_dialog.caption": (
         "Pour cette séance seulement : {what}. Choisir l'enseignant du groupe retire le "
@@ -739,7 +769,7 @@ t = {
     "subscriptions.col.group": "Groupe",
     "subscriptions.col.period": "Période",
     "subscriptions.col.price": "Prix",
-    "subscriptions.col.due": "Reste à payer",
+    "subscriptions.col.due": "Reste",
     "subscriptions.col.status": "Statut",
     "subscriptions.summary": "Reste à payer sur les abonnements : {due}",
     "subscriptions.free": "Gratuit",
@@ -774,6 +804,7 @@ t = {
     "payments_tab.received": "Paiement de {amount} enregistré : reçu {number}",
     "payments_tab.voided": "Paiement {number} ({amount}) annulé",
     "payments_tab.col.item": "Désignation",
+    "payments_tab.col.period": "Période",
     "payments_tab.col.due_date": "Échéance",
     "payments_tab.col.amount": "Montant",
     "payments_tab.col.paid": "Payé",
@@ -898,6 +929,22 @@ t = {
         "Le mois {period} de {group} ({price}) sera annulé, ainsi que son montant dû. "
         "Impossible une fois payé en partie ou compté dans un paiement enseignant."
     ),
+    "overview.since": "depuis le {date}",
+    "overview.month": "Mois : {period} · {left}",
+    "overview.left": "reste {amount}",
+    "overview.trial": "Essai : pas encore de mois",
+    "overview.no_month": "Aucun mois en cours : à renouveler",
+    "overview.attendance": "Présences : {rate} · {sessions} séance(s), {absent} absence(s)",
+    "overview.no_attendance": "Présences : aucune séance notée",
+    "overview.no_group": "Dans aucun groupe pour le moment.",
+    "overview.groups": "Groupes et historique ({count})",
+    "overview.sessions": "Toutes les présences ({count})",
+    "overview.subscriptions": "Tous les abonnements ({count})",
+    "overview.payments": "Tous les paiements ({count})",
+    "overview.window.groups": "Groupes",
+    "overview.window.sessions": "Séances et présences",
+    "overview.window.subscriptions": "Abonnements",
+    "overview.window.payments": "Paiements",
     "enrollment_status.trial": "Essai",
     "enrollment_status.active": "Actif",
     "enrollment_status.left": "Sorti",
@@ -1438,7 +1485,25 @@ t = {
         "« Nouveau créneau »."
     ),
     "timetable.nothing": "Ajoutez d'abord des salles et des groupes.",
-    "timetable.hint": "Double-cliquez sur une case vide pour ajouter un créneau.",
+    "timetable.hint": (
+        "Double-cliquez sur une case vide pour ajouter un créneau ; cliquez sur une séance "
+        "pour la reporter cette semaine ou modifier son créneau."
+    ),
+    "timetable.short_day": "{day}. {date}",
+    "timetable.moved_to": "Reportée au {when}",
+    "timetable.cancelled": "Annulée cette semaine",
+    "timetable.makeup": "Rattrapage",
+    "timetable.makeup_of": "Rattrapage du {when}",
+    "timetable.action.reschedule": "Reporter cette séance (cette semaine)…",
+    "timetable.action.undo": "Annuler le report",
+    "timetable.action.edit": "Modifier le créneau (toutes les semaines)…",
+    "timetable.rescheduled": "Séance reportée : rattrapage le {when}",
+    "timetable.undone": "Report annulé : la séance a lieu comme prévu",
+    "timetable.undo_title": "Annuler le report",
+    "timetable.undo_text": (
+        "La séance de rattrapage est annulée et la séance reprend sa place habituelle cette "
+        "semaine."
+    ),
     "backup.not_found": "Sauvegarde introuvable.",
     "backup.failed": "La sauvegarde de la base a échoué ({path}).",
     "backup.warning_title": "Sauvegarde",
@@ -1669,6 +1734,7 @@ t = {
     "day_short.5": "ven.",
     "day_short.6": "sam.",
     "day_short.7": "dim.",
+    "period.short": "{start} au {end}",
     "month_short.1": "janv.",
     "month_short.2": "févr.",
     "month_short.3": "mars",
@@ -1786,6 +1852,8 @@ t = {
     "audit.action.session.generate": "Séances préparées",
     "audit.action.session.makeup": "Rattrapage programmé",
     "audit.action.session.restore": "Séance rétablie",
+    "audit.action.session.reschedule": "Séance reportée",
+    "audit.action.session.undo_reschedule": "Report annulé",
     "audit.action.session.set_teacher": "Remplaçant désigné",
     "audit.action.settings.set": "Paramètre modifié",
     "audit.action.slot.create": "Créneau ajouté",

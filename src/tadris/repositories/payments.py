@@ -24,7 +24,9 @@ _CHARGE_COLUMNS = f"""
     c.description, c.amount, c.due_date, c.status,
     {_CHARGE_PAID} AS paid,
     (SELECT e.group_id FROM subscriptions s JOIN enrollments e ON e.id = s.enrollment_id
-      WHERE s.id = c.subscription_id) AS group_id
+      WHERE s.id = c.subscription_id) AS group_id,
+    (SELECT s.start_date FROM subscriptions s WHERE s.id = c.subscription_id) AS start_date,
+    (SELECT s.end_date FROM subscriptions s WHERE s.id = c.subscription_id) AS end_date
 """
 
 
@@ -71,7 +73,11 @@ def open_charges(conn, student_id: int | None = None) -> list:
                COALESCE(p.paid, 0) AS paid,
                (SELECT e.group_id FROM subscriptions s
                   JOIN enrollments e ON e.id = s.enrollment_id
-                 WHERE s.id = c.subscription_id) AS group_id
+                 WHERE s.id = c.subscription_id) AS group_id,
+               (SELECT s.start_date FROM subscriptions s WHERE s.id = c.subscription_id)
+                 AS start_date,
+               (SELECT s.end_date FROM subscriptions s WHERE s.id = c.subscription_id)
+                 AS end_date
           FROM charges c
           LEFT JOIN ({_PAID_BY_CHARGE}) p ON p.charge_id = c.id
          WHERE c.status = 'open' AND COALESCE(p.paid, 0) < c.amount

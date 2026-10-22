@@ -2,7 +2,7 @@
 
 A greeting with the date and one line on what needs doing. On the left, the money received
 each day of the month (the director only) and the largest debts, each with « Encaisser »; on
-the right, today's sessions on a strip of the opening hours, the groups with the most free
+the right, today's sessions, the groups with the most free
 seats and, for the director, today's backup. A double-click on a debtor opens their page; each
 card's link opens the page that handles the whole list.
 
@@ -565,101 +565,6 @@ class DebtorsCard(ListCard):
 
 # ----- the day -----
 
-class Timeline(QWidget):
-    """The opening hours as a strip: each session a block (dashed when cancelled), and a
-    mark at the time it is now."""
-
-    TRACK = 44
-
-    def __init__(self):
-        super().__init__()
-        self.setFixedHeight(self.TRACK + 26)
-        self._opens, self._closes, self._now = "08:00", "20:00", "00:00"
-        self._sessions: tuple[DashboardSession, ...] = ()
-
-    def set_day(self, opens: str, closes: str, now: str,
-                sessions: tuple[DashboardSession, ...]) -> None:
-        self._opens, self._closes, self._now, self._sessions = opens, closes, now, sessions
-        self.update()
-
-    def paintEvent(self, event) -> None:
-        tk = tokens()
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        track = QRectF(0, 6, self.width(), self.TRACK)
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor(tk["surface_alt"]))
-        painter.drawRoundedRect(track, 6, 6)
-        start, end = minutes(self._opens), minutes(self._closes)
-        span = end - start
-        if span <= 0:
-            return
-
-        def x_of(at: int) -> float:
-            return track.left() + (min(max(at, start), end) - start) / span * track.width()
-
-        lanes = session_lanes(self._sessions)
-        height = (track.height() - 16 - 2 * (max(lanes.values(), default=0))) / (
-            max(lanes.values(), default=0) + 1)
-        for s in self._sessions:
-            left, right = x_of(minutes(s.start_time)), x_of(minutes(s.end_time))
-            block = QRectF(left + 1, track.top() + 8 + lanes[s.id] * (height + 2),
-                           max(right - left - 2, 3), height)
-            if s.status == "cancelled":
-                pen = QPen(QColor(tk["neutral"]), 1, Qt.PenStyle.CustomDashLine)
-                pen.setDashPattern([3, 2])
-                painter.setPen(pen)
-                painter.setBrush(QColor(tk["neutral_bg"]))
-            else:
-                kind = "success" if s.status == "held" else "info"
-                painter.setPen(QPen(QColor(tk[kind]), 1))
-                painter.setBrush(QColor(tk[f"{kind}_bg"]))
-            painter.drawRoundedRect(block, 4, 4)
-
-        mono = QFont("IBM Plex Mono")
-        mono.setPixelSize(11)
-        painter.setFont(mono)
-        painter.setPen(QColor(tk["muted"]))
-        hours = span // 60
-        step = 180 if hours >= 9 else 120 if hours >= 4 else 60
-        first = math.ceil(start / 60) * 60
-        marks = list(range(first, end + 1, step))
-        for at in marks:
-            x = x_of(at)
-            box = QRectF(x - 30, track.bottom() + 4, 60, 16)
-            align = Qt.AlignmentFlag.AlignHCenter
-            if x - track.left() < 20:
-                box, align = QRectF(x, track.bottom() + 4, 60, 16), Qt.AlignmentFlag.AlignLeft
-            elif track.right() - x < 20:
-                box = QRectF(x - 60, track.bottom() + 4, 60, 16)
-                align = Qt.AlignmentFlag.AlignRight
-            painter.drawText(box, align | Qt.AlignmentFlag.AlignVCenter, f"{at // 60:02d}h")
-
-        now = minutes(self._now)
-        if start <= now < end:
-            x = x_of(now)
-            painter.setPen(QPen(QColor(tk["primary"]), 2))
-            painter.drawLine(x, track.top() - 2, x, track.bottom())
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QColor(tk["primary"]))
-            painter.drawEllipse(QRectF(x - 3.5, track.top() - 5, 7, 7))
-
-
-def session_lanes(sessions) -> dict[int, int]:
-    """A lane for each session (0 = the top one), so sessions at the same time in different
-    rooms sit one above the other on the strip."""
-    ends: list[str] = []  # the end of the last session in each lane
-    lanes = {}
-    for s in sorted(sessions, key=lambda s: (s.start_time, s.end_time)):
-        lane = next((i for i, end in enumerate(ends) if end <= s.start_time), len(ends))
-        if lane == len(ends):
-            ends.append(s.end_time)
-        else:
-            ends[lane] = s.end_time
-        lanes[s.id] = lane
-    return lanes
-
-
 def session_state(s: DashboardSession, now: str) -> tuple[str, str]:
     """(label, badge kind): planned, under way, held or cancelled."""
     if s.status == "cancelled":
@@ -677,17 +582,10 @@ class SessionsCard(ListCard):
                          SESSION_ROW_HEIGHT)
         self.more = link(t["dashboard.sessions_link"])
         self.side.addWidget(self.more)
-        self.timeline = Timeline()
-        strip = QWidget()
-        strip_layout = QHBoxLayout(strip)
-        strip_layout.setContentsMargins(PAD, 0, PAD, 8)
-        strip_layout.addWidget(self.timeline)
-        self.body.addWidget(strip)
         self.place_rows()
         self.empty.setContentsMargins(PAD, 4, PAD, 16)
 
     def set_day(self, board: Dashboard) -> None:
-        self.timeline.set_day(board.opens_at, board.closes_at, board.now, board.sessions)
         self.set_items([lambda s=s: self._row(s, board.now) for s in board.sessions])
 
     def _row(self, s: DashboardSession, now: str) -> Row:

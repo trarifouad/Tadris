@@ -5,10 +5,10 @@ from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QLabel, QPushButton, QVBoxLayout, QWidget
 
 from tadris.core.context import UserContext
-from tadris.core.dates import display_date
+from tadris.core.dates import display_date, short_period
 from tadris.core.money import format_dzd
 from tadris.core.permissions import allowed
-from tadris.domain.models import Debt, Payment
+from tadris.domain.models import ChargeDue, Debt, Payment
 from tadris.i18n.fr import t
 from tadris.services import debt, payments, printing, students
 from tadris.ui.payment_dialogs import PaymentDialog, VoidPaymentDialog
@@ -34,6 +34,14 @@ def summary_text(d: Debt) -> str:
                                             credit=format_dzd(d.credit))
 
 
+def period_text(c: ChargeDue) -> str:
+    """A month: « 25 sept. au 25 oct. » (its first day to its end date, as on its line); the
+    fee: « — »."""
+    if c.start_date is None or c.end_date is None:
+        return "—"
+    return short_period(c.start_date, c.end_date)
+
+
 def payment_state(p: Payment) -> str:
     return "voided" if p.voided else "kept"
 
@@ -50,7 +58,8 @@ class PaymentsTab(QWidget):
 
         self.summary = QLabel()
         self.summary.setObjectName("sectionTitle")
-        self.dues = ListSection([t["payments_tab.col.item"], t["payments_tab.col.due_date"],
+        self.dues = ListSection([t["payments_tab.col.item"], t["payments_tab.col.period"],
+                                 t["payments_tab.col.due_date"],
                                  t["payments_tab.col.amount"], t["payments_tab.col.paid"],
                                  t["payments_tab.col.left"]], t["payments_tab.nothing_due"])
         self.dues.toolbar.insertWidget(0, self.summary)
@@ -91,6 +100,7 @@ class PaymentsTab(QWidget):
         self.summary.setText(summary_text(current))
         self.dues.set_rows([[
             item(c.description, item_id=c.id),
+            item(period_text(c), c.start_date or "", align=CENTER),
             item(display_date(c.due_date), c.due_date, align=CENTER),
             item(format_dzd(c.amount), align=CENTER, mono=True),
             item(format_dzd(c.paid), align=CENTER, mono=True),

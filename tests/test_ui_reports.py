@@ -17,7 +17,6 @@ from tadris.ui.pages.dashboard import (
     DashboardPage,
     long_date,
     nice_step,
-    session_lanes,
     share_rows,
     short_date,
 )
@@ -104,14 +103,6 @@ def test_dashboard_texts():
     assert long_date("2026-10-21") == "Mercredi 21 octobre 2026"
     assert short_date("2026-10-02") == "ven. 2 oct."
     assert (nice_step(16500), nice_step(7500), nice_step(0)) == (10000, 5000, 1)
-
-
-def test_sessions_at_the_same_time_take_two_lanes():
-    def at(i, start, end):
-        return DashboardSession(id=i, start_time=start, end_time=end, group_title="G",
-                                room="A", teacher="K", status="planned")
-    assert session_lanes([at(1, "16:30", "18:00"), at(2, "16:30", "18:00"),
-                          at(3, "18:00", "19:30")]) == {1: 0, 2: 1, 3: 0}
 
 
 def test_dashboard_for_the_director_on_the_school(qtbot, conn, director, school):

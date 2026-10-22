@@ -311,6 +311,105 @@ def test_makeup_for_a_cancelled_session(conn, director, school, monday):
                              school.room_b)  # a cancelled makeup frees the place
 
 
+# ----- reschedule one session of the week (« Reporter ») -----
+
+def test_reschedule_moves_one_session_of_the_week(conn, director, school, monday):
+    """Monday 19/10 17:00 in Salle A moves to Wednesday 21/10 18:00 in Salle B; the slot and
+    next Monday stay as they are."""
+    original = sid(conn, "2026-10-19", school.maths)
+    makeup_id = sessions.reschedule(conn, director, original, date(2026, 10, 21), "18h",
+                                    "19h30", school.room_b, "Enseignant en formation")
+    old = sessions.get(conn, director, original)
+    assert (old.status, old.cancellation_reason, old.makeup_id, old.makeup_date) == (
+        "cancelled", "Enseignant en formation", makeup_id, "2026-10-21")
+    m = sessions.get(conn, director, makeup_id)
+    assert (m.date, m.start_time, m.end_time, m.room, m.teacher_id, m.source) == (
+        "2026-10-21", "18:00", "19:30", "Salle B", school.karim, "makeup")
+    assert m.makeup_of_session_id == original
+    [slot] = timetable.group_slots(conn, director, school.maths)  # the timetable is untouched
+    assert (slot.weekday, slot.start_time, slot.room_id) == (1, "17:00", school.room_a)
+    assert session_on(conn, "2026-10-26", school.maths)["status"] == "planned"
+    entry = conn.execute("SELECT old_value, new_value FROM audit_log "
+                         "WHERE action = 'session.reschedule'").fetchone()
+    old_value, new_value = json.loads(entry[0]), json.loads(entry[1])
+    assert (old_value["date"], old_value["start_time"]) == ("2026-10-19", "17:00")
+    assert (new_value["date"], new_value["start_time"], new_value["reason"]) == (
+        "2026-10-21", "18:00", "Enseignant en formation")
+
+
+def test_reschedule_the_same_day_over_its_own_time(conn, director, school, monday):
+    """Half an hour later the same day: the old place is freed first."""
+    original = sid(conn, "2026-10-19", school.maths)
+    makeup_id = sessions.reschedule(conn, director, original, date(2026, 10, 19), "17h30",
+                                    "19h", school.room_a, "Salle occupée par un examen")
+    assert sessions.get(conn, director, makeup_id).start_time == "17:30"
+
+
+def test_reschedule_stays_in_the_week(conn, director, school, monday):
+    original = sid(conn, "2026-10-19", school.maths)
+    for day in (date(2026, 10, 24), date(2026, 10, 17)):  # next Saturday; yesterday
+        with pytest.raises(ValidationError) as exc:
+            sessions.reschedule(conn, director, original, day, "10h", "11h30", school.room_a,
+                                "Report")
+        assert exc.value.message == t["session.reschedule_week"].format(
+            first="18/10/2026", last="23/10/2026")
+    with pytest.raises(ValidationError) as exc:
+        sessions.reschedule(conn, director, original, date(2026, 10, 19), "17h", "18h30",
+                            school.room_a, "Report")
+    assert exc.value.message == t["session.reschedule_same"]
+    with pytest.raises(ValidationError):
+        sessions.reschedule(conn, director, original, date(2026, 10, 21), "17h", "18h30",
+                            school.room_a, "  ")
+    assert session_on(conn, "2026-10-19", school.maths)["status"] == "planned"
+
+
+def test_reschedule_refuses_a_clash_and_changes_nothing(conn, director, school, monday):
+    timetable.add_slot(conn, director, SlotInput(school.physics, school.room_b, 3, "18:00",
+                                                 "19:30"))  # Wednesday 21/10 in Salle B
+    original = sid(conn, "2026-10-19", school.maths)
+    with pytest.raises(BusinessRuleError) as exc:
+        sessions.reschedule(conn, director, original, date(2026, 10, 21), "18h30", "20h",
+                            school.room_b, "Report")
+    assert "Salle B" in exc.value.message
+    assert session_on(conn, "2026-10-19", school.maths)["status"] == "planned"
+    assert conn.execute("SELECT COUNT(*) FROM sessions WHERE source = 'makeup'").fetchone()[0] == 0
+
+
+def test_reschedule_only_a_planned_session_from_today(conn, director, school, monday,
+                                                       monkeypatch):
+    original = sid(conn, "2026-10-19", school.maths)
+    hold(conn, "2026-10-19", school.maths)
+    with pytest.raises(BusinessRuleError) as exc:
+        sessions.reschedule(conn, director, original, date(2026, 10, 21), "10h", "11h30",
+                            school.room_a, "Report")
+    assert exc.value.message == t["session.held"]
+    conn.execute("UPDATE sessions SET status = 'planned' WHERE id = ?", (original,))
+    monkeypatch.setattr(dates, "today", lambda: date(2026, 10, 20))
+    with pytest.raises(BusinessRuleError) as exc:
+        sessions.reschedule(conn, director, original, date(2026, 10, 21), "10h", "11h30",
+                            school.room_a, "Report")
+    assert exc.value.message == t["session.reschedule_past"]
+
+
+def test_undo_a_reschedule(conn, director, school, monday):
+    original = sid(conn, "2026-10-19", school.maths)
+    with pytest.raises(BusinessRuleError) as exc:
+        sessions.undo_reschedule(conn, director, original)
+    assert exc.value.message == t["session.not_rescheduled"]
+    makeup_id = sessions.reschedule(conn, director, original, date(2026, 10, 21), "18h",
+                                    "19h30", school.room_b, "Enseignant absent")
+    sessions.undo_reschedule(conn, director, original)
+    old = sessions.get(conn, director, original)
+    assert (old.status, old.cancellation_reason, old.makeup_id) == ("planned", None, None)
+    assert sessions.get(conn, director, makeup_id).status == "cancelled"
+    # It can be moved again.
+    sessions.reschedule(conn, director, original, date(2026, 10, 22), "18h", "19h30",
+                        school.room_b, "Enseignant absent")
+    assert [row[0] for row in conn.execute(
+        "SELECT action FROM audit_log WHERE action LIKE 'session.%reschedule' ORDER BY id")] == [
+        "session.reschedule", "session.undo_reschedule", "session.reschedule"]
+
+
 def test_makeup_survives_regeneration_and_teacher_changes(conn, director, school, monday):
     cancelled = sid(conn, "2026-10-19", school.maths)
     sessions.cancel(conn, director, cancelled, "Grève")

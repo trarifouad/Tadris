@@ -214,6 +214,29 @@ def build_qss(t: dict, chevron: str = "", check: str = "") -> str:
         border-bottom: 2px solid {t['primary']}; }}
 
     QScrollArea, QScrollArea > QWidget > QWidget {{ background: transparent; }}
+    QFrame#sessionCard {{ background: {t['surface']}; border: 1px solid {t['border']};
+        border-radius: 10px; }}
+    QFrame#sessionCard:hover {{ border-color: {t['border_strong']}; }}
+    QFrame#sessionCard[state="ongoing"] {{ border: 1px solid {t['primary']}; }}
+    QFrame#sessionCard[state="cancelled"] {{ background: transparent;
+        border: 1px dashed {t['border_strong']}; }}
+    QFrame#sessionAccent {{ border-radius: 2px; }}
+    QFrame#sessionAccent[state="planned"] {{ background: {t['info']}; }}
+    QFrame#sessionAccent[state="ongoing"] {{ background: {t['primary']}; }}
+    QFrame#sessionAccent[state="due"] {{ background: {t['warning']}; }}
+    QFrame#sessionAccent[state="held"] {{ background: {t['success']}; }}
+    QFrame#sessionAccent[state="cancelled"] {{ background: {t['faint']}; }}
+    QLabel#cardTime {{ font-family: "IBM Plex Mono"; font-size: 16px; font-weight: 600; }}
+    QLabel#cardTime[struck="true"] {{ color: {t['faint']}; }}
+    QLabel#cardTitle {{ font-size: 14px; font-weight: 600; }}
+    QLabel#cardTitle[struck="true"] {{ color: {t['muted']}; }}
+    QPushButton#iconButton {{ min-width: 36px; max-width: 36px; padding: 0; }}
+    QMenu {{ background: {t['surface']}; border: 1px solid {t['border']}; border-radius: 8px;
+        padding: 4px; }}
+    QMenu::item {{ padding: 7px 24px 7px 12px; border-radius: 5px; }}
+    QMenu::item:selected {{ background: {t['primary_soft']}; color: {t['text']}; }}
+    QMenu::item:disabled {{ color: {t['faint']}; }}
+    QMenu::separator {{ height: 1px; background: {t['border']}; margin: 4px 8px; }}
     QStatusBar {{ background: {t['surface']}; border-top: 1px solid {t['border']}; }}
     QStatusBar QLabel {{ color: {t['muted']}; font-size: 12px; padding: 0 8px; }}
     """

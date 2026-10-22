@@ -80,6 +80,17 @@ def for_student(conn, student_id: int, limit: int | None = None, offset: int = 0
     ).fetchall()
 
 
+def counts_by_enrollment(conn, student_id: int) -> dict[int, dict[str, int]]:
+    """{enrollment id: {status: marks}} for each of the student's enrollments."""
+    counts: dict[int, dict[str, int]] = {}
+    for enrollment_id, status, marks in conn.execute(
+            "SELECT a.enrollment_id, a.status, COUNT(*) FROM attendances a "
+            "JOIN enrollments e ON e.id = a.enrollment_id WHERE e.student_id = ? "
+            "GROUP BY a.enrollment_id, a.status", (student_id,)):
+        counts.setdefault(enrollment_id, {})[status] = marks
+    return counts
+
+
 def counts_for_student(conn, student_id: int) -> dict[str, int]:
     """{status: marks} over the student's whole history."""
     return dict(conn.execute(

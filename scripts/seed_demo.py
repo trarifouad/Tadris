@@ -1,7 +1,7 @@
 """Fill a database with a demo school, lived day by day from the groups' start to today, so
 every page and report has realistic rows.
 
-The school: a year, 7 levels, 6 subjects, 6 rooms, 7 teachers, 14 groups with three weekly
+The school: a year, 7 levels, 6 subjects, 8 rooms, 10 teachers, 34 groups with three weekly
 slots each, about 30 families (55 to 60 students, some inactive). Then, day by day through
 the services, as the desk would: students register and enter their groups on their own day
 (some on trial, a few leave or switch later), months are renewed around their end (most
@@ -81,10 +81,11 @@ def phone(rng: random.Random) -> str:
 LEVELS = ["1AM", "2AM", "3AM", "4AM", "1AS", "2AS", "3AS"]
 SUBJECTS = ["Mathématiques", "Physique", "Sciences", "Français", "Anglais", "Arabe"]
 ROOMS = [("Salle A", 20), ("Salle B", 15), ("Salle C", 25), ("Salle D", 18), ("Labo", 12),
-         ("Salle E", 16)]
+         ("Salle E", 16), ("Salle F", 20), ("Salle G", 18)]
 TEACHERS = [("Karim Haddad", 6000), ("Samia Rahmani", 5500), ("Nabil Cherif", 6000),
             ("Leila Bouzid", 5000), ("Mourad Saidi", 6500), ("Amel Kaci", 5500),
-            ("Rachid Lounis", 6000)]
+            ("Rachid Lounis", 6000), ("Yasmine Ferhat", 5500), ("Hocine Mansouri", 6000),
+            ("Nadia Belkacem", 5000)]
 # (subject, level, group name, teacher index, price, capacity)
 GROUPS = [
     ("Mathématiques", "4AM", "Maths 4AM G1", 0, 3000, 15),
@@ -101,6 +102,26 @@ GROUPS = [
     ("Sciences", "3AM", "Sciences 3AM", 2, 2500, 12),
     ("Arabe", "2AM", "Arabe 2AM", 5, 2000, 16),
     ("Mathématiques", "1AS", "Maths 1AS", 6, 3000, 16),
+    ("Mathématiques", "1AM", "Maths 1AM G2", 7, 2500, 18),
+    ("Physique", "1AM", "Physique 1AM", 1, 2000, 16),
+    ("Anglais", "1AM", "Anglais 1AM", 2, 2000, 18),
+    ("Mathématiques", "2AM", "Maths 2AM", 6, 2500, 18),
+    ("Français", "2AM", "Français 2AM", 8, 2000, 16),
+    ("Sciences", "2AM", "Sciences 2AM", 5, 2000, 15),
+    ("Mathématiques", "3AM", "Maths 3AM", 0, 2500, 16),
+    ("Physique", "3AM", "Physique 3AM", 9, 2500, 15),
+    ("Anglais", "3AM", "Anglais 3AM", 2, 2000, 18),
+    ("Arabe", "4AM", "Arabe 4AM", 8, 2000, 16),
+    ("Anglais", "4AM", "Anglais 4AM", 7, 2000, 16),
+    ("Sciences", "4AM", "Sciences 4AM", 5, 2500, 15),
+    ("Physique", "1AS", "Physique 1AS", 9, 3000, 15),
+    ("Français", "1AS", "Français 1AS", 3, 2500, 16),
+    ("Sciences", "2AS", "Sciences 2AS", 5, 3000, 12),
+    ("Physique", "2AS", "Physique 2AS", 1, 3000, 15),
+    ("Mathématiques", "3AS", "Maths 3AS G2", 4, 4000, 20),
+    ("Anglais", "3AS", "Anglais 3AS", 7, 3000, 15),
+    ("Arabe", "3AS", "Arabe 3AS", 8, 2500, 16),
+    ("Français", "3AS", "Français 3AS", 3, 2500, 16),
 ]
 SLOTS_PER_GROUP = 3
 WEEKEND_STARTS = ["08:30", "10:00", "13:30", "15:00"]

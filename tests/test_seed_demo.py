@@ -43,7 +43,7 @@ def test_seed_fills_phases_4_to_9(tmp_path, capsys):
     assert conn.execute("SELECT COUNT(*) FROM subscriptions WHERE renewal_of_id IS NOT NULL"
                         ).fetchone()[0] > 5
     assert conn.execute("SELECT COUNT(*) FROM students").fetchone()[0] >= 50
-    assert conn.execute("SELECT COUNT(*) FROM class_groups").fetchone()[0] == 14
+    assert conn.execute("SELECT COUNT(*) FROM class_groups").fetchone()[0] == 34
     paid = conn.execute("SELECT COUNT(*) FROM payments").fetchone()[0]
     conn.close()
     assert "registered for the year" in capsys.readouterr().out

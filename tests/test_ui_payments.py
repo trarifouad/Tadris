@@ -127,10 +127,10 @@ def test_tab_lists_what_is_left_to_pay(qtbot, conn, receptionist, amine):
     assert tab.summary.text() == t["payments_tab.summary"].format(
         due="4 000 DA", overdue="4 000 DA", credit="0 DA")
     assert rows(tab.dues.table) == [
-        ["Frais d'inscription 2026-2027", "18/10/2026", "1 000 DA", "0 DA", "1 000 DA"],
-        ["Abonnement M1 du 18/10/2026 au 18/11/2026", "18/10/2026", "3 000 DA", "0 DA",
-         "3 000 DA"]]
-    late = tab.dues.table.item(0, 4).foreground().color()
+        ["Frais d'inscription 2026-2027", "—", "18/10/2026", "1 000 DA", "0 DA", "1 000 DA"],
+        ["Abonnement M1 du 18/10/2026 au 18/11/2026", "18 oct. au 18 nov.", "18/10/2026",
+         "3 000 DA", "0 DA", "3 000 DA"]]
+    late = tab.dues.table.item(0, 5).foreground().color()
     assert late == QColor(tokens()["danger"])  # late amounts in the red pen
     assert tab.history.empty.text() == t["payments_tab.empty"]
     assert shown(tab.receive) and not shown(tab.void)  # void: director only

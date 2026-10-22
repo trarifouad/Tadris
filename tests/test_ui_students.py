@@ -218,8 +218,8 @@ def test_edit_dialog_prefills_and_saves(qtbot, conn, director, amine):
 # ----- detail -----
 
 def test_detail_cards(qtbot, conn, director, amine):
-    """The student (identity, registration, groups, contacts) and the money side by side,
-    the study under them: no tabs left."""
+    """The student (identity, registration, contacts) and the study side by side, the money
+    under them: no tabs left; the whole lists open in windows."""
     from PySide6.QtWidgets import QTabWidget
 
     view = StudentDetailView(conn, director, amine)
@@ -228,20 +228,58 @@ def test_detail_cards(qtbot, conn, director, amine):
     assert view.name.text() == "Benali Amine"
     assert view.number.text() == t["student_detail.number"].format(number="2026-0001")
     assert view.status.kind() == "success"
-    for section in (view.registration, view.groups, view.contacts):
+    for section in (view.registration, view.contacts):
         assert section.isVisibleTo(view)
+    for key, section in (("groups", view.groups), ("sessions", view.attendance),
+                         ("subscriptions", view.subscriptions),
+                         ("payments", view.all_payments)):
+        assert view.windows[key].section is section and not section.isVisibleTo(view)
     assert [b.text() for b in view.money_tabs.buttons] == ["À payer", "Reçus"]
     assert view.money_views.count() == 2
     assert [view.money_views.widget(i) for i in range(2)] == [
         view.payments.dues, view.payments.history]
-    assert [b.text() for b in view.study_tabs.buttons] == ["Séances et présences",
-                                                          "Abonnements"]
-    view.study_tabs.select(1)
-    assert view.study_views.currentWidget() is view.subscriptions
     assert view.contacts.table.isColumnHidden(3) and view.contacts.table.isColumnHidden(4)
     assert table_rows(view.contacts.table)[0][:3] == [
         "Karim Benali", t["relation.father"], "0661 90 25 47"
     ]
+
+
+def test_the_study_card_keeps_one_line_per_group(qtbot, conn, director, amine, monkeypatch):
+    """No list of every session or month on the page: a line per group, and links to the
+    whole lists, which open in a window and refresh the page when it closes."""
+    from tadris.domain.models import GroupInput, TeacherInput
+    from tadris.services import catalog, groups, registrations, school_years, teachers
+    from tadris.services import enrollments as enrollments_service
+    from tadris.ui.pages.student_overview import SectionWindow
+
+    monkeypatch.setattr(dates, "today", lambda: date(2026, 10, 18))
+    year = school_years.create(conn, director, "2026-2027", date(2026, 9, 1), date(2027, 6, 30))
+    level = catalog.create(conn, director, "level", "4AM")
+    teacher = teachers.create(conn, director, TeacherInput("Karim Haddad"), 6000,
+                              date(2026, 9, 1))
+    group_id = groups.create(conn, director, GroupInput(
+        year, level, catalog.create(conn, director, "subject", "Maths"), "M1", 3000, 10,
+        date(2026, 9, 1)), teacher)
+    registrations.register(conn, director, amine, level, 0)
+    view = StudentDetailView(conn, director, amine)
+    qtbot.addWidget(view)
+    assert view.group_lines.lines == [] and not view.group_lines.empty.isHidden()
+    assert view.open_groups.text() == t["overview.groups"].format(count=0)
+    assert not view.enroll.isHidden()
+    opened = []
+
+    def exec_(window):
+        opened.append(window.windowTitle())
+        enrollments_service.enroll(conn, director, amine, group_id)  # done in the window
+        return 1
+    monkeypatch.setattr(SectionWindow, "exec", exec_)
+    click(qtbot, view.open_groups)
+    assert opened == [t["overview.window.groups"]]
+    [line] = view.group_lines.lines  # the page followed
+    assert line.month.text() == t["overview.month"].format(period="18 oct. au 18 nov.",
+                                                           left="reste 3 000 DA")
+    assert line.attendance.text() == t["overview.no_attendance"]
+    assert view.open_subscriptions.text() == t["overview.subscriptions"].format(count=1)
 
 
 def test_receptionist_cannot_deactivate_from_detail(qtbot, conn, receptionist, amine):

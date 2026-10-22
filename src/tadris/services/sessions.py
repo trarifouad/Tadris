@@ -25,7 +25,10 @@ from tadris.services import teachers as teachers_service
 # is skipped and reported, not forced. Pending sessions (see repositories.sessions) are
 # discarded and generated again when the timetable, a teacher or the holidays change.
 # A planned session can be cancelled (with a reason) and restored; a cancelled one gets one
-# makeup session; any session can be given a substitute teacher. Clashes are checked here
+# makeup session; any session can be given a substitute teacher. A session of the week can
+# also be rescheduled in one step (« Reporter », from the timetable): cancelled with its
+# reason and replaced by a makeup the same week (Saturday to Friday), from today on; the
+# timetable itself never changes. Clashes are checked here
 # first, with a message naming them; the triggers stay the last line of defense.
 
 HORIZON_DAYS = 14
@@ -240,45 +243,126 @@ def _check_free(conn, group_id: int, room_id: int, teacher_id: int, day: str, st
                     student=busy[0]["student"], others=others)
 
 
-def schedule_makeup(conn, ctx: UserContext, session_id: int, day: date, start_time: str,
-                    end_time: str, room_id: int, teacher_id: int | None = None) -> int:
-    """A makeup for a cancelled session: another date and time, a room, the same group. The
-    teacher defaults to the cancelled session's. One makeup per cancelled session."""
-    require(ctx, "session.manage")
+def _check_makeup_time(conn, start_time: str, end_time: str) -> tuple[str, str]:
     start, end = dates.parse_time(start_time), dates.parse_time(end_time)
     if end <= start:
         raise ValidationError(t["slot.times_order"])
     opens_at, closes_at = settings.school_hours(conn)
     if start < opens_at or end > closes_at:
         raise ValidationError(t["slot.outside_hours"].format(opens=opens_at, closes=closes_at))
+    return start, end
+
+
+def _insert_makeup(conn, row, iso: str, start: str, end: str, room_id: int,
+                   teacher_id: int | None) -> tuple[int, int]:
+    """Inside the caller's transaction: checks the group, the date, the room, the teacher and
+    every clash, then inserts the makeup of the cancelled session `row`. Returns its id and
+    its teacher."""
+    group = groups_repo.get(conn, row["group_id"], _today())
+    if group["status"] == "closed":
+        raise BusinessRuleError(t["db.group_closed"])
+    if not group["start_date"] <= iso <= group["year_end"]:
+        raise ValidationError(t["session.makeup_outside"].format(
+            start=dates.display_date(group["start_date"]),
+            end=dates.display_date(group["year_end"])))
+    room = rooms_service.require_active(conn, room_id)
+    enrolled = repo.enrolled_on(conn, row["group_id"], iso)
+    if enrolled > room["capacity"]:
+        raise BusinessRuleError(t["room.too_small"].format(
+            room=room["name"], room_capacity=room["capacity"], enrolled=enrolled))
+    teacher = row["teacher_id"] if teacher_id is None else teacher_id
+    teachers_service.require_active(conn, teacher)
+    _check_free(conn, row["group_id"], room_id, teacher, iso, start, end, None)
+    makeup_id = repo.insert_makeup(conn, row["id"], row["group_id"], room_id, teacher, iso,
+                                   start, end)
+    return makeup_id, teacher
+
+
+def schedule_makeup(conn, ctx: UserContext, session_id: int, day: date, start_time: str,
+                    end_time: str, room_id: int, teacher_id: int | None = None) -> int:
+    """A makeup for a cancelled session: another date and time, a room, the same group. The
+    teacher defaults to the cancelled session's. One makeup per cancelled session."""
+    require(ctx, "session.manage")
+    start, end = _check_makeup_time(conn, start_time, end_time)
     with atomic(conn):
         row = _require_row(conn, session_id)
         if row["status"] != "cancelled":
             raise BusinessRuleError(t["session.makeup_needs_cancel"])
         if row["makeup_id"] is not None:
             raise BusinessRuleError(t["session.has_makeup"])
-        group = groups_repo.get(conn, row["group_id"], _today())
-        if group["status"] == "closed":
-            raise BusinessRuleError(t["db.group_closed"])
         iso = dates.iso(day)
-        if not group["start_date"] <= iso <= group["year_end"]:
-            raise ValidationError(t["session.makeup_outside"].format(
-                start=dates.display_date(group["start_date"]),
-                end=dates.display_date(group["year_end"])))
-        room = rooms_service.require_active(conn, room_id)
-        enrolled = repo.enrolled_on(conn, row["group_id"], iso)
-        if enrolled > room["capacity"]:
-            raise BusinessRuleError(t["room.too_small"].format(
-                room=room["name"], room_capacity=room["capacity"], enrolled=enrolled))
-        teacher = row["teacher_id"] if teacher_id is None else teacher_id
-        teachers_service.require_active(conn, teacher)
-        _check_free(conn, row["group_id"], room_id, teacher, iso, start, end, None)
-        makeup_id = repo.insert_makeup(conn, session_id, row["group_id"], room_id, teacher, iso,
-                                       start, end)
+        makeup_id, teacher = _insert_makeup(conn, row, iso, start, end, room_id, teacher_id)
         audit.log(conn, ctx, "session.makeup", "sessions", makeup_id, new={
             "makeup_of_session_id": session_id, "date": iso, "start_time": start,
             "end_time": end, "room_id": room_id, "teacher_id": teacher})
         return makeup_id
+
+
+def reschedule(conn, ctx: UserContext, session_id: int, day: date, start_time: str,
+               end_time: str, room_id: int, reason: str, teacher_id: int | None = None) -> int:
+    """Move one planned session to another day, time or room of the same week (Saturday to
+    Friday), from today on: it is cancelled with `reason` and a makeup takes its place, in
+    one transaction. The timetable slot is not touched. Returns the makeup's id."""
+    require(ctx, "session.manage")
+    reason = clean(reason)
+    if not reason:
+        raise ValidationError(t["session.reason_required"])
+    start, end = _check_makeup_time(conn, start_time, end_time)
+    with atomic(conn):
+        row = _require_row(conn, session_id)
+        if row["status"] == "cancelled":
+            raise BusinessRuleError(t["session.already_cancelled"])
+        if row["status"] == "held" or row["attendance_count"]:
+            raise BusinessRuleError(t["session.held"])
+        today = dates.today()
+        if row["date"] < dates.iso(today):
+            raise BusinessRuleError(t["session.reschedule_past"])
+        first = dates.week_start(date.fromisoformat(row["date"]))
+        last = first + timedelta(days=6)
+        if not max(first, today) <= day <= last:
+            raise ValidationError(t["session.reschedule_week"].format(
+                first=dates.display_date(dates.iso(max(first, today))),
+                last=dates.display_date(dates.iso(last))))
+        iso = dates.iso(day)
+        if (iso, start, end, room_id) == (row["date"], row["start_time"], row["end_time"],
+                                          row["room_id"]) and teacher_id in (None,
+                                                                             row["teacher_id"]):
+            raise ValidationError(t["session.reschedule_same"])
+        repo.cancel(conn, session_id, reason)  # first: the old place no longer clashes
+        makeup_id, teacher = _insert_makeup(conn, row, iso, start, end, room_id, teacher_id)
+        audit.log(conn, ctx, "session.reschedule", "sessions", session_id,
+                  old={"status": row["status"], "date": row["date"],
+                       "start_time": row["start_time"], "end_time": row["end_time"],
+                       "room_id": row["room_id"], "teacher_id": row["teacher_id"]},
+                  new={"status": "cancelled", "reason": reason, "makeup_id": makeup_id,
+                       "date": iso, "start_time": start, "end_time": end,
+                       "room_id": room_id, "teacher_id": teacher})
+        return makeup_id
+
+
+def undo_reschedule(conn, ctx: UserContext, session_id: int) -> None:
+    """The session takes place as planned after all: its makeup (not held yet) is cancelled
+    and the session restored, in one transaction."""
+    require(ctx, "session.manage")
+    with atomic(conn):
+        row = _require_row(conn, session_id)
+        if row["status"] != "cancelled" or row["makeup_id"] is None:
+            raise BusinessRuleError(t["session.not_rescheduled"])
+        makeup = _require_row(conn, row["makeup_id"])
+        if makeup["status"] == "held" or makeup["attendance_count"]:
+            raise BusinessRuleError(t["session.makeup_held"])
+        if row["date"] < _today():
+            raise BusinessRuleError(t["session.reschedule_past"])
+        if row["group_status"] == "closed":
+            raise BusinessRuleError(t["db.group_closed"])
+        repo.cancel(conn, makeup["id"], t["session.reschedule_undone"])
+        _check_free(conn, row["group_id"], row["room_id"], row["teacher_id"], row["date"],
+                    row["start_time"], row["end_time"], session_id)
+        repo.restore(conn, session_id)
+        audit.log(conn, ctx, "session.undo_reschedule", "sessions", session_id,
+                  old={"status": "cancelled", "reason": row["cancellation_reason"],
+                       "makeup_id": makeup["id"]},
+                  new={"status": "planned"})
 
 
 def set_teacher(conn, ctx: UserContext, session_id: int, teacher_id: int) -> None:

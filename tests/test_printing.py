@@ -187,9 +187,9 @@ def test_print_buttons(qtbot, themed, conn, desk, school, monkeypatch, tmp_path)
 
     page = SessionsView(conn, desk)
     qtbot.addWidget(page)
-    assert not page.week_sheet.isEnabled()  # a group must be chosen first
     page.group.setCurrentIndex(page.group.findData(school["maths"]))
-    assert page.week_sheet.isEnabled()
-    qtbot.mouseClick(page.week_sheet, Qt.MouseButton.LeftButton)
+    page.fill_week_sheet()  # one entry per group with sessions this week
+    [entry] = page.week_sheet.actions()
+    entry.trigger()
     assert opened[-1].name == "presence-semaine_m1-co_2026-10-17.pdf"
     assert len(logged(conn)) == 2

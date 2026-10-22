@@ -447,6 +447,13 @@ class AttendanceSummary:
     def total(self) -> int:
         return self.present + self.late + self.absent + self.excused
 
+    @property
+    def rate_bp(self) -> int | None:
+        """(present + late) / (present + late + absent), in basis points, as in the reports;
+        an excused absence is left out. None before any mark counts."""
+        counted = self.present + self.late + self.absent
+        return None if counted == 0 else (self.present + self.late) * 10000 // counted
+
 
 # ----- payments and debt -----
 
@@ -464,6 +471,8 @@ class ChargeDue:
     due_date: str
     paid: int  # allocations of payments not voided
     group_id: int | None  # the month's group; None for the fee
+    start_date: str | None = None  # a month: its first day; None for the fee
+    end_date: str | None = None  # a month: the day after its last day (half-open)
 
     @property
     def due(self) -> int:

@@ -1,4 +1,5 @@
-"""Dialogs of the Présences page: cancel a session, schedule its makeup, set a substitute."""
+"""Dialogs of the Présences page: cancel a session, schedule its makeup, set a substitute; and
+of the timetable: move one session to another day of its week (« Reporter »)."""
 
 from datetime import date, timedelta
 
@@ -79,6 +80,47 @@ class MakeupDialog(FormDialog):
             self._conn, self._ctx, self._session.id, required_date(self.date),
             read_time(self.start), read_time(self.end), required_id(self.room),
             required_id(self.teacher))
+
+
+class RescheduleDialog(FormDialog):
+    """One session of the week elsewhere, with a reason: it is cancelled and a makeup takes
+    its place, the same week (from today). The timetable does not change."""
+
+    def __init__(self, conn, ctx: UserContext, session: Session, parent=None):
+        super().__init__(t["reschedule_dialog.title"], t["reschedule_dialog.submit"],
+                         width=560, parent=parent)
+        self._conn, self._ctx, self._session = conn, ctx, session
+        self.makeup_id: int | None = None
+        opens_at, closes_at = settings.school_hours(conn)
+        first = dates.week_start(date.fromisoformat(session.date))
+        self.first, self.last = max(first, dates.today()), first + timedelta(days=6)
+        self.reason = QLineEdit()
+        self.reason.setPlaceholderText(t["reschedule_dialog.placeholder"])
+        self.date = DateLineEdit(minimum=self.first, maximum=self.last)
+        self.date.set_value(date.fromisoformat(session.date))
+        self.start = time_combo(session.start_time, opens_at, closes_at)
+        self.end = time_combo(session.end_time, opens_at, closes_at)
+        self.room = id_combo([(r.name, r.id) for r in rooms.list_rooms(conn, ctx, True)],
+                             session.room_id)
+        self.teacher = teacher_combo(conn, ctx, session.teacher_id)
+        note = caption(t["reschedule_dialog.caption"].format(
+            what=session_text(session), first=dates.display_date(dates.iso(self.first)),
+            last=dates.display_date(dates.iso(self.last))))
+        note.setWordWrap(True)
+        self.add(note)
+        self.add(labeled(t["reschedule_dialog.reason"], self.reason, required=True))
+        self.add(row(labeled(t["makeup_dialog.date"], self.date, required=True),
+                     labeled(t["makeup_dialog.start"], self.start, required=True),
+                     labeled(t["makeup_dialog.end"], self.end, required=True)))
+        self.add(row(labeled(t["makeup_dialog.room"], self.room, required=True),
+                     labeled(t["makeup_dialog.teacher"], self.teacher, required=True)))
+        self.finish(self.reason)
+
+    def save(self) -> None:
+        self.makeup_id = sessions.reschedule(
+            self._conn, self._ctx, self._session.id, required_date(self.date),
+            read_time(self.start), read_time(self.end), required_id(self.room),
+            self.reason.text(), required_id(self.teacher))
 
 
 class SubstituteDialog(FormDialog):

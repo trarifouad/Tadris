@@ -28,6 +28,7 @@ def to_charge(row) -> ChargeDue:
         id=row["id"], kind="registration" if row["registration_id"] is not None
         else "subscription", description=row["description"], amount=row["amount"],
         due_date=row["due_date"], paid=row["paid"], group_id=row["group_id"],
+        start_date=row["start_date"], end_date=row["end_date"],
     )
 
 

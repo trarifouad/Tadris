@@ -1,45 +1,31 @@
 """The student's Paiements tab: what is left to pay, line by line, and every payment with its
 receipt, latest first, a page at a time."""
 
-from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QLabel, QPushButton, QVBoxLayout, QWidget
+from datetime import date
+
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
 from tadris.core.context import UserContext
-from tadris.core.dates import display_date, short_period
+from tadris.core.dates import display_date
 from tadris.core.money import format_dzd
 from tadris.core.permissions import allowed
-from tadris.domain.models import ChargeDue, Debt, Payment
+from tadris.domain.models import Payment
 from tadris.i18n.fr import t
 from tadris.services import debt, payments, printing, students
+from tadris.ui.pages.dues_view import DuesView, StatBlocks, buckets, tabular
 from tadris.ui.payment_dialogs import PaymentDialog, VoidPaymentDialog
-from tadris.ui.theme.status import kind_for
 from tadris.ui.widgets import common
 from tadris.ui.widgets.common import ask, primary_button, toast, variant_button
 from tadris.ui.widgets.forms import ListSection
 from tadris.ui.widgets.tables import (
-    CENTER,
     PAGE_SIZE,
+    RIGHT,
     MoreOnScroll,
     fit_columns,
     frozen_columns,
     item,
 )
-
-
-def summary_text(d: Debt) -> str:
-    if d.balance < 0:
-        return t["payments_tab.summary_credit"].format(credit=format_dzd(-d.balance))
-    return t["payments_tab.summary"].format(due=format_dzd(d.due),
-                                            overdue=format_dzd(d.overdue),
-                                            credit=format_dzd(d.credit))
-
-
-def period_text(c: ChargeDue) -> str:
-    """A month: « 25 sept. au 25 oct. » (its first day to its end date, as on its line); the
-    fee: « — »."""
-    if c.start_date is None or c.end_date is None:
-        return "—"
-    return short_period(c.start_date, c.end_date)
 
 
 def payment_state(p: Payment) -> str:
@@ -56,18 +42,18 @@ class PaymentsTab(QWidget):
         self._student_id = student_id
         self._payments: dict[int, Payment] = {}
 
-        self.summary = QLabel()
-        self.summary.setObjectName("sectionTitle")
-        self.dues = ListSection([t["payments_tab.col.item"], t["payments_tab.col.period"],
-                                 t["payments_tab.col.due_date"],
-                                 t["payments_tab.col.amount"], t["payments_tab.col.paid"],
-                                 t["payments_tab.col.left"]], t["payments_tab.nothing_due"])
-        self.dues.toolbar.insertWidget(0, self.summary)
-        self.receive = self.dues.add_button(primary_button(t["payments_tab.receive"]), end=True)
+        # What is owed, by urgency, then the lines (see dues_view).
+        self.stats = StatBlocks()
+        self.receive = primary_button(t["payments_tab.receive"])
         self.receive.setDefault(False)
-        self.receive.clicked.connect(self._receive)
+        self.receive.clicked.connect(lambda: self._receive())
         self.receive.setVisible(allowed(ctx, "payment.record"))
-        fit_columns(self.dues.table, stretch=(0,))
+        self.head = QHBoxLayout()
+        self.head.setSpacing(12)
+        self.head.addWidget(self.stats, 1)
+        self.head.addWidget(self.receive, 0, Qt.AlignmentFlag.AlignTop)
+        self.dues = DuesView(allowed(ctx, "payment.record"))
+        self.dues.pay.connect(self._receive)
 
         history_title = QLabel(t["payments_tab.history"])
         history_title.setObjectName("sectionTitle")
@@ -91,22 +77,16 @@ class PaymentsTab(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 16, 0, 0)
         layout.setSpacing(16)
-        layout.addWidget(self.dues, 1)
+        layout.addLayout(self.head)
+        layout.addWidget(self.dues)
         layout.addWidget(self.history, 1)
         self.refresh()
 
     def refresh(self) -> None:
         current = debt.for_student(self._conn, self._ctx, self._student_id)
-        self.summary.setText(summary_text(current))
-        self.dues.set_rows([[
-            item(c.description, item_id=c.id),
-            item(period_text(c), c.start_date or "", align=CENTER),
-            item(display_date(c.due_date), c.due_date, align=CENTER),
-            item(format_dzd(c.amount), align=CENTER, mono=True),
-            item(format_dzd(c.paid), align=CENTER, mono=True),
-            item(format_dzd(c.due), align=CENTER, mono=True,
-                 tone="danger" if c.due_date <= current.as_of else None),
-        ] for c in current.charges])
+        today = date.fromisoformat(current.as_of)
+        self.stats.set_buckets(buckets(current, today))
+        self.dues.set_debt(current, today)
         # The latest page, or as many as were shown: a payment voided far down stays in view.
         self._total = payments.count_for_student(self._conn, self._ctx, self._student_id)
         listed = payments.for_student(self._conn, self._ctx, self._student_id,
@@ -131,13 +111,17 @@ class PaymentsTab(QWidget):
     @staticmethod
     def _cells(p: Payment) -> list:
         state = payment_state(p)
+        amount = item(format_dzd(p.amount), align=RIGHT)
+        amount.setFont(tabular())
+        # Green is kept for the student's and the groups' status: a payment kept is grey.
         return [
             item(f"{display_date(p.paid_at)} {p.paid_at[11:16]}", p.paid_at, item_id=p.id),
             item(p.receipt_number or "—", mono=True),
-            item(format_dzd(p.amount), align=CENTER, mono=True),
+            amount,
             item(t[f"payment_method.{p.method}"]),
             item(p.cashier),
-            item(t[f"payment_state.{state}"], kind=kind_for("payment", state)),
+            item(t[f"payment_state.{state}"],
+                 kind="danger" if state == "voided" else "neutral"),
         ]
 
     def selected(self) -> Payment | None:
@@ -157,9 +141,13 @@ class PaymentsTab(QWidget):
         self.changed.emit()
         toast(self, message)
 
-    def _receive(self) -> None:
+    def _receive(self, charge_ids: list[int] | None = None) -> None:
+        """charge_ids: the lines to pay (a row's « Encaisser », the ticked ones); by default
+        what is late or due soon."""
         student = students.get(self._conn, self._ctx, self._student_id)
-        dialog = PaymentDialog(self._conn, self._ctx, student, parent=self)
+        dialog = PaymentDialog(self._conn, self._ctx, student,
+                               preselect=self.dues.urgent_ids() if charge_ids is None
+                               else charge_ids, parent=self)
         if not ask(dialog):
             return
         p = payments.get(self._conn, self._ctx, dialog.payment_id)

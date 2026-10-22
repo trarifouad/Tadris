@@ -274,7 +274,8 @@ def test_receptionist_cannot_create_groups(qtbot, conn, receptionist, school):
     assert page.list.new_group.isHidden()
     page.open(school["g1"])
     detail = page.detail
-    assert detail.edit.isHidden() and detail.change_teacher.isHidden()
+    assert detail.edit.isHidden() and detail.more.isHidden()
+    assert not detail.change_teacher.isVisible()
     assert visible(detail.add_slot)  # the front desk manages the timetable
 
 
@@ -327,15 +328,16 @@ def test_group_dialog_starts_with_the_default_price(qtbot, conn, director, schoo
 
 def test_group_detail_change_teacher_and_close(qtbot, conn, director, school, monkeypatch):
     view = keep(qtbot, GroupDetailView(conn, director, school["g1"]))
-    assert view.teacher.text() == t["group_detail.teacher"].format(teacher="Karim Haddad")
+    assert [r[0] for r in rows(view.history.table)] == ["Karim Haddad"]
+    assert visible(view.more)
     auto_exec(monkeypatch, ChangeTeacherDialog, lambda d: (
         d.valid_from.set_value(date(2026, 11, 1)), d.submit.click()))
-    click(qtbot, view.change_teacher)
+    view.change_teacher.trigger()
     assert [r[0] for r in rows(view.history.table)] == ["Samia Rahmani", "Karim Haddad"]
     monkeypatch.setattr(groups_page, "confirm", lambda *a: True)
-    click(qtbot, view.close_group)
+    view.close_group.trigger()
     assert view.status.kind() == "neutral"
-    assert view.close_group.isHidden() and visible(view.reopen)
+    assert not view.close_group.isVisible() and view.reopen.isVisible()
     assert view.add_slot.isHidden()
 
 
@@ -348,6 +350,17 @@ def test_group_detail_slots(qtbot, conn, director, school, monkeypatch):
         d.submit.click()))
     click(qtbot, view.add_slot)
     assert rows(view.slots.table) == [["Mardi", "17:00 – 18:30", "Salle A", "18/10/2026"]]
+
+
+def test_group_detail_header_shows_price_and_places(qtbot, conn, director, school):
+    lab = rooms.create(conn, director, "Labo", 8)
+    timetable.add_slot(conn, director, SlotInput(school["g1"], lab, 2, "17:00", "18:30"))
+    view = keep(qtbot, GroupDetailView(conn, director, school["g1"]))
+    note = view.header.note
+    assert note.wordWrap() and visible(note)
+    assert note.text() == " · ".join([  # no teacher, no start date: they are elsewhere
+        t["group_detail.price"].format(price=format_dzd(3000)),
+        t["group_detail.places"].format(enrolled=0, seats=8)])  # the room's 8, not 12
 
 
 # ----- slot dialog -----

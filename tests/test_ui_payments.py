@@ -124,14 +124,17 @@ def make_dialog(qtbot, conn, ctx, student_id) -> PaymentDialog:
 
 def test_tab_lists_what_is_left_to_pay(qtbot, conn, receptionist, amine):
     tab = make_tab(qtbot, conn, receptionist, amine)
-    assert tab.summary.text() == t["payments_tab.summary"].format(
-        due="4 000 DA", overdue="4 000 DA", credit="0 DA")
-    assert rows(tab.dues.table) == [
-        ["Frais d'inscription 2026-2027", "—", "18/10/2026", "1 000 DA", "0 DA", "1 000 DA"],
-        ["Abonnement M1 du 18/10/2026 au 18/11/2026", "18 oct. au 18 nov.", "18/10/2026",
-         "3 000 DA", "0 DA", "3 000 DA"]]
-    late = tab.dues.table.item(0, 5).foreground().color()
-    assert late == QColor(tokens()["danger"])  # late amounts in the red pen
+    assert tab.stats.isHidden()  # no credit: no block at all
+    late = tab.dues.groups["late"]
+    assert late.header.text() == "En retard · 2 échéances · 4 000 DA ▾"
+    # tick · item (the group's name, not the sentence) · period · due date · left · action
+    assert rows(late.table) == [
+        ["", "Frais d'inscription 2026-2027", "—", "18/10/2026", "1 000 DA", ""],
+        ["", "M1", "18 oct. → 18 nov.", "18/10/2026", "3 000 DA", ""]]
+    assert late.table.item(1, 1).toolTip() == "Abonnement M1 du 18/10/2026 au 18/11/2026"
+    color = late.table.item(0, 4).foreground().color()
+    assert color == QColor(tokens()["danger"])  # late amounts in the red pen
+    assert tab.dues.groups["soon"].isHidden() and tab.dues.groups["later"].isHidden()
     assert tab.history.empty.text() == t["payments_tab.empty"]
     assert shown(tab.receive) and not shown(tab.void)  # void: director only
 
@@ -139,8 +142,48 @@ def test_tab_lists_what_is_left_to_pay(qtbot, conn, receptionist, amine):
 def test_tab_with_credit(qtbot, conn, director, amine):
     payments.record(conn, director, amine, 5000, "cash")
     tab = make_tab(qtbot, conn, director, amine)
-    assert tab.summary.text() == t["payments_tab.summary_credit"].format(credit="1 000 DA")
-    assert shown(tab.dues.empty) and tab.dues.table.isHidden()
+    assert shown(tab.stats.credit) and tab.stats.credit.value.text() == "1 000 DA"
+    assert shown(tab.dues.empty)
+    assert all(group.isHidden() for group in tab.dues.groups.values())
+
+
+def test_lines_are_grouped_and_ticked_to_pay(qtbot, conn, director, receptionist, amine,
+                                             monkeypatch):
+    """Late and due soon open, to come folded; ticking sums the selection; « Encaisser la
+    sélection », a row's « Encaisser » and « Encaisser un paiement » open the payment
+    dialog with those lines ticked."""
+    [month] = subscriptions.for_student(conn, director, amine)
+    subscriptions.renew(conn, director, month.id)  # 18/11: to come
+    payments.record(conn, director, amine, 1500, "cash")  # fee 1 000, month 500 of 3 000
+    tab = make_tab(qtbot, conn, receptionist, amine)
+    late, later = tab.dues.groups["late"], tab.dues.groups["later"]
+    assert rows(late.table) == [["", "M1", "18 oct. → 18 nov.", "18/10/2026",
+                                 "2 500 / 3 000 DA", ""]]  # paid in part
+    assert later.header.text() == "À venir · 1 échéance · 3 000 DA ▸"  # folded
+    assert later.table.isHidden()
+    later.header.click()
+    assert not later.table.isHidden()
+    assert tab.dues.bar.isHidden()
+    later.table.item(0, 0).setCheckState(Qt.CheckState.Checked)
+    late.table.item(0, 0).setCheckState(Qt.CheckState.Checked)
+    assert not tab.dues.bar.isHidden()
+    assert tab.dues.bar_text.text() == "2 échéances sélectionnées · total 5 500 DA"
+
+    seen = []
+
+    def fill(dialog):
+        seen.append((sorted(dialog._checked), dialog.choose.isChecked(), dialog.amount.text()))
+        return 0
+    monkeypatch.setattr(PaymentDialog, "exec", fill)
+    click(qtbot, tab.dues.pay_selection)
+    click(qtbot, tab.receive)  # what is late or due soon, ticked
+    late.table.cellWidget(0, 5).click()  # one line
+    month_now, month_next = late.charges[0].id, later.charges[0].id
+    assert seen == [
+        (sorted([month_now, month_next]), True, "5 500 DA"),
+        ([month_now], True, "2 500 DA"),
+        ([month_now], True, "2 500 DA"),
+    ]
 
 
 # ----- the payment dialog -----
@@ -224,7 +267,7 @@ def test_receive_records_and_prints_the_receipt(qtbot, conn, receptionist, amine
     assert line[1:] == ["R2026-00001", "2 500 DA", "Espèces", "accueil", "Encaissé"]
     assert [p.name for p in documents] == ["recu_R2026-00001.pdf"]
     assert documents[0].exists()
-    assert tab.summary.text().startswith("Reste à payer 1 500 DA")
+    assert tab.dues.groups["late"].header.text() == "En retard · 1 échéance · 1 500 DA ▾"
     assert changed == [True]
 
 
@@ -273,7 +316,7 @@ def test_director_voids_a_payment(qtbot, conn, director, amine, monkeypatch):
     click(qtbot, tab.void)
     assert rows(tab.history.table)[0][5] == "Annulé"
     assert payments.get(conn, director, payment_id).voided
-    assert tab.summary.text().startswith("Reste à payer 4 000 DA")
+    assert tab.dues.groups["late"].header.text() == "En retard · 2 échéances · 4 000 DA ▾"
     tab.history.table.selectRow(0)
     assert not tab.void.isEnabled()  # once only
 

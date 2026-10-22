@@ -1,11 +1,13 @@
-from PySide6.QtCore import QTimer, Signal
+from PySide6.QtCore import QSize, QTimer, Signal
+from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMenu,
     QPushButton,
-    QTabWidget,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -18,10 +20,10 @@ from tadris.core.permissions import allowed
 from tadris.core.text import fold
 from tadris.domain.models import Group
 from tadris.i18n.fr import t
-from tadris.services import catalog, groups, school_years, subscriptions, timetable
+from tadris.services import catalog, groups, school_years, timetable
 from tadris.ui.group_dialogs import ChangeTeacherDialog, GroupDialog, SlotDialog, day_name
 from tadris.ui.pages.group_students_tab import GroupStudentsTab
-from tadris.ui.subscription_dialogs import BulkRenewDialog
+from tadris.ui.theme import icon
 from tadris.ui.theme.status import kind_for
 from tadris.ui.widgets.common import (
     Badge,
@@ -32,9 +34,10 @@ from tadris.ui.widgets.common import (
     toast,
     variant_button,
 )
-from tadris.ui.widgets.forms import HeaderCard, ListDetailPage, ListSection, caption, padded
+from tadris.ui.widgets.compact import compact_list, hide_empty_columns, section_card, share_width
+from tadris.ui.widgets.forms import HeaderCard, ListDetailPage, ListSection, caption
 from tadris.ui.widgets.inputs import FilterButton, fill_combo, id_combo
-from tadris.ui.widgets.tables import CENTER, item
+from tadris.ui.widgets.tables import CENTER, fit_columns, item
 
 SEARCH_DELAY_MS = 250
 SEARCH_WIDTH = 420
@@ -175,6 +178,9 @@ class GroupListView(QWidget):
 
 
 class GroupDetailView(QWidget):
+    """The group in its header (every detail, wrapping), its students on the left, its
+    slots and teachers on the right. The rare actions are behind « ⋯ »."""
+
     back = Signal()
 
     def __init__(self, conn, ctx: UserContext, group_id: int):
@@ -197,24 +203,27 @@ class GroupDetailView(QWidget):
         self.header = HeaderCard()
         self.status = self.header.add_meta(Badge())
         self.meta = self.header.add_meta(caption())
-        self.teacher = self.header.add_meta(caption())
-        self.price = self.header.add_meta(QLabel())
-        self.price.setObjectName("mono")
-        self.places = self.header.add_meta(caption())
-        self.starts = self.header.add_meta(caption())
         self.header.close_meta()
         self.edit = self.header.add_action(QPushButton(t["action.edit"]))
         self.edit.clicked.connect(self._edit)
-        self.change_teacher = self.header.add_action(
-            QPushButton(t["group_detail.change_teacher"]))
-        self.change_teacher.clicked.connect(self._change_teacher)
-        self.close_group = self.header.add_action(
-            variant_button(t["group_detail.close"], "danger"))
-        self.close_group.clicked.connect(self._close)
-        self.reopen = self.header.add_action(QPushButton(t["group_detail.reopen"]))
-        self.reopen.clicked.connect(self._reopen)
-        self.renew = self.header.add_action(QPushButton(t["group_detail.renew"]))
-        self.renew.clicked.connect(self._renew)
+        # The rare actions, out of reach of a stray click: « ⋯ » (closing then confirms).
+        self.change_teacher = QAction(t["group_detail.change_teacher"], self)
+        self.change_teacher.triggered.connect(self._change_teacher)
+        self.close_group = QAction(t["group_detail.close"], self)
+        self.close_group.triggered.connect(self._close)
+        self.reopen = QAction(t["group_detail.reopen"], self)
+        self.reopen.triggered.connect(self._reopen)
+        self.more_menu = QMenu(self)
+        for action in (self.change_teacher, self.close_group, self.reopen):
+            self.more_menu.addAction(action)
+        self.more = QToolButton()
+        self.more.setObjectName("moreButton")
+        self.more.setIcon(icon("ellipsis", size=40))
+        self.more.setIconSize(QSize(20, 20))
+        self.more.setToolTip(t["group_detail.more"])
+        self.more.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.more.setMenu(self.more_menu)
+        self.header.actions.addWidget(self.more)
 
         self.slots = ListSection([
             t["slots.col.day"], t["slots.col.time"], t["slots.col.room"], t["slots.col.from"],
@@ -233,12 +242,28 @@ class GroupDetailView(QWidget):
             t["history.col.teacher"], t["history.col.from"], t["history.col.to"],
         ], "")
         self.students = GroupStudentsTab(conn, ctx, group_id)
+        hide_empty_columns(self.students.list.table, (4, 5))  # exit, remark
 
-        self.tabs = QTabWidget()
-        self.tabs.setDocumentMode(True)
-        self.tabs.addTab(padded(self.students), t["group_detail.tab.students"])
-        self.tabs.addTab(padded(self.slots), t["group_detail.tab.slots"])
-        self.tabs.addTab(padded(self.history), t["group_detail.tab.teachers"])
+        students_card = section_card()
+        students_card.layout().addWidget(self.students)
+        compact_list(self.slots, t["group_detail.tab.slots"], 6)
+        compact_list(self.history, t["group_detail.tab.teachers"], 5)
+        fit_columns(self.slots.table, stretch=(0, 2))  # hours and dates whole
+        fit_columns(self.history.table, stretch=(0,))
+        side = QWidget()
+        column = QVBoxLayout(side)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(16)
+        for section in (self.slots, self.history):
+            card = section_card()
+            card.layout().addWidget(section)
+            column.addWidget(card)
+        column.addStretch()
+        body = QHBoxLayout()
+        body.setSpacing(16)
+        for part, stretch in ((students_card, 3), (side, 2)):
+            share_width(part)
+            body.addWidget(part, stretch)
 
         self.error = PageBanner()
         layout = QVBoxLayout(self)
@@ -247,7 +272,7 @@ class GroupDetailView(QWidget):
         layout.addLayout(back_row)
         layout.addWidget(self.error)
         layout.addWidget(self.header)
-        layout.addWidget(self.tabs, 1)
+        layout.addLayout(body, 1)
         self.refresh()
 
     def refresh(self) -> None:
@@ -258,23 +283,18 @@ class GroupDetailView(QWidget):
         self.status.set_kind(kind_for("group", g.state))
         self.meta.setText(t["group_detail.meta"].format(subject=g.subject, level=g.level,
                                                         year=g.year_label))
-        self.teacher.setText(t["group_detail.teacher"].format(teacher=g.teacher) if g.teacher
-                             else t["group_detail.no_teacher"])
-        self.price.setText(t["group_detail.price"].format(price=format_dzd(g.price)))
-        if g.room_limited:
-            self.places.setText(t["group_detail.places_room"].format(
-                enrolled=g.enrolled, seats=g.seats, room=g.limiting_room, capacity=g.capacity))
-        else:
-            self.places.setText(t["group_detail.places"].format(enrolled=g.enrolled,
-                                                                capacity=g.capacity))
-        self.starts.setText(t["group_detail.starts"].format(date=display_date(g.start_date)))
+        # The teacher is in the Enseignants card, the start date in « Modifier »; the seats
+        # are the real limit (a smaller room lowers them).
+        self.header.set_note(" · ".join([
+            t["group_detail.price"].format(price=format_dzd(g.price)),
+            t["group_detail.places"].format(enrolled=g.enrolled, seats=g.seats)]))
         self.students.show_group(g)
         is_open = g.status != "closed"
         self.edit.setVisible(self.manages and is_open)
         self.change_teacher.setVisible(self.manages and is_open)
         self.close_group.setVisible(self.manages and is_open)
         self.reopen.setVisible(self.manages and not is_open)
-        self.renew.setVisible(is_open and allowed(self._ctx, "subscription.manage"))
+        self.more.setVisible(self.manages)
         self.add_slot.setVisible(self.plans and is_open)
         self.edit_slot.setVisible(self.plans and is_open)
 
@@ -285,6 +305,9 @@ class GroupDetailView(QWidget):
             item(s.room),
             item(display_date(s.valid_from), align=CENTER),
         ] for s in self._slots.values()])
+        # « À partir du » only when it says something: a slot that began after the group.
+        self.slots.table.setColumnHidden(3, all(s.valid_from <= g.start_date
+                                                for s in self._slots.values()))
         self.history.set_rows([[
             item(p.teacher, item_id=p.id),
             item(display_date(p.valid_from), align=CENTER),
@@ -314,17 +337,6 @@ class GroupDetailView(QWidget):
                        name=self.group.name, enrolled=self.group.enrolled),
                    t["group_detail.close"]):
             self._run(groups.close, t["groups.closed_msg"].format(name=self.group.name))
-
-    def _renew(self) -> None:
-        months = subscriptions.renewable(self._conn, self._ctx, self.group_id)
-        if not months:
-            self.error.show_error(t["group_detail.nothing_to_renew"])
-            return
-        dialog = BulkRenewDialog(self._conn, self._ctx, months,
-                                 t["group_detail.renew_title"].format(name=self.group.name),
-                                 parent=self)
-        if ask(dialog):
-            self._done(t["bulk_renew.done"].format(count=len(dialog.renewed)))
 
     def _reopen(self) -> None:
         self._run(groups.reopen, t["groups.reopened"].format(name=self.group.name))

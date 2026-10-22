@@ -166,6 +166,16 @@ def test_a_card_opens_the_attendance_and_back(qtbot, conn, desk, school):
     assert page.detail is None and page.stack.currentWidget() is page.list
 
 
+def test_a_lone_card_keeps_its_height(qtbot, conn, desk, school):
+    page = AttendancePage(conn, desk)
+    qtbot.addWidget(page)
+    page.resize(1200, 900)
+    page.show()
+    qtbot.waitExposed(page)
+    [card] = page.sessions.cards
+    assert card.height() == card.sizeHint().height() < 120
+
+
 def test_student_attendance_tab(qtbot, conn, desk, school):
     amine = school["pupils"]["Amine"]
     attendance.save(conn, desk, session_on(conn, desk, MONDAY).id, {amine: "late"})

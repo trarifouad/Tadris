@@ -115,7 +115,7 @@ def test_empty_tab(qtbot, conn, receptionist, amine):
 
 def test_the_automatic_first_month_is_listed(qtbot, conn, receptionist, in_maths, amine):
     tab = make_tab(qtbot, conn, receptionist, amine)
-    assert rows(tab) == [["M1 · Maths 4AM", "18 oct. au 18 nov.", "3 000 DA",
+    assert rows(tab) == [["M1 · Maths 4AM", "18 oct. → 18 nov.", "3 000 DA",
                           "3 000 DA", "En cours"]]
     assert tab.summary.text() == t["subscriptions.summary"].format(due="3 000 DA")
 
@@ -141,8 +141,8 @@ def test_renew_from_the_tab(qtbot, conn, receptionist, in_maths, amine, monkeypa
     assert seen["preview"] == t["renew_dialog.preview"].format(
         period="du 18/11/2026 au 18/12/2026", price="3 000 DA")
     assert [r[1:] for r in rows(tab)] == [
-        ["18 nov. au 18 déc.", "3 000 DA", "3 000 DA", "À venir"],
-        ["18 oct. au 18 nov.", "3 000 DA", "3 000 DA", "En cours"],
+        ["18 nov. → 18 déc.", "3 000 DA", "3 000 DA", "À venir"],
+        ["18 oct. → 18 nov.", "3 000 DA", "3 000 DA", "En cours"],
     ]
     assert tab.selected().start_date == "2026-11-18"  # the new month is selected
     tab.list.table.selectRow(1)
@@ -207,7 +207,7 @@ def test_start_again_after_a_cancellation(qtbot, conn, director, receptionist, i
     tab = make_tab(qtbot, conn, receptionist, amine)
     click(qtbot, tab.start)
     assert (seen["group"], seen["date"]) == ("M1 · Maths 4AM", "18/10/2026")
-    assert rows(tab)[0][1:] == ["25 oct. au 25 nov.", "3 000 DA", "3 000 DA",
+    assert rows(tab)[0][1:] == ["25 oct. → 25 nov.", "3 000 DA", "3 000 DA",
                                 "À venir"]
     assert not shown(tab.start)
 
@@ -342,26 +342,3 @@ def test_double_click_opens_the_student_page(qtbot, conn, receptionist, amine, i
     students_page = window.pages.currentWidget()
     assert window.nav_buttons["students"].isChecked()
     assert students_page.detail.student_id == amine
-
-
-def test_group_page_renews_its_months(qtbot, conn, receptionist, school, amine, in_maths,
-                                      monkeypatch):
-    from tadris.ui.pages.groups import GroupDetailView
-    from tadris.ui.subscription_dialogs import BulkRenewDialog
-
-    yanis_in(conn, receptionist, school, "physics")  # another group: not offered
-    view = GroupDetailView(conn, receptionist, school["maths"])
-    qtbot.addWidget(view)
-    assert shown(view.renew)
-    click(qtbot, view.renew)
-    assert view.error.text() == t["group_detail.nothing_to_renew"]
-    monkeypatch.setattr(dates, "today", lambda: date(2026, 11, 15))
-    seen = {}
-
-    def fill(dialog):
-        seen["rows"] = dialog.table.rowCount()
-        dialog._submit()
-    auto_exec(monkeypatch, BulkRenewDialog, fill)
-    click(qtbot, view.renew)
-    assert seen["rows"] == 1
-    assert len(subscriptions.for_student(conn, receptionist, amine)) == 2

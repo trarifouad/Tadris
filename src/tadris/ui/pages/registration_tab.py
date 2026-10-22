@@ -33,6 +33,7 @@ class RegistrationTab(QWidget):
 
     def __init__(self, conn, ctx: UserContext, student_id: int):
         super().__init__()
+        self._compact = False
         self._conn = conn
         self._ctx = ctx
         self._student_id = student_id
@@ -134,7 +135,9 @@ class RegistrationTab(QWidget):
         if reg is not None:
             self.title.setText(t["registration_tab.title"].format(label=reg.year_label))
             self.status.setText(t["registration_status.active"])
-            self.status.set_kind(kind_for("registration", "active"))
+            # On the student page, green is for the student's and the groups' status only.
+            self.status.set_kind("neutral" if self._compact else kind_for("registration",
+                                                                           "active"))
             self.level.setText(reg.level)
             self.fee.setText(format_dzd(reg.fee_amount))
             self.due.setText(format_dzd(reg.fee_due))
@@ -172,6 +175,8 @@ class RegistrationTab(QWidget):
         one line instead of the grid, small buttons, the past years only when there are
         some."""
         from tadris.ui.widgets.compact import compact_empty, fit_height, small
+
+        self._compact = True
 
         self.layout().setContentsMargins(0, 0, 0, 0)
         self.layout().setSpacing(8)

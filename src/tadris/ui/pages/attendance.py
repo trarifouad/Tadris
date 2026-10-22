@@ -242,7 +242,7 @@ class SessionCard(QFrame):
         self.setProperty("state", state)
         self.setAttribute(Qt.WidgetAttribute.WA_Hover)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setMinimumHeight(76)
+        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
 
         accent = QFrame()
         accent.setObjectName("sessionAccent")
@@ -271,6 +271,9 @@ class SessionCard(QFrame):
         where.addWidget(self.substitute_badge)
         where.addStretch()
         self.note = ElidedLabel(note(s), "caption")
+        keep = self.note.sizePolicy()
+        keep.setRetainSizeWhenHidden(True)
+        self.note.setSizePolicy(keep)
         self.note.setVisible(bool(self.note.text()))
         text = QVBoxLayout()
         text.setSpacing(2)

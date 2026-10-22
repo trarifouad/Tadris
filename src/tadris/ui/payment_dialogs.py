@@ -52,7 +52,10 @@ class PaymentDialog(FormDialog):
     first, then the oldest lines, unless the desk ticks the lines to pay. The submit button
     names the amount ("Encaisser 2 500 DA")."""
 
-    def __init__(self, conn, ctx: UserContext, student: Student, parent=None):
+    def __init__(self, conn, ctx: UserContext, student: Student,
+                 preselect: list[int] | None = None, parent=None):
+        """preselect: charge ids ticked from the start (the student page's selection, or
+        what is late and due soon); the amount is what is left on them."""
         super().__init__(t["payment_dialog.title"], t["payment_dialog.submit"], width=880,
                          parent=parent)
         self._conn, self._ctx, self._student = conn, ctx, student
@@ -105,6 +108,14 @@ class PaymentDialog(FormDialog):
         self.choose.setVisible(has_lines)
         self.nothing.setVisible(not has_lines)
 
+        if preselect:
+            self._checked = set(preselect) & {line.charge.id for line in self._base.lines}
+            if self._checked:
+                self.choose.setChecked(True)
+                left = sum(line.left for line in self._base.lines
+                           if line.charge.id in self._checked)
+                if left:
+                    self.amount.setText(format_dzd(left))
         self.amount.textChanged.connect(lambda _text: self._update())
         self.choose.toggled.connect(lambda _on: self._update())
         self.table.itemChanged.connect(self._ticked)

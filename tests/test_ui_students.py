@@ -276,31 +276,49 @@ def test_the_study_card_keeps_one_line_per_group(qtbot, conn, director, amine, m
     click(qtbot, view.open_groups)
     assert opened == [t["overview.window.groups"]]
     [line] = view.group_lines.lines  # the page followed
-    assert line.month.text() == t["overview.month"].format(period="18 oct. au 18 nov.",
+    assert line.month.text() == t["overview.month"].format(period="18 oct. → 18 nov.",
                                                            left="reste 3 000 DA")
     assert line.attendance.text() == t["overview.no_attendance"]
     assert view.open_subscriptions.text() == t["overview.subscriptions"].format(count=1)
 
 
+def test_header_shows_the_age(qtbot, conn, director, amine):
+    view = StudentDetailView(conn, director, amine)
+    qtbot.addWidget(view)
+    assert view.born.text().startswith("Né(e) le 14/03/2012 (14 ans)")
+
+
+def test_no_contact_shows_the_empty_text(qtbot, conn, director):
+    lone = students.create(conn, director, StudentInput("Sara", "Ouali"))
+    view = StudentDetailView(conn, director, lone)
+    qtbot.addWidget(view)
+    section = view.contacts
+    assert not section.empty.isHidden() and section.table.isHidden()
+    assert not section.add.isHidden()
+
+
 def test_receptionist_cannot_deactivate_from_detail(qtbot, conn, receptionist, amine):
     view = StudentDetailView(conn, receptionist, amine)
     qtbot.addWidget(view)
-    assert view.deactivate.isHidden() and view.reactivate.isHidden()
+    assert not view.deactivate.isVisible() and not view.reactivate.isVisible()
+    assert view.more.isHidden()  # nothing to offer in « ⋯ »
     assert visible(view.edit)
 
 
 def test_director_deactivates_after_confirm(qtbot, conn, director, amine, monkeypatch):
     view = StudentDetailView(conn, director, amine)
     qtbot.addWidget(view)
+    # Not a visible button: « Désactiver » is in the « ⋯ » menu, then confirmed.
+    assert not view.more.isHidden() and view.deactivate in view.more_menu.actions()
     monkeypatch.setattr(student_detail, "confirm", lambda *a: False)
-    click(qtbot, view.deactivate)
+    view.deactivate.trigger()
     assert students.get(conn, director, amine).status == "active"
     monkeypatch.setattr(student_detail, "confirm", lambda *a: True)
-    click(qtbot, view.deactivate)
+    view.deactivate.trigger()
     assert students.get(conn, director, amine).status == "inactive"
     assert view.status.kind() == "neutral"
-    assert view.deactivate.isHidden() and visible(view.reactivate)
-    click(qtbot, view.reactivate)
+    assert not view.deactivate.isVisible() and view.reactivate.isVisible()
+    view.reactivate.trigger()
     assert students.get(conn, director, amine).status == "active"
 
 
@@ -309,7 +327,7 @@ def test_deactivate_error_shows_on_the_page(qtbot, conn, director, amine, monkey
     qtbot.addWidget(view)
     monkeypatch.setattr(student_detail, "confirm", lambda *a: True)
     students.deactivate(conn, director, amine)  # changed elsewhere meanwhile
-    click(qtbot, view.deactivate)
+    view.deactivate.trigger()
     assert view.error.text() == t["student.already_inactive"]
     assert visible(view.error)
 
@@ -433,7 +451,7 @@ def test_phase_2_acceptance(qtbot, conn, director, receptionist, monkeypatch):
     ))
     click(qtbot, page.detail.edit)
     assert page.detail.name.text() == "Benali Amine Rayan"
-    assert page.detail.deactivate.isHidden()  # front desk cannot deactivate
+    assert not page.detail.deactivate.isVisible()  # front desk cannot deactivate
 
     click(qtbot, page.detail.back_button)
     assert page.stack.currentWidget() is page.list
@@ -446,7 +464,7 @@ def test_phase_2_acceptance(qtbot, conn, director, receptionist, monkeypatch):
     index = director_page.list.table.model().index(0, 0)
     director_page.list.table.activated.emit(index)
     monkeypatch.setattr(student_detail, "confirm", lambda *a: True)
-    click(qtbot, director_page.detail.deactivate)
+    director_page.detail.deactivate.trigger()
     click(qtbot, director_page.detail.back_button)
     assert director_page.list.student_ids() == []
     director_page.list.status.setCurrentIndex(1)  # Inactifs

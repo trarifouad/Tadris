@@ -21,7 +21,6 @@ from tadris.core.money import format_dzd
 from tadris.core.percent import format_percent
 from tadris.domain.models import AttendanceSummary, Enrollment, Subscription
 from tadris.i18n.fr import t
-from tadris.ui.theme.status import kind_for
 from tadris.ui.widgets.common import Badge
 
 
@@ -38,13 +37,32 @@ def current_month(months: list[Subscription], today: str) -> Subscription | None
     return max(kept, key=lambda m: m.start_date, default=None)
 
 
+def group_badge(e: Enrollment, month: Subscription | None) -> tuple[str, str]:
+    """The one badge of a group line, from its month: « En cours » (green), « Se termine
+    bientôt » (amber, 7 days or less), « Expiré » (red: over and not renewed, or none),
+    « À venir » (grey); a trial without a month is « Essai » (grey)."""
+    if month is None:
+        if e.status == "trial":
+            return t["enrollment_status.trial"], "neutral"
+        return t["overview.state.expired"], "danger"
+    state = month.state
+    if state == "active":
+        return t["overview.state.active"], "success"
+    if state == "expiring":
+        return t["overview.state.expiring"], "warning"
+    if state == "upcoming":
+        return t["overview.state.upcoming"], "neutral"
+    return t["overview.state.expired"], "danger"
+
+
 def month_text(e: Enrollment, month: Subscription | None) -> str:
     if month is None:
         return t["overview.trial"] if e.status == "trial" else t["overview.no_month"]
     left = (t["subscriptions.free"] if month.charge_id is None
             else t["overview.left"].format(amount=format_dzd(month.due)))
-    return t["overview.month"].format(period=short_period(month.start_date, month.end_date),
-                                      left=left)
+    key = {"upcoming": "overview.month_next", "ended": "overview.month_last"}.get(
+        month.state, "overview.month")
+    return t[key].format(period=short_period(month.start_date, month.end_date), left=left)
 
 
 def attendance_text(s: AttendanceSummary | None) -> str:
@@ -64,29 +82,24 @@ class GroupLine(QFrame):
         self.enrollment = e
         title = QLabel(e.group_title)
         title.setObjectName("rowTitle")
-        status = Badge(t[f"enrollment_status.{e.status}"], kind_for("enrollment", e.status))
+        label, kind = group_badge(e, month)
+        self.badge = Badge(label, kind)
         since = QLabel(t["overview.since"].format(date=display_date(e.enrolled_on)))
         since.setObjectName("caption")
         head = QHBoxLayout()
         head.setSpacing(8)
         head.addWidget(title, 1)
         head.addWidget(since)
-        head.addWidget(status)
+        head.addWidget(self.badge)
         self.month = QLabel(month_text(e, month))
         self.month.setObjectName("caption")
-        month_row = QHBoxLayout()
-        month_row.setSpacing(8)
-        month_row.addWidget(self.month, 1)
-        if month is not None:
-            month_row.addWidget(Badge(t[f"subscription_state.{month.state}"],
-                                      kind_for("subscription", month.state)))
         self.attendance = QLabel(attendance_text(summary))
         self.attendance.setObjectName("caption")
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 8, 0, 8)
         layout.setSpacing(2)
         layout.addLayout(head)
-        layout.addLayout(month_row)
+        layout.addWidget(self.month)
         layout.addWidget(self.attendance)
 
 

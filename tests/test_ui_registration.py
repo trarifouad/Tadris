@@ -121,7 +121,7 @@ def test_reactivating_offers_the_registration_again(qtbot, conn, director, year,
     view = StudentDetailView(conn, director, amine)
     qtbot.addWidget(view)
     assert not shown(view.registration.register)
-    click(qtbot, view.reactivate)
+    view.reactivate.trigger()
     assert shown(view.registration.register)
 
 

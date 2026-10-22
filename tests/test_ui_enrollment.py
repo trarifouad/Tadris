@@ -297,7 +297,7 @@ def test_group_page_opens_on_its_students(qtbot, conn, receptionist, school, ami
     enrollments.enroll(conn, receptionist, yanis, school.maths, trial=True)
     enrollments.enroll(conn, receptionist, amine, school.maths)
     view = group_view(qtbot, conn, receptionist, school.maths)
-    assert view.tabs.currentWidget().findChild(type(view.students)) is view.students
+    assert not view.students.isHidden()  # beside the slots and teachers, no tabs
     assert view.students.summary.text() == "2 / 10 élèves · 8 place(s) libre(s) · 1 en essai"
     assert student_rows(view) == [
         ["Benali Amine", "2026-0002", "Actif", "18/10/2026", "", ""],
@@ -343,7 +343,7 @@ def test_closing_from_the_group_page_empties_the_list(qtbot, conn, director, sch
         seen["text"] = text
         return True
     monkeypatch.setattr(groups_page, "confirm", accept)
-    click(qtbot, view.close_group)
+    view.close_group.trigger()
     assert "Ses 1 élève(s) en sortiront aujourd'hui" in seen["text"]
     assert student_rows(view) == []
     view.students.show_past.setChecked(True)

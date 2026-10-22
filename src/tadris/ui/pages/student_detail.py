@@ -1,12 +1,17 @@
-from PySide6.QtCore import Qt, Signal
+from datetime import date
+
+from PySide6.QtCore import QSize, Qt, QUrl, Signal
+from PySide6.QtGui import QAction, QDesktopServices
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QMenu,
     QPushButton,
     QScrollArea,
     QSizePolicy,
     QStackedWidget,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -19,7 +24,14 @@ from tadris.core.permissions import allowed
 from tadris.core.phones import format_phone
 from tadris.domain.models import StudentContact
 from tadris.i18n.fr import t
-from tadris.services import attendance, contacts, enrollments, payments, students, subscriptions
+from tadris.services import (
+    attendance,
+    contacts,
+    enrollments,
+    payments,
+    students,
+    subscriptions,
+)
 from tadris.ui.contact_dialog import ContactDialog
 from tadris.ui.pages.payments_tab import PaymentsTab
 from tadris.ui.pages.registration_tab import RegistrationTab
@@ -28,6 +40,7 @@ from tadris.ui.pages.student_groups_tab import StudentGroupsTab
 from tadris.ui.pages.student_overview import GroupLines, SectionWindow, link_button
 from tadris.ui.pages.subscriptions_tab import SubscriptionsTab
 from tadris.ui.student_dialog import StudentDialog
+from tadris.ui.theme import icon
 from tadris.ui.theme.status import kind_for
 from tadris.ui.widgets.common import Badge, ask, confirm, primary_button, toast, variant_button
 from tadris.ui.widgets.compact import (
@@ -95,11 +108,21 @@ class StudentDetailView(QWidget):
         self.edit.setAutoDefault(False)
         self.edit.clicked.connect(self._edit)
         self.edit.setVisible(allowed(ctx, "student.update"))
-        self.deactivate = variant_button(t["student_detail.deactivate"], "danger")
-        self.deactivate.clicked.connect(self._deactivate)
-        self.reactivate = QPushButton(t["student_detail.reactivate"])
-        self.reactivate.setAutoDefault(False)
-        self.reactivate.clicked.connect(self._reactivate)
+        # The rare actions, out of reach of a stray click: « ⋯ », then a confirmation.
+        self.deactivate = QAction(t["student_detail.deactivate"], self)
+        self.deactivate.triggered.connect(self._deactivate)
+        self.reactivate = QAction(t["student_detail.reactivate"], self)
+        self.reactivate.triggered.connect(self._reactivate)
+        self.more_menu = QMenu(self)
+        self.more_menu.addAction(self.deactivate)
+        self.more_menu.addAction(self.reactivate)
+        self.more = QToolButton()
+        self.more.setObjectName("moreButton")
+        self.more.setIcon(icon("ellipsis", size=40))
+        self.more.setIconSize(QSize(20, 20))
+        self.more.setToolTip(t["student_detail.more"])
+        self.more.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.more.setMenu(self.more_menu)
 
         # Each section keeps its own logic and dialogs; the cards below only arrange them.
         self.registration = RegistrationTab(conn, ctx, student_id)
@@ -174,8 +197,8 @@ class StudentDetailView(QWidget):
         head = QHBoxLayout()
         head.setSpacing(8)
         head.addLayout(identity, 1)
-        for button in (self.edit, self.deactivate, self.reactivate):
-            head.addWidget(small(button), 0, Qt.AlignmentFlag.AlignTop)
+        head.addWidget(small(self.edit), 0, Qt.AlignmentFlag.AlignTop)
+        head.addWidget(self.more, 0, Qt.AlignmentFlag.AlignTop)
         body = card.layout()
         body.addLayout(head)
         self.registration.make_compact()
@@ -192,8 +215,9 @@ class StudentDetailView(QWidget):
         return card
 
     def _money_card(self) -> QFrame:
-        """Everything about money: what is owed and « Encaisser »; then what is left to pay
-        and the receipts, one at a time."""
+        """Everything about money: what is late, due soon and to come, and « Encaisser »;
+        then the lines left to pay (grouped by urgency, ticked to pay) or the latest
+        receipts."""
         card = section_card()
         body = card.layout()
         payments = self.payments
@@ -205,17 +229,12 @@ class StudentDetailView(QWidget):
         head.addStretch()
         head.addWidget(small(payments.receive))
         body.addLayout(head)
-        payments.summary.setObjectName("caption")
-        payments.summary.setWordWrap(True)
-        body.addWidget(payments.summary)
-        compact_list(payments.dues, None, 6)
-        payments.dues.table.setColumnHidden(4, True)  # « Payé » is the amount less what is left
+        body.addWidget(payments.stats)
         compact_list(payments.history, None, 3)
-        for section in (payments.dues, payments.history):
-            # The view's name is the segment's: the list's own title goes.
-            first = section.toolbar.itemAt(0).widget()
-            if isinstance(first, QLabel):
-                first.hide()
+        # The view's name is the segment's: the list's own title goes.
+        first = payments.history.toolbar.itemAt(0).widget()
+        if isinstance(first, QLabel):
+            first.hide()
         self.money_views = QStackedWidget()
         for view in (payments.dues, payments.history):
             self.money_views.addWidget(view)
@@ -301,7 +320,11 @@ class StudentDetailView(QWidget):
         self.number.setText(t["student_detail.number"].format(number=s.student_number))
         self.status.setText(t[f"student_status.{s.status}"])
         self.status.set_kind(kind_for("student", s.status))
-        born = t["student_detail.born"].format(date=display_date(s.birth_date)) if s.birth_date else ""
+        today = dates.today()
+        born = ""
+        if s.birth_date:
+            born = t["student_detail.born_age"].format(
+                date=display_date(s.birth_date), age=age_on(s.birth_date, today))
         since = t["student_detail.since"].format(date=display_date(s.created_at))
         self.born.setText(" · ".join(part for part in (born, since) if part))
         self.notes.setText(s.notes)
@@ -309,6 +332,7 @@ class StudentDetailView(QWidget):
         active = s.status == "active"
         self.deactivate.setVisible(active and allowed(self._ctx, "student.deactivate"))
         self.reactivate.setVisible(not active and allowed(self._ctx, "student.reactivate"))
+        self.more.setVisible(self.deactivate.isVisible() or self.reactivate.isVisible())
 
     def _edit(self) -> None:
         dialog = StudentDialog(self._conn, self._ctx, self.student, parent=self)
@@ -340,6 +364,11 @@ class StudentDetailView(QWidget):
         self.registration.refresh()  # an inactive student cannot be registered or enrolled
         self.groups.refresh()
         toast(self, t[message_key].format(name=self.student.full_name))
+
+
+def age_on(birth: str, today: date) -> int:
+    born = date.fromisoformat(birth)
+    return today.year - born.year - ((today.month, today.day) < (born.month, born.day))
 
 
 def section_card() -> QFrame:
@@ -414,6 +443,7 @@ class ContactsTab(QWidget):
         self.empty.setObjectName("emptyState")
         self.empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.empty.setWordWrap(True)
+        self.table.cellClicked.connect(self._clicked)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 16, 0, 0)
@@ -456,14 +486,26 @@ class ContactsTab(QWidget):
     def _cells(c: StudentContact) -> list:
         sms = t["contacts.sms_yes" if c.can_receive_sms else "contacts.sms_no"]
         main = item(t["contacts.main_badge"], kind="info") if c.is_main else item("")
+        phone = item(format_phone(c.phone), mono=True, tone="primary" if c.phone else None)
+        if c.phone:
+            phone.setToolTip(t["contacts.call"].format(phone=format_phone(c.phone)))
         return [
             item(c.full_name, item_id=c.contact_id),
             item(c.relation),
-            item(format_phone(c.phone), mono=True),
+            phone,
             item(format_phone(c.phone_2), mono=True),
             item(sms),
             main,
         ]
+
+    def _clicked(self, row: int, column: int) -> None:
+        """A click on a phone number calls it, where the computer can (tel:)."""
+        if column != 2:
+            return
+        contact = self._contacts.get(self.table.item(row, 0).data(ID_ROLE))
+        if contact is not None and contact.phone:
+            digits = "".join(ch for ch in contact.phone if ch.isdigit() or ch == "+")
+            QDesktopServices.openUrl(QUrl(f"tel:{digits}"))
 
     def selected(self) -> StudentContact | None:
         contact_id = selected_id(self.table)

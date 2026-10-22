@@ -473,6 +473,7 @@ class ChargeDue:
     group_id: int | None  # the month's group; None for the fee
     start_date: str | None = None  # a month: its first day; None for the fee
     end_date: str | None = None  # a month: the day after its last day (half-open)
+    group_name: str | None = None  # a month: its group's name ("Physique 4AM")
 
     @property
     def due(self) -> int:

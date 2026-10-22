@@ -1,6 +1,6 @@
-"""Lists made small enough to share a card (the student page): a small uppercase heading,
-smaller buttons, the actions on the selected row in a line under the list, and the list as
-tall as its rows, up to a cap (then it scrolls)."""
+"""Lists made small enough to share a card (the student and group pages): a small uppercase
+heading, smaller buttons, the actions on the selected row in a line under the list, and the
+list as tall as its rows, up to a cap (then it scrolls)."""
 
 from collections.abc import Callable
 
@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QStackedWidget,
     QTableWidget,
+    QVBoxLayout,
     QWidget,
 )
 
@@ -184,3 +185,19 @@ def hide_empty_columns(table: QTableWidget, columns: tuple[int, ...]) -> None:
 
     _OnRows(table, apply, cells=True)
     apply()
+
+
+def section_card() -> QFrame:
+    card = QFrame()
+    card.setObjectName("card")
+    layout = QVBoxLayout(card)
+    layout.setContentsMargins(20, 16, 20, 18)
+    layout.setSpacing(12)
+    return card
+
+
+def rule() -> QFrame:
+    line = QFrame()
+    line.setObjectName("cardRule")
+    line.setFixedHeight(1)
+    return line

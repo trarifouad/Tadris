@@ -154,6 +154,30 @@ def build_qss(t: dict, chevron: str = "", check: str = "") -> str:
     QPushButton#link:focus {{ outline: none; text-decoration: underline; }}
     QPushButton#rowAction {{ min-height: 28px; max-height: 28px; padding: 0 12px;
         font-size: 13px; }}
+
+    QFrame#statBlock {{ background: {t['surface_alt']}; border-radius: 8px; }}
+    QFrame#statBlock[kind="danger"] {{ background: {t['danger_bg']}; }}
+    QFrame#statBlock[kind="warning"] {{ background: {t['warning_bg']}; }}
+    QFrame#statBlock[kind="info"] {{ background: {t['info_bg']}; }}
+    QLabel#statLabel {{ font-size: 11.5px; font-weight: 500; color: {t['muted']};
+        background: transparent; }}
+    QLabel#statValue {{ font-weight: 600; background: transparent; color: {t['text']}; }}
+    QLabel#statValue[kind="danger"] {{ color: {t['danger']}; }}
+    QLabel#statValue[kind="warning"] {{ color: {t['warning']}; }}
+    QLabel#statValue[kind="info"] {{ color: {t['info']}; }}
+    QPushButton#dueGroup {{ background: transparent; border: none; padding: 2px 0;
+        min-height: 0; text-align: left; font-size: 12.5px; font-weight: 600;
+        color: {t['muted']}; }}
+    QPushButton#dueGroup[kind="danger"] {{ color: {t['danger']}; }}
+    QPushButton#dueGroup[kind="warning"] {{ color: {t['warning']}; }}
+    QPushButton#dueGroup:hover {{ text-decoration: underline; }}
+    QFrame#selectionBar {{ background: {t['primary_soft']}; border: 1px solid {t['primary']};
+        border-radius: 8px; }}
+    QLabel#selectionText {{ font-weight: 600; color: {t['primary']}; background: transparent; }}
+    QToolButton#moreButton {{ background: transparent; border: 1px solid {t['border']};
+        border-radius: 6px; padding: 3px; }}
+    QToolButton#moreButton:hover {{ background: {t['surface_alt']}; }}
+    QToolButton#moreButton::menu-indicator {{ image: none; width: 0; }}
     QFrame#topbar {{ background: {t['surface']}; border: none;
         border-bottom: 1px solid {t['border']}; }}
     QLabel#topbarTitle {{ font-family: "Reem Kufi"; font-size: 20px; font-weight: 600; }}

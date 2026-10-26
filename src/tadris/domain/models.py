@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date
 
 # ----- inputs (what a form sends to a service) -----
@@ -141,6 +141,7 @@ class Teacher:
     # Basis points; None when the user may not see rates.
     current_rate_bp: int | None = None
     group_count: int = 0
+    current_rate_from: str | None = None  # the current rate's first day (None: not seen)
 
 
 @dataclass(frozen=True)
@@ -339,7 +340,7 @@ class Subscription:
     state: str  # display: 'upcoming', 'active', 'expiring', 'ended' or 'cancelled'
     charge_id: int | None  # None for a free group
     paid: int  # by payments not voided
-    in_payout: bool
+    in_payout: bool  # counted in an approved or paid teacher payout (a draft lets it go)
 
     @property
     def due(self) -> int:
@@ -347,6 +348,11 @@ class Subscription:
         if self.status == "cancelled" or self.charge_id is None:
             return 0
         return max(self.price - self.paid, 0)
+
+    @property
+    def can_cancel(self) -> bool:
+        """Nothing paid on it (V1 has no refunds) and no teacher paid for it yet."""
+        return self.status != "cancelled" and not self.paid and not self.in_payout
 
 
 @dataclass(frozen=True)
@@ -360,6 +366,37 @@ class MissingSubscription:
     group_id: int
     group_title: str
     enrolled_on: str
+
+
+def standing(month: Subscription | None) -> str:
+    """Where a student stands in a group, from its latest month: active (a month runs, or the
+    next one is already made), expiring (ends within 7 days, nothing after), ended (over, not
+    renewed) or none (no month left)."""
+    if month is None:
+        return "none"
+    return "active" if month.state in ("active", "upcoming") else month.state
+
+
+@dataclass(frozen=True)
+class SubscriptionLine:
+    """A student in a group (not on trial), on the Abonnements page: the latest month (None
+    when none is left) and what is left to pay on all of that group's months. Months paid
+    ahead only push the end of the period: it starts with the month running today (or the
+    next one to come), else with the latest month."""
+
+    enrollment_id: int
+    student_id: int
+    student_number: str
+    student_name: str
+    group_id: int
+    group_title: str
+    month: Subscription | None
+    owed: int  # after the student's credit
+    period_start: str | None  # None without a month
+
+    @property
+    def standing(self) -> str:
+        return standing(self.month)
 
 
 # ----- sessions and attendance -----
@@ -449,8 +486,8 @@ class AttendanceSummary:
 
     @property
     def rate_bp(self) -> int | None:
-        """(present + late) / (present + late + absent), in basis points, as in the reports;
-        an excused absence is left out. None before any mark counts."""
+        """(present + late) / (present + late + absent), in basis points; an excused
+        absence is left out. None before any mark counts."""
         counted = self.present + self.late + self.absent
         return None if counted == 0 else (self.present + self.late) * 10000 // counted
 
@@ -512,8 +549,23 @@ class Debt:
 
     @property
     def oldest_overdue(self) -> str | None:
-        late = [c.due_date for c in self.charges if c.due_date <= self.as_of]
+        """The due date of the oldest late charge that the credit does not cover."""
+        late = [c.due_date for c in self.after_credit().charges if c.due_date <= self.as_of]
         return min(late) if late else None
+
+    def after_credit(self) -> "Debt":
+        """The debt as every screen shows it: the credit pays the oldest charges first, as
+        the next payment will. A charge it covers whole is left out, one it covers in part
+        counts that part as paid, and `credit` is what is left of it once every charge is
+        paid. owed_now and balance stay the same."""
+        credit = self.credit
+        charges = []
+        for c in self.charges:
+            used = min(credit, c.due)
+            credit -= used
+            if used < c.due:
+                charges.append(replace(c, paid=c.paid + used))
+        return replace(self, charges=tuple(charges), credit=credit)
 
 
 @dataclass(frozen=True)
@@ -550,6 +602,7 @@ class PaymentLine:
     description: str
     due_date: str
     amount: int
+    from_credit: int = 0  # on a receipt: the part paid by the credit of earlier payments
 
 
 @dataclass(frozen=True)
@@ -558,7 +611,7 @@ class Debtor:
     student_number: str
     student_name: str
     owed_now: int
-    due: int  # months to come included
+    due: int  # months to come included, after the credit
     credit: int
     oldest_overdue: str | None
     days_overdue: int
@@ -692,34 +745,7 @@ class Backup:
     verified_at: str | None
 
 
-# ----- reports and dashboard -----
-
-# How a report column's raw values are shown: 'text' (str), 'number' (int), 'money' (int DA),
-# 'percent' (int basis points, 6000 = 60 %), 'date' ('YYYY-MM-DD'), 'datetime'
-# ('YYYY-MM-DDTHH:MM:SS'). None shows as « — ».
-REPORT_KINDS = ("text", "number", "money", "percent", "date", "datetime")
-
-
-@dataclass(frozen=True)
-class ReportColumn:
-    label: str
-    kind: str = "text"
-
-
-@dataclass(frozen=True)
-class ReportTable:
-    """One report as rows of raw values: the screen, the PDF and the Excel file all show this,
-    so their totals cannot differ."""
-
-    key: str  # 'revenue_month', 'debtors_age', ...: the file name
-    title: str
-    period: str  # « Année 2026-2027 », « Du 01/10/2026 au 18/10/2026 »
-    columns: tuple[ReportColumn, ...]
-    rows: tuple[tuple, ...]
-    total: tuple | None = None  # same length as columns; the first cell is its label
-    note: str = ""
-    row_ids: tuple[int | None, ...] = ()  # a student id per row, when a row opens one
-
+# ----- dashboard -----
 
 @dataclass(frozen=True)
 class DashboardSession:
@@ -803,15 +829,3 @@ class Dashboard:
     @property
     def enrolled(self) -> int:
         return sum(g.enrolled for g in self.groups)
-
-
-@dataclass(frozen=True)
-class AuditEntry:
-    id: int
-    created_at: str
-    user: str | None  # None: the app itself
-    action: str
-    entity_name: str
-    entity_id: int | None
-    old_value: str | None
-    new_value: str | None

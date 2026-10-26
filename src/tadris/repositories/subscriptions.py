@@ -17,7 +17,10 @@ _COLUMNS = f"""
     e.group_id, g.name AS group_name, sb.name AS subject, l.name AS level,
     s.renewal_of_id, s.price, s.start_date, s.end_date, s.status,
     c.id AS charge_id, c.status AS charge_status, {_PAID} AS paid,
-    EXISTS (SELECT 1 FROM payout_line_charges plc WHERE plc.charge_id = c.id) AS in_payout
+    EXISTS (SELECT 1 FROM payout_line_charges plc
+              JOIN payout_lines pl ON pl.id = plc.payout_line_id
+              JOIN teacher_payouts tp ON tp.id = pl.payout_id
+             WHERE plc.charge_id = c.id AND tp.status <> 'draft') AS in_payout
 """
 _FROM = """
     FROM subscriptions s
@@ -56,6 +59,15 @@ def latest(conn, enrollment_id: int):
         "ORDER BY s.end_date DESC LIMIT 1",
         (enrollment_id,),
     ).fetchone()
+
+
+def starting_after(conn, enrollment_id: int, day: str) -> list:
+    """The enrollment's months (not cancelled) that start after `day`, in order."""
+    return conn.execute(
+        f"SELECT {_COLUMNS} {_FROM} WHERE s.enrollment_id = ? AND s.status <> 'cancelled' "
+        "AND s.start_date > ? ORDER BY s.start_date",
+        (enrollment_id, day),
+    ).fetchall()
 
 
 def has_renewal(conn, subscription_id: int) -> bool:
@@ -132,6 +144,15 @@ def ended_by(conn, today: str, group_id: int | None = None) -> list:
         "AND (:group IS NULL OR e.group_id = :group) "
         "ORDER BY s.end_date, fold(st.last_name), fold(st.first_name)",
         {"today": today, "group": group_id},
+    ).fetchall()
+
+
+def live_months(conn) -> list:
+    """Every month (not cancelled) of the live paid enrollments: the Abonnements page."""
+    return conn.execute(
+        f"SELECT {_COLUMNS} {_FROM} "
+        "WHERE e.status = 'active' AND g.status <> 'closed' AND s.status <> 'cancelled' "
+        "ORDER BY s.enrollment_id, s.end_date"
     ).fetchall()
 
 

@@ -11,8 +11,11 @@ from tadris.i18n.fr import t
 from tadris.services import (
     auth,
     catalog,
+    debt,
     enrollments,
     groups,
+    payments,
+    payouts,
     registrations,
     school_years,
     students,
@@ -274,7 +277,7 @@ def test_cancel_refused_once_paid(conn, director, amine, in_maths):
     assert exc.value.message == t["subscription.paid"].format(amount="1 000 DA")
 
 
-def test_cancel_refused_once_in_a_teacher_payout(conn, director, school, in_maths):
+def test_cancel_refused_once_in_an_approved_teacher_payout(conn, director, school, in_maths):
     sub_id = month_of(conn, director, in_maths)
     charge = charge_of(conn, sub_id)
     payout = conn.execute(
@@ -286,6 +289,8 @@ def test_cancel_refused_once_in_a_teacher_payout(conn, director, school, in_math
         "VALUES (?, ?, 3000, 6000, 1800)", (payout, school.maths)).lastrowid
     conn.execute("INSERT INTO payout_line_charges(payout_line_id, charge_id, amount) "
                  "VALUES (?, ?, 3000)", (line, charge["id"]))
+    conn.execute("UPDATE teacher_payouts SET status = 'approved' WHERE id = ?", (payout,))
+    assert subscriptions.get(conn, director, sub_id).can_cancel is False
     with pytest.raises(BusinessRuleError) as exc:
         subscriptions.cancel(conn, director, sub_id, "motif")
     assert exc.value.message == t["subscription.in_payout"]
@@ -433,6 +438,116 @@ def test_switch_at_the_end_of_the_year_needs_no_new_month(conn, receptionist, sc
 def test_leaving_keeps_the_month_as_it_is(conn, receptionist, in_maths):
     enrollments.leave(conn, receptionist, in_maths)
     assert months(conn, receptionist, in_maths) == [("2026-10-18", "2026-11-18", 3000, "active")]
+
+
+# ----- leaving owes no month that starts after the last day -----
+
+def audit_new(conn, action) -> dict:
+    return json.loads(last_audit(conn, action)["new_value"])
+
+
+def renewed_ahead(conn, ctx, enrollment_id, monkeypatch) -> int:
+    """On 14/11, the month 18/10 -> 18/11 renewed 4 days ahead (18/11 -> 18/12)."""
+    monkeypatch.setattr(dates, "today", lambda: date(2026, 11, 14))
+    return subscriptions.renew(conn, ctx, month_of(conn, ctx, enrollment_id))
+
+
+def test_leaving_cancels_a_month_renewed_ahead(conn, director, receptionist, school, amine,
+                                               in_maths, monkeypatch):
+    ahead = renewed_ahead(conn, receptionist, in_maths, monkeypatch)
+    [shown] = subscriptions.after(conn, receptionist, in_maths, date(2026, 11, 14))
+    assert (shown.id, shown.can_cancel) == (ahead, True)
+    enrollments.leave(conn, receptionist, in_maths)
+    assert months(conn, receptionist, in_maths) == [
+        ("2026-10-18", "2026-11-18", 3000, "active"),
+        ("2026-11-18", "2026-12-18", 3000, "cancelled")]
+    assert audit_new(conn, "enrollment.leave")["months_cancelled"] == [ahead]
+    assert charge_of(conn, ahead)["status"] == "cancelled"
+    # Neither owed by the student nor paid to the teacher.
+    monkeypatch.setattr(dates, "today", lambda: date(2026, 12, 1))
+    assert debt.for_student(conn, director, amine).due == 3000
+    [owed] = payouts.due(conn, director, date(2026, 11, 30))
+    assert owed.months == 1
+
+
+def test_leaving_on_the_first_day_of_a_month_keeps_it(conn, receptionist, in_maths,
+                                                      monkeypatch):
+    """The last day is a day in the group: a month starting that day runs."""
+    renewed_ahead(conn, receptionist, in_maths, monkeypatch)
+    monkeypatch.setattr(dates, "today", lambda: date(2026, 11, 18))
+    enrollments.leave(conn, receptionist, in_maths)
+    assert [m[3] for m in months(conn, receptionist, in_maths)] == ["active", "active"]
+
+
+def test_leaving_keeps_a_month_ahead_already_paid(conn, director, receptionist, amine,
+                                                 in_maths, monkeypatch):
+    ahead = renewed_ahead(conn, receptionist, in_maths, monkeypatch)
+    payments.record(conn, receptionist, amine, 4000, "cash")  # 3 000 + 1 000 on 18/11
+    assert subscriptions.after(conn, receptionist, in_maths, date(2026, 11, 14))[0].paid == 1000
+    enrollments.leave(conn, receptionist, in_maths)
+    assert [m[3] for m in months(conn, receptionist, in_maths)] == ["active", "active"]
+    assert audit_new(conn, "enrollment.leave")["months_kept"] == [ahead]
+
+
+def test_leaving_takes_a_month_ahead_out_of_the_teachers_draft(conn, director, receptionist,
+                                                               school, in_maths, monkeypatch):
+    renewed_ahead(conn, receptionist, in_maths, monkeypatch)
+    draft = payouts.build_draft(conn, director, school.teacher, date(2026, 11, 30))
+    assert payouts.get(conn, director, draft).months == 2
+    enrollments.leave(conn, receptionist, in_maths)
+    p = payouts.get(conn, director, draft)
+    assert (p.months, p.base_amount, p.amount_due) == (1, 3000, 1800)
+
+
+def test_leaving_keeps_a_month_ahead_a_teacher_was_paid_for(conn, director, receptionist,
+                                                            school, in_maths, monkeypatch):
+    ahead = renewed_ahead(conn, receptionist, in_maths, monkeypatch)
+    payouts.approve(conn, director, payouts.build_draft(conn, director, school.teacher,
+                                                        date(2026, 11, 30)))
+    enrollments.leave(conn, receptionist, in_maths)
+    assert audit_new(conn, "enrollment.leave")["months_kept"] == [ahead]
+
+
+def test_switch_cancels_the_old_groups_month_ahead(conn, receptionist, school, amine,
+                                                  monkeypatch):
+    old = enrollments.enroll(conn, receptionist, amine, school.maths,
+                             enrolled_on=date(2026, 10, 1))  # 01/10 -> 01/11
+    monkeypatch.setattr(dates, "today", lambda: date(2026, 10, 28))
+    subscriptions.renew(conn, receptionist, month_of(conn, receptionist, old))  # 01/11 -> 01/12
+    new = enrollments.switch(conn, receptionist, old, school.physics)
+    assert months(conn, receptionist, old) == [
+        ("2026-10-01", "2026-11-01", 3000, "active"),
+        ("2026-11-01", "2026-12-01", 3000, "cancelled")]
+    # The new group's first month follows the month running on the switch day.
+    assert months(conn, receptionist, new) == [("2026-11-01", "2026-12-01", 2500, "active")]
+
+
+def test_switch_keeps_a_paid_month_ahead_and_starts_after_it(conn, receptionist, school, amine,
+                                                            monkeypatch):
+    old = enrollments.enroll(conn, receptionist, amine, school.maths,
+                             enrolled_on=date(2026, 10, 1))
+    monkeypatch.setattr(dates, "today", lambda: date(2026, 10, 28))
+    subscriptions.renew(conn, receptionist, month_of(conn, receptionist, old))
+    payments.record(conn, receptionist, amine, 6000, "cash")  # both months paid
+    new = enrollments.switch(conn, receptionist, old, school.physics)
+    assert [m[3] for m in months(conn, receptionist, old)] == ["active", "active"]
+    assert months(conn, receptionist, new) == [("2026-12-01", "2027-01-01", 2500, "active")]
+
+
+def test_abonnements_owed_counts_the_credit(conn, receptionist, amine, in_maths,
+                                            monkeypatch):
+    payments.record(conn, receptionist, amine, 6000, "cash")  # October + 3 000 of credit
+    renewed_ahead(conn, receptionist, in_maths, monkeypatch)
+    [line] = subscriptions.lines(conn, receptionist)
+    assert line.owed == 0  # the credit pays November at the next payment
+
+
+def test_closing_a_group_cancels_its_months_ahead(conn, director, receptionist, school,
+                                                  in_maths, monkeypatch):
+    ahead = renewed_ahead(conn, receptionist, in_maths, monkeypatch)
+    groups.close(conn, director, school.maths)
+    assert [m[3] for m in months(conn, receptionist, in_maths)] == ["active", "cancelled"]
+    assert audit_new(conn, "enrollment.leave")["months_cancelled"] == [ahead]
 
 
 def test_renewable_for_a_group(conn, receptionist, school, amine, in_maths, monkeypatch):

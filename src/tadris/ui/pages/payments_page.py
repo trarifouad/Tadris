@@ -1,5 +1,7 @@
-"""Paiements (sidebar): the debtors list and the day's cash report. A double-click opens the
-student's page, where payments are received."""
+"""Paiements (sidebar): the students with something left to pay (or only those late, a
+filter) and the day's cash report. Payments are taken from here: « Encaisser un paiement »
+for any student; a double-click on a student, or several selected (Ctrl, Maj) and
+« Encaisser », one payment each. « Voir la fiche » opens the student's page."""
 
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
@@ -16,22 +18,27 @@ from tadris.core.context import UserContext
 from tadris.core.dates import display_date
 from tadris.core.errors import BusinessRuleError
 from tadris.core.money import format_dzd
+from tadris.core.permissions import allowed
 from tadris.domain.models import CashReport, Payment
 from tadris.i18n.fr import t
 from tadris.services import debt, groups, payments
+from tadris.ui.collect import collect_many, pick_and_collect
 from tadris.ui.pages.payments_tab import payment_state
 from tadris.ui.theme.status import kind_for
-from tadris.ui.widgets.common import labeled
+from tadris.ui.widgets.common import labeled, primary_button
 from tadris.ui.widgets.date_edit import DateLineEdit
 from tadris.ui.widgets.forms import ListSection, caption, padded
 from tadris.ui.widgets.inputs import count_spin, fill_combo, id_combo, money_edit, read_money
 from tadris.ui.widgets.tables import CENTER, fit_columns, item
 
 MAX_DAYS = 365
+# « État »: every student with something left to pay, or only those late.
+STATES = ("all", "late")
 
 
 class DebtorsView(QWidget):
     open_student = Signal(int)
+    collect = Signal(list)  # student ids: a double-click, or « Encaisser » on the selection
 
     def __init__(self, conn, ctx: UserContext):
         super().__init__()
@@ -39,6 +46,8 @@ class DebtorsView(QWidget):
         self._ctx = ctx
         self.group = id_combo([])
         self.group.currentIndexChanged.connect(lambda _i: self.refresh())
+        self.state = id_combo([(t[f"debtors.state.{key}"], key) for key in STATES], "all")
+        self.state.currentIndexChanged.connect(lambda _i: self.refresh())
         self.min_amount = money_edit()
         self.min_amount.setPlaceholderText(t["debtors.any_amount"])
         self.min_amount.textChanged.connect(lambda _text: self.refresh())
@@ -48,6 +57,7 @@ class DebtorsView(QWidget):
         self.min_days.valueChanged.connect(lambda _v: self.refresh())
         filters = QHBoxLayout()
         filters.setSpacing(12)
+        filters.addWidget(labeled(t["debtors.state"], self.state), 1)
         filters.addWidget(labeled(t["debtors.group"], self.group), 2)
         filters.addWidget(labeled(t["debtors.min_amount"], self.min_amount), 1)
         filters.addWidget(labeled(t["debtors.min_days"], self.min_days), 1)
@@ -58,10 +68,21 @@ class DebtorsView(QWidget):
         self.list = ListSection([t["debtors.col.student"], t["debtors.col.number"],
                                  t["debtors.col.owed"], t["debtors.col.due"],
                                  t["debtors.col.since"], t["debtors.col.days"]],
-                                t["debtors.empty"], sortable=True)
+                                t["debtors.empty.all"], sortable=True, multi=True)
         self.list.toolbar.insertWidget(0, self.total)
         fit_columns(self.list.table, stretch=(0,))
-        self.list.activated.connect(self.open_student.emit)
+        # A double-click pays the line; « Encaisser » pays every line selected.
+        cashes = allowed(ctx, "payment.record")
+        if cashes:
+            self.list.activated.connect(lambda student_id: self.collect.emit([student_id]))
+        self.pay = self.list.add_button(primary_button(t["debtors.collect"]), end=True)
+        self.pay.setDefault(False)
+        self.pay.setVisible(cashes)
+        self.pay.clicked.connect(lambda: self.collect.emit(self.list.selected_ids()))
+        self.open_profile = self.list.add_button(QPushButton(t["debtors.open"]), end=True)
+        self.open_profile.clicked.connect(
+            lambda: self.open_student.emit(self.list.selected_ids()[0]))
+        self.list.selection_changed.connect(self._update_buttons)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -82,19 +103,41 @@ class DebtorsView(QWidget):
             self.list.show_error(exc.message)
             return
         self.list.clear_error()
+        late_only = self.state.currentData() == "late"
         listed = debt.debtors(self._conn, self._ctx, group_id=self.group.currentData(),
-                              min_amount=minimum, min_days=self.min_days.value())
-        self.total.setText(t["debtors.total"].format(
-            count=len(listed), total=format_dzd(sum(d.owed_now for d in listed))))
-        self.list.set_rows([[
+                              min_amount=minimum, min_days=self.min_days.value(),
+                              late_only=late_only)
+        late = format_dzd(sum(d.owed_now for d in listed))
+        if late_only:
+            self.total.setText(t["debtors.total"].format(count=len(listed), total=late))
+        else:
+            self.total.setText(t["debtors.total_all"].format(
+                count=len(listed), total=format_dzd(sum(d.due for d in listed)), late=late))
+        self.list.empty.setText(t[f"debtors.empty.{self.state.currentData()}"])
+        self.list.set_rows([self._cells(d) for d in listed])
+
+    @staticmethod
+    def _cells(d) -> list:
+        """What is late in the red pen; a student not late shows dashes there."""
+        late = d.oldest_overdue is not None
+        return [
             item(d.student_name, d.student_name.casefold(), item_id=d.student_id),
             item(d.student_number, mono=True),
-            item(format_dzd(d.owed_now), d.owed_now, align=CENTER, mono=True, tone="danger"),
+            item(format_dzd(d.owed_now), d.owed_now, align=CENTER, mono=True,
+                 tone="danger" if d.owed_now else "faint"),
             item(format_dzd(d.due), d.due, align=CENTER, mono=True),
-            item(display_date(d.oldest_overdue) if d.oldest_overdue else "—",
-                 d.oldest_overdue or "", align=CENTER),
-            item(str(d.days_overdue), d.days_overdue, align=CENTER, mono=True),
-        ] for d in listed])
+            item(display_date(d.oldest_overdue) if late else "—", d.oldest_overdue or "",
+                 align=CENTER),
+            item(str(d.days_overdue) if late else "—", d.days_overdue if late else -1,
+                 align=CENTER, mono=True),
+        ]
+
+    def _update_buttons(self) -> None:
+        count = len(self.list.selected_ids())
+        self.pay.setEnabled(count > 0)
+        self.pay.setText(t["debtors.collect"] if count < 2
+                         else t["debtors.collect_many"].format(count=count))
+        self.open_profile.setEnabled(count == 1)
 
 
 class CashView(QWidget):
@@ -198,9 +241,20 @@ class PaymentsPage(QWidget):
 
     def __init__(self, conn, ctx: UserContext):
         super().__init__()
+        self._conn = conn
+        self._ctx = ctx
         self.setObjectName("page")
         title = QLabel(t["payments_page.title"])
         title.setObjectName("pageTitle")
+        self.receive = primary_button(t["payments_tab.receive"])
+        self.receive.setDefault(False)
+        self.receive.setVisible(allowed(ctx, "payment.record"))
+        self.receive.clicked.connect(
+            lambda: self._after(pick_and_collect(self, self._conn, self._ctx)))
+        head = QHBoxLayout()
+        head.addWidget(title)
+        head.addStretch()
+        head.addWidget(self.receive)
         intro = QLabel(t["payments_page.caption"])
         intro.setObjectName("caption")
         intro.setWordWrap(True)
@@ -208,6 +262,8 @@ class PaymentsPage(QWidget):
         self.cash = CashView(conn, ctx)
         for view in (self.debtors, self.cash):
             view.open_student.connect(self.open_student.emit)
+        self.debtors.collect.connect(lambda ids: self._after(collect_many(
+            self, self._conn, self._ctx, [(student_id, None) for student_id in ids])))
         self.tabs = QTabWidget()
         self.tabs.setDocumentMode(True)
         self.tabs.addTab(padded(self.debtors), t["payments_page.tab.debtors"])
@@ -215,10 +271,16 @@ class PaymentsPage(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 20, 24, 24)
         layout.setSpacing(12)
-        layout.addWidget(title)
+        layout.addLayout(head)
         layout.addWidget(intro)
         layout.addWidget(self.tabs, 1)
         self.refresh()
+
+    def _after(self, taken) -> None:
+        """Once a payment is taken (a payment, or how many): the debtors and the day's cash
+        follow."""
+        if taken:
+            self.refresh()
 
     def refresh(self) -> None:
         self.debtors.load_filters()

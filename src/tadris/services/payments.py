@@ -106,6 +106,18 @@ def lines(conn, ctx: UserContext, payment_id: int) -> list[PaymentLine]:
             for row in repo.allocations(conn, payment_id)]
 
 
+def receipt_lines(conn, ctx: UserContext, payment_id: int) -> list[PaymentLine]:
+    """What was paid when the payment was recorded, as its receipt shows it (the same when
+    printed again): per charge, its own money and the credit of earlier payments it used.
+    Its own credit, used by a later payment, shows on that payment's receipt."""
+    require(ctx, "student.view")
+    _require_row(conn, payment_id)
+    return [PaymentLine(charge_id=row["charge_id"], description=row["description"],
+                        due_date=row["due_date"], amount=row["amount"],
+                        from_credit=row["from_credit"])
+            for row in repo.recorded_with(conn, payment_id)]
+
+
 def cash_report(conn, ctx: UserContext, day: date) -> CashReport:
     """The day's payments (totals per method and per cashier count those not voided) and,
     for the director (teacher pay is theirs to see), the teachers paid that day."""
@@ -236,19 +248,19 @@ def record(conn, ctx: UserContext, student_id: int, amount: int, method: str,
         plan, credit_allocations, allocations = plan_payment(
             list(current.charges), _credits(conn, student_id), amount, chosen)
 
-        for credit_payment_id, charge_id, value in credit_allocations:
-            repo.insert_allocation(conn, credit_payment_id, charge_id, value)
-        if credit_allocations:
-            audit.log(conn, ctx, "payment.apply_credit", "payments", None, new={
-                "student_id": student_id,
-                "allocations": [{"payment_id": p, "charge_id": c, "amount": v}
-                                for p, c, v in credit_allocations]})
-
+        # The payment first: every allocation its recording makes, its credit's too, says so.
         now = _now()
         payment_id = repo.insert(conn, student_id, payer_contact_id, amount, method, now,
                                  ctx.user_id)
+        for credit_payment_id, charge_id, value in credit_allocations:
+            repo.insert_allocation(conn, credit_payment_id, charge_id, value, payment_id)
+        if credit_allocations:
+            audit.log(conn, ctx, "payment.apply_credit", "payments", payment_id, new={
+                "student_id": student_id,
+                "allocations": [{"payment_id": p, "charge_id": c, "amount": v}
+                                for p, c, v in credit_allocations]})
         for charge_id, value in allocations:
-            repo.insert_allocation(conn, payment_id, charge_id, value)
+            repo.insert_allocation(conn, payment_id, charge_id, value, payment_id)
         number = receipt_number(conn)
         receipt_id = repo.insert_receipt(conn, payment_id, number, now)
         audit.log(conn, ctx, "payment.record", "payments", payment_id, new={
@@ -264,8 +276,9 @@ def record(conn, ctx: UserContext, student_id: int, amount: int, method: str,
 
 def void(conn, ctx: UserContext, payment_id: int, reason: str) -> None:
     """Director only. The payment stays, marked voided: what it paid is owed again and its
-    credit is gone. Refused once it was counted in a teacher payout, or once money of it was
-    handed back (refunds archived since 0015)."""
+    credit is gone. Teacher payouts do not stop it: they count each month's full price
+    whether it was paid or not. Refused once money of it was handed back (refunds archived
+    since 0015)."""
     require(ctx, "payment.void")
     reason = clean(reason)
     if not reason:

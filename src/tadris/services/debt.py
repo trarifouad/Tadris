@@ -17,6 +17,8 @@ from tadris.services import settings
 # Cancelling a charge is refused once something was paid on it, so allocations of valid
 # payments only sit on open charges. A charge is late from its due date (a month from its
 # first day, the fee from the registration day); months renewed ahead are owed, not late.
+# The credit is spent only when the next payment is recorded, but every figure shown counts
+# it already, oldest charges first (Debt.after_credit): what is late, since when, what is left.
 
 
 def _today() -> str:
@@ -51,6 +53,18 @@ def for_student(conn, ctx: UserContext, student_id: int) -> Debt:
     return compute(conn, student_id)
 
 
+def left_after_credit(debts) -> dict[int, int]:
+    """{charge id: what is left to pay} once each student's credit paid their oldest charges
+    (as the next payment will); a charge the credit covers whole is not in it."""
+    return {c.id: c.due for d in debts for c in d.after_credit().charges}
+
+
+def left_for_student(conn, ctx: UserContext, student_id: int) -> dict[int, int]:
+    """One student's charges, what is left on each after their credit (a month, the fee):
+    what every screen shows as « reste »."""
+    return left_after_credit([for_student(conn, ctx, student_id)])
+
+
 def every_debt(conn) -> dict[int, Debt]:
     """The debt of every student with an open charge, in two queries (no permission check:
     for the lists and reports that call it)."""
@@ -70,10 +84,12 @@ def days_late(debt: Debt) -> int:
 
 
 def debtors(conn, ctx: UserContext, group_id: int | None = None, min_amount: int = 0,
-            min_days: int = 0) -> list[Debtor]:
-    """Students with something late after their credit, the largest first. group_id keeps
-    the students in that group now (trial or active); min_amount and min_days keep those
-    owing at least that much, or late by at least that many days."""
+            min_days: int = 0, late_only: bool = True) -> list[Debtor]:
+    """Students with something late after their credit (late_only off: something left to
+    pay, months to come included), the most late first, then the most left. group_id keeps
+    the students in that group now (trial or active); min_amount keeps those owing at least
+    that much (late, or left to pay with late_only off); min_days those late by at least
+    that many days."""
     require(ctx, "payment.record")
     on = _today()
     in_group = None
@@ -85,7 +101,8 @@ def debtors(conn, ctx: UserContext, group_id: int | None = None, min_amount: int
     for student_id, debt in every_debt(conn).items():
         if in_group is not None and student_id not in in_group:
             continue
-        if debt.owed_now <= 0 or debt.owed_now < min_amount:
+        owed = debt.owed_now if late_only else debt.after_credit().due
+        if owed <= 0 or owed < min_amount:
             continue
         if _days_late(debt, on) < min_days:
             continue
@@ -97,9 +114,9 @@ def debtors(conn, ctx: UserContext, group_id: int | None = None, min_amount: int
         result.append(Debtor(
             student_id=student["id"], student_number=student["student_number"],
             student_name=f"{student['last_name']} {student['first_name']}",
-            owed_now=debt.owed_now, due=debt.due, credit=debt.credit,
+            owed_now=debt.owed_now, due=debt.after_credit().due, credit=debt.credit,
             oldest_overdue=debt.oldest_overdue, days_overdue=_days_late(debt, on)))
-    result.sort(key=lambda d: (-d.owed_now, d.student_name.casefold()))
+    result.sort(key=lambda d: (-d.owed_now, -d.due, d.student_name.casefold()))
     return result
 
 

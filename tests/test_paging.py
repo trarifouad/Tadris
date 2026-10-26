@@ -5,7 +5,6 @@ over the whole history."""
 from datetime import date, timedelta
 
 import pytest
-from openpyxl import load_workbook
 from PySide6.QtCore import Qt
 
 from tadris import config
@@ -14,7 +13,6 @@ from tadris.core.errors import ValidationError
 from tadris.db.connection import transaction
 from tadris.services import attendance, auth, debt, payments, students
 from tadris.ui.pages.payments_tab import PaymentsTab
-from tadris.ui.pages.reports import ReportsPage
 from tadris.ui.pages.student_attendance_tab import StudentAttendanceTab
 from tadris.ui.pages.students import StudentListView
 from tadris.ui.theme import apply_theme, load_fonts
@@ -109,49 +107,6 @@ def test_a_column_click_sorts_every_student(qtbot, conn, director, many):
     assert view.table.rowCount() == PAGE_SIZE
 
 
-# ----- the student list report -----
-
-def test_the_student_report_comes_a_page_at_a_time(qtbot, conn, director, many, documents):
-    page = ReportsPage(conn, director)
-    qtbot.addWidget(page)
-    page.resize(1300, 700)
-    page.show()
-    page.tabs.setCurrentIndex([*page.views].index("students"))
-    view = page.views["students"]
-    view.status.setCurrentIndex(view.status.findData(None))
-    assert view.table.rowCount() == PAGE_SIZE + 1  # and the total row
-    assert view.table.item(PAGE_SIZE, 0).text() == "250 élève(s)"  # for all of them
-    scroll_until(qtbot, view.table, 251)
-    assert view.table.item(250, 0).text() == "250 élève(s)"  # still at the bottom
-    assert len(set(view.report.row_ids)) == 250
-    with qtbot.waitSignal(view.exported, timeout=15000) as done:
-        qtbot.mouseClick(view.excel, Qt.MouseButton.LeftButton)
-    sheet = load_workbook(done.args[0]).active
-    assert sheet.max_row - 4 - 1 - 2 == 250  # rows, then the total and the note
-
-
-# ----- any report on screen -----
-
-def test_a_long_report_is_shown_a_page_at_a_time(qtbot, conn, director):
-    from tadris.ui.pages.reports import ReportView
-
-    rows = tuple((f"Élève {n:03d}", n) for n in range(260))
-    from tadris.domain.models import ReportColumn, ReportTable
-
-    report = ReportTable(key="x", title="X", period="P",
-                         columns=(ReportColumn("Élève"), ReportColumn("N", "number")),
-                         rows=rows, total=("Total", sum(range(260))))
-    view = ReportView(conn, director, lambda: report)
-    qtbot.addWidget(view)
-    view.resize(900, 600)
-    view.show()
-    view.refresh()
-    assert view.table.rowCount() == PAGE_SIZE + 1
-    scroll_until(qtbot, view.table, 261)
-    assert view.rows_shown()[-1] == ["Total", f"{sum(range(260)):,}".replace(",", " ")]
-    assert view.rows_shown()[259][0] == "Élève 259"
-
-
 # ----- a student's attendance -----
 
 @pytest.fixture
@@ -223,7 +178,7 @@ def test_a_students_payments_come_a_page_at_a_time(qtbot, conn, director, many):
 # ----- debts read what is still owed -----
 
 def test_debts_leave_out_what_is_paid(conn, director):
-    from test_reports import School
+    from test_dashboard import School
 
     class Patch:
         def setattr(self, obj, name, value):

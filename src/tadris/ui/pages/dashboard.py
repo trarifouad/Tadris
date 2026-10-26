@@ -21,24 +21,20 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
-    QMessageBox,
     QPushButton,
     QVBoxLayout,
     QWidget,
 )
 
 from tadris.core.context import UserContext
-from tadris.core.errors import BusinessRuleError
 from tadris.core.money import format_dzd
 from tadris.core.permissions import allowed
 from tadris.domain.models import Dashboard, DashboardSession, DayCash, Debtor, GroupFill
 from tadris.i18n.fr import t
-from tadris.services import payments, printing, reports, students
-from tadris.ui.payment_dialogs import PaymentDialog
+from tadris.services import dashboard, students
+from tadris.ui.collect import collect, pick_and_collect
 from tadris.ui.student_dialog import StudentDialog
-from tadris.ui.student_picker import StudentPicker
 from tadris.ui.theme import blend, icon, tokens
-from tadris.ui.widgets import common
 from tadris.ui.widgets.common import Badge, ask, primary_button, toast
 from tadris.ui.widgets.forms import caption
 
@@ -838,7 +834,7 @@ class DashboardPage(QWidget):
                 card.show_rows(rows)
 
     def refresh(self) -> None:
-        self.show_board(reports.dashboard(self._conn, self._ctx))
+        self.show_board(dashboard.load(self._conn, self._ctx))
 
     def show_board(self, board: Dashboard) -> None:
         self._board = board
@@ -876,23 +872,10 @@ class DashboardPage(QWidget):
 
     def _pick_and_collect(self) -> None:
         """« Encaisser un paiement »: choose the student, then the payment dialog."""
-        picker = StudentPicker(self._conn, self._ctx, parent=self)
-        if ask(picker):
-            self._collect(picker.student_id)
+        if pick_and_collect(self, self._conn, self._ctx) is not None:
+            self.refresh()
 
     def _collect(self, student_id: int) -> None:
-        """« Encaisser »: the payment dialog, the amount late already typed; the receipt
-        opens to be printed, as from the student's page."""
-        student = students.get(self._conn, self._ctx, student_id)
-        dialog = PaymentDialog(self._conn, self._ctx, student, parent=self)
-        if not ask(dialog):
-            return
-        p = payments.get(self._conn, self._ctx, dialog.payment_id)
-        toast(self, t["payments_tab.received"].format(amount=format_dzd(p.amount),
-                                                      number=p.receipt_number))
-        if p.receipt_id is not None and allowed(self._ctx, "print.document"):
-            try:
-                common.open_document(printing.receipt(self._conn, self._ctx, p.receipt_id))
-            except (BusinessRuleError, OSError):
-                QMessageBox.warning(self, t["app.name"], t["print.failed"])
-        self.refresh()
+        """« Encaisser »: the payment dialog, the amount late already typed."""
+        if collect(self, self._conn, self._ctx, student_id) is not None:
+            self.refresh()

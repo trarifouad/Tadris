@@ -5,10 +5,11 @@ from PySide6.QtWidgets import QCheckBox, QLineEdit, QVBoxLayout, QWidget
 from tadris.core import dates
 from tadris.core.context import UserContext
 from tadris.core.errors import ValidationError
+from tadris.core.money import format_dzd
 from tadris.core.permissions import allowed
-from tadris.domain.models import Enrollment, GroupOption, Student
+from tadris.domain.models import Enrollment, GroupOption, Student, Subscription
 from tadris.i18n.fr import t
-from tadris.services import enrollments
+from tadris.services import enrollments, subscriptions
 from tadris.ui.payment_dialogs import debt_banner
 from tadris.ui.setup_dialogs import required_date
 from tadris.ui.widgets.common import fit_to_content, labeled
@@ -26,6 +27,30 @@ from tadris.ui.widgets.tables import (
 )
 
 VISIBLE_ROWS = 6
+
+
+def months_after_note(conn, ctx: UserContext, enrollment: Enrollment,
+                      last_day) -> str:
+    """What leaving the group on `last_day` does to its months to come: cancelled, or kept
+    when money was paid on them or a teacher was paid for them (V1 has no refunds)."""
+    if last_day is None or enrollment.status != "active":
+        return ""
+    months = subscriptions.after(conn, ctx, enrollment.id, last_day)
+
+    def kept(m: Subscription) -> str:
+        why = (t["leave.kept_paid"].format(amount=format_dzd(m.paid)) if m.paid
+               else t["leave.kept_payout"])
+        return f"{dates.short_period(m.start_date, m.end_date)} ({why})"
+
+    parts = []
+    cancelled = [f"{dates.short_period(m.start_date, m.end_date)} ({format_dzd(m.price)})"
+                 for m in months if m.can_cancel]
+    if cancelled:
+        parts.append(t["leave.months_cancelled"].format(months=", ".join(cancelled)))
+    held = [kept(m) for m in months if not m.can_cancel]
+    if held:
+        parts.append(t["leave.months_kept"].format(months=", ".join(held)))
+    return " ".join(parts)
 
 
 def offered(conn, ctx: UserContext, student_id: int,
@@ -183,8 +208,18 @@ class SwitchDialog(_PickGroupDialog):
         self.date.maximum = dates.today()
         self.date.set_value(dates.today())
         self.add(row(labeled(t["switch_dialog.date"], self.date, required=True), QWidget()))
+        self.months_note = caption()
+        self.months_note.setWordWrap(True)
+        self.add(self.months_note)
+        self.date.textChanged.connect(lambda _text: self._months())
+        self._months()
         self._add_reason()
         self.finish(self.picker.table)
+
+    def _months(self) -> None:
+        note = months_after_note(self._conn, self._ctx, self._enrollment, self.date.value())
+        self.months_note.setText(note)
+        self.months_note.setVisible(bool(note))
 
     def save(self) -> None:
         self.new_id = enrollments.switch(self._conn, self._ctx, self._enrollment.id,
@@ -211,7 +246,17 @@ class LeaveDialog(FormDialog):
         self.add(note)
         self.add(row(labeled(t["leave_dialog.date"], self.date, required=True),
                      labeled(t["leave_dialog.reason"], self.reason)))
+        self.months_note = caption()
+        self.months_note.setWordWrap(True)
+        self.add(self.months_note)
+        self.date.textChanged.connect(lambda _text: self._months())
+        self._months()
         self.finish(self.date)
+
+    def _months(self) -> None:
+        note = months_after_note(self._conn, self._ctx, self._enrollment, self.date.value())
+        self.months_note.setText(note)
+        self.months_note.setVisible(bool(note))
 
     def save(self) -> None:
         enrollments.leave(self._conn, self._ctx, self._enrollment.id, required_date(self.date),

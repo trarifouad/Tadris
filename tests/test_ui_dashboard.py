@@ -1,7 +1,7 @@
-from datetime import date
+"""The dashboard page (« Aujourd'hui »): its cards, its lists, its links."""
+
 
 import pytest
-from openpyxl import load_workbook
 from PySide6.QtCore import QPoint, Qt
 from PySide6.QtWidgets import QLabel, QPushButton, QScrollArea, QWidget
 
@@ -9,8 +9,8 @@ from tadris import config
 from tadris.core import dates
 from tadris.core.context import UserContext
 from tadris.domain.models import Dashboard, DashboardSession, DayCash, Debtor, GroupFill
-from tadris.i18n.fr import t
-from tadris.services import auth, reports
+from tadris.services import auth, dashboard
+from tadris.ui import collect as collect_flow
 from tadris.ui.main_window import MainWindow
 from tadris.ui.pages import dashboard as dashboard_page
 from tadris.ui.pages.dashboard import (
@@ -20,17 +20,16 @@ from tadris.ui.pages.dashboard import (
     share_rows,
     short_date,
 )
-from tadris.ui.pages.reports import ReportsPage
 from tadris.ui.theme import apply_theme, load_fonts
 from tadris.ui.widgets import common
-from test_reports import TODAY, School, automatic_entry
+from test_dashboard import TODAY, School
 
 
 @pytest.fixture(autouse=True)
 def theme(qapp, monkeypatch):
     load_fonts()
     apply_theme(qapp)
-    monkeypatch.setattr(reports, "_now_time", lambda: "10:00")
+    monkeypatch.setattr(dashboard, "_now_time", lambda: "10:00")
 
 
 @pytest.fixture(autouse=True)
@@ -66,17 +65,6 @@ def click(qtbot, button):
 def texts(table) -> list[list[str]]:
     return [[table.item(r, c).text() for c in range(table.columnCount())]
             for r in range(table.rowCount())]
-
-
-def export(qtbot, view, button):
-    """Click PDF or Excel and wait for the file: it is written in the background."""
-    with qtbot.waitSignal(view.exported, timeout=15000) as done:
-        click(qtbot, button)
-    return done.args[0]
-
-
-def double_click_row(table, row: int) -> None:
-    table.activated.emit(table.model().index(row, 0))
 
 
 # ----- dashboard -----
@@ -229,11 +217,11 @@ def test_collect_opens_the_payment_dialog(qtbot, conn, director, school, monkeyp
     opened = []
 
     class FakeDialog:
-        def __init__(self, conn, ctx, student, parent=None):
+        def __init__(self, conn, ctx, student, preselect=None, parent=None):
             opened.append(student.id)
 
-    monkeypatch.setattr(dashboard_page, "PaymentDialog", FakeDialog)
-    monkeypatch.setattr(dashboard_page, "ask", lambda dialog: False)
+    monkeypatch.setattr(collect_flow, "PaymentDialog", FakeDialog)
+    monkeypatch.setattr(collect_flow, "ask", lambda dialog: False)
     button = next(b for b in first_row(page.debtors).findChildren(QPushButton)
                   if b.text() == "Encaisser 7 000 DA")
     click(qtbot, button)
@@ -265,12 +253,12 @@ def test_top_bar_buttons(qtbot, conn, director, school, monkeypatch):
             self.student_id = school.badis
 
     class Payment:
-        def __init__(self, conn, ctx, student, parent=None):
+        def __init__(self, conn, ctx, student, preselect=None, parent=None):
             paid.append(student.id)
 
-    monkeypatch.setattr(dashboard_page, "StudentPicker", Picker)
-    monkeypatch.setattr(dashboard_page, "PaymentDialog", Payment)
-    monkeypatch.setattr(dashboard_page, "ask", lambda dialog: not isinstance(dialog, Payment))
+    monkeypatch.setattr(collect_flow, "StudentPicker", Picker)
+    monkeypatch.setattr(collect_flow, "PaymentDialog", Payment)
+    monkeypatch.setattr(collect_flow, "ask", lambda dialog: not isinstance(dialog, Payment))
     click(qtbot, page.collect_payment)
     assert paid == [school.badis]
 
@@ -354,140 +342,6 @@ def test_every_table_header_lines_up_with_its_cells(qtbot, conn, director, schoo
     assert checked > 20  # the school's lists have rows to look at
 
 
-# ----- reports page -----
-
-def tab_labels(page) -> list[str]:
-    return [page.tabs.tabText(i) for i in range(page.tabs.count())]
-
-
-def test_tabs_follow_the_rights(qtbot, conn, director, desk, school):
-    boss = ReportsPage(conn, director)
-    front = ReportsPage(conn, desk)
-    qtbot.addWidget(boss)
-    qtbot.addWidget(front)
-    assert tab_labels(boss) == ["Recettes", "Retards", "Présences", "Enseignants", "Élèves",
-                                "Journal"]
-    assert tab_labels(front) == ["Retards", "Présences", "Élèves"]
-
-
-def test_revenue_tab_shows_the_service_figures(qtbot, conn, director, school):
-    page = ReportsPage(conn, director)
-    qtbot.addWidget(page)
-    view = page.views["revenue"]
-    shown = texts(view.table)
-    assert shown[0] == ["Septembre 2026", "12 000 DA", "9 000 DA", "3 000 DA", "9 000 DA"]
-    assert shown[-1] == ["Total", "29 000 DA", "22 000 DA", "7 000 DA", "23 000 DA"]
-    assert view.table.item(len(shown) - 1, 0).font().weight() > view.table.item(
-        0, 0).font().weight()
-    assert view.period.text() == "Année 2026-2027"
-
-    view.view.setCurrentIndex(view.view.findData("group"))
-    assert view.month_box.isVisibleTo(view)
-    view.month.setCurrentIndex(view.month.findData("2026-10-01"))
-    assert view.period.text() == "Octobre 2026"
-    assert [row[0] for row in texts(view.table)] == [
-        "A · Maths 4AM", "B · Physique 4AM", "Frais d'inscription", "Total"]
-
-
-def test_excel_button_writes_what_the_screen_shows(qtbot, conn, director, school, documents):
-    page = ReportsPage(conn, director)
-    qtbot.addWidget(page)
-    view = page.views["revenue"]
-    export(qtbot, view, view.excel)
-    [path] = documents
-    sheet = load_workbook(path).active
-    total_row = 4 + len(view.report.rows) + 1
-    assert [cell.value for cell in sheet[total_row]] == list(view.report.total)
-    assert view.rows_shown()[-1][1] == "29 000 DA" == f"{sheet.cell(total_row, 2).value:,} DA"\
-        .replace(",", " ")
-
-    export(qtbot, view, view.pdf)
-    assert documents[-1].suffix == ".pdf"
-
-
-def test_debtors_tab_opens_the_student(qtbot, conn, desk, school):
-    page = ReportsPage(conn, desk)
-    qtbot.addWidget(page)
-    view = page.views["debtors"]
-    assert texts(view.table)[0] == ["Cherif Badis", "2026-0002", "4 000 DA", "3 000 DA",
-                                    "0 DA", "0 DA", "7 000 DA"]
-    with qtbot.waitSignal(page.open_student) as opened:
-        double_click_row(view.table, 0)
-    assert opened.args == [school.badis]
-    # The total row opens nobody.
-    with qtbot.assertNotEmitted(page.open_student):
-        double_click_row(view.table, 1)
-
-
-def test_attendance_tab_bad_dates_show_a_banner(qtbot, conn, desk, school):
-    page = ReportsPage(conn, desk)
-    qtbot.addWidget(page)
-    page.tabs.setCurrentIndex(1)
-    view = page.views["attendance"]
-    view.first.set_value(date(2026, 10, 18))
-    view.last.set_value(date(2026, 10, 1))
-    assert view.banner.text() == t["report.dates_order"]
-    view.last.set_value(date(2026, 10, 31))
-    assert view.banner.isHidden()
-    assert view.empty.isVisibleTo(view)  # no attendance recorded
-
-
-def test_student_tab_filters(qtbot, conn, desk, school):
-    page = ReportsPage(conn, desk)
-    qtbot.addWidget(page)
-    page.tabs.setCurrentIndex(2)
-    view = page.views["students"]
-    assert [row[1] for row in texts(view.table)] == ["Benali", "Cherif", "Djebbar", ""]
-    assert texts(view.table)[-1][0] == "3 élève(s)"
-    view.group.setCurrentIndex(view.group.findData(school.b))
-    assert [row[1] for row in texts(view.table)] == ["Cherif", ""]
-
-
-def test_audit_tab(qtbot, conn, director, desk, school):
-    automatic_entry(conn)
-    page = ReportsPage(conn, director)
-    qtbot.addWidget(page)
-    page.tabs.setCurrentIndex(5)
-    view = page.views["audit"]
-    today = date.today()  # audit rows carry SQLite's clock
-    view.first.set_value(today)
-    view.last.set_value(today)
-    assert view.table.rowCount() == len(view.entries) > 0
-
-    assert "Sauvegarde créée" not in {row[2] for row in texts(view.table)}
-    assert all(e.user is not None for e in view.entries)  # the app's own work: not shown
-    assert view.user.findText("Système") == -1
-
-    view.family.setCurrentIndex(view.family.findData("payment"))
-    assert {row[2] for row in texts(view.table)} == {"Paiement enregistré", "Paiement annulé"}
-    view.table.selectRow(0)
-    detail = view.detail.toPlainText()
-    assert detail.startswith(texts(view.table)[0][2] + " par ")  # « Paiement … par accueil »
-    assert " à " in detail and "Paiement n° " in detail
-    assert "Montant" in detail and "{" not in detail
-
-    view.user.setCurrentIndex(view.user.findData(desk.user_id))
-    assert view.table.rowCount() == 0 and view.empty.isVisibleTo(view)
-
-    view.user.setCurrentIndex(0)
-    view.entity.setText("abc")
-    view.entity.editingFinished.emit()
-    assert view.banner.text() == t["report.entity_invalid"]
-
-
-def test_journal_detail_card():
-    from tadris.services.journal import Field
-    from tadris.ui.pages.reports import detail_html
-
-    html = detail_html("Remboursement approuvé par directeur", "le 18/10/2026 à 10:00",
-                       [Field("Statut", "Approuvé", before="En attente"),
-                        Field("Motif", "<départ>")])
-    assert "<b>Approuvé</b>" in html and "En attente" in html
-    assert "&lt;départ&gt;" in html  # what was typed is escaped
-    empty = detail_html("Déconnexion par kadam", "le 18/10/2026 à 15:30", [])
-    assert "Aucun autre détail enregistré." in empty
-
-
 def test_redrawing_the_dashboard_many_times_is_safe(qtbot, conn, director):
     """Shrinking and growing the lists, and going to another page and back, again and again:
     a cell reused across redraws once corrupted memory (a crash a few clicks later)."""
@@ -502,84 +356,6 @@ def test_redrawing_the_dashboard_many_times_is_safe(qtbot, conn, director):
         window.nav_buttons["students"].click()
         window.nav_buttons["dashboard"].click()
     assert dashboard.sessions.rows.count() == dashboard.sessions.shown
-
-
-def test_every_tab_exports_pdf_and_excel(qtbot, conn, director, school, documents):
-    """Each tab, each view: the PDF and the Excel file are written, open, and hold the rows
-    on screen."""
-    page = ReportsPage(conn, director)
-    qtbot.addWidget(page)
-    variants = [("revenue", None), ("revenue", ("view", "group")), ("debtors", None),
-                ("attendance", None), ("attendance", ("view", "student")),
-                ("teachers", None), ("students", None), ("audit", None)]
-    keys = list(page.views)
-    for key, change in variants:
-        page.tabs.setCurrentIndex(keys.index(key))
-        view = page.views[key]
-        if key == "audit":
-            view.first.set_value(date(2020, 1, 1))
-        if change is not None:
-            combo = getattr(view, change[0])
-            combo.setCurrentIndex(combo.findData(change[1]))
-        export(qtbot, view, view.pdf)
-        assert documents[-1].suffix == ".pdf" and documents[-1].read_bytes()[:4] == b"%PDF"
-        export(qtbot, view, view.excel)
-        sheet = load_workbook(documents[-1]).active
-        assert sheet["A1"].value == view.report.title
-        body = [row for row in sheet.iter_rows(min_row=5, max_row=4 + len(view.report.rows),
-                                               values_only=True)]
-        assert len(body) == len(view.report.rows), key
-    assert len(documents) == 2 * len(variants)
-
-
-def test_the_window_answers_while_an_export_is_written(qtbot, conn, director, school,
-                                                        documents, monkeypatch):
-    """The file is built outside the window's thread: the buttons wait, a line says what is
-    being prepared, and the window keeps handling events until the file is there."""
-    import threading
-
-    from tadris.services import printing
-
-    release = threading.Event()
-    build = printing.ReportJob.build
-
-    def slow_build(job):
-        release.wait(5)  # a long PDF
-        return build(job)
-
-    monkeypatch.setattr(printing.ReportJob, "build", slow_build)
-    page = ReportsPage(conn, director)
-    qtbot.addWidget(page)
-    page.show()
-    view = page.views["revenue"]
-    click(qtbot, view.pdf)
-    qtbot.wait(100)  # the event loop runs: the window is not frozen
-    assert not view.pdf.isEnabled() and not view.excel.isEnabled()
-    assert view.busy.isVisible() and view.busy.text() == "Préparation du PDF…"
-    assert documents == []
-    with qtbot.waitSignal(view.exported, timeout=5000):
-        release.set()
-    assert view.pdf.isEnabled() and view.busy.isHidden()
-    assert len(documents) == 1
-    entries = conn.execute("SELECT COUNT(*) FROM audit_log WHERE action = 'report.export'"
-                           ).fetchone()[0]
-    assert entries == 1  # recorded once written, on the window's thread
-
-
-def test_a_failed_export_says_so(qtbot, conn, director, school, documents, monkeypatch):
-    from tadris.services import printing
-
-    def broken(job):
-        raise OSError("disk full")
-
-    monkeypatch.setattr(printing.ReportJob, "build", broken)
-    page = ReportsPage(conn, director)
-    qtbot.addWidget(page)
-    view = page.views["revenue"]
-    click(qtbot, view.excel)
-    qtbot.waitUntil(lambda: view.excel.isEnabled(), timeout=5000)
-    assert view.banner.text() == t["print.failed"] or "disk full" in view.banner.text()
-    assert documents == []
 
 
 def test_refilling_a_table_is_fast(qtbot):
@@ -609,72 +385,3 @@ def test_refilling_a_table_is_fast(qtbot):
     modes = [table.horizontalHeader().sectionResizeMode(c) for c in range(10)]
     assert modes.count(QHeaderView.ResizeMode.ResizeToContents) == 9  # still fitted
     assert table.rowCount() == 64 and table.item(63, 9).text().startswith("cellule 63 9")
-
-
-def test_the_journal_loads_more_as_it_is_scrolled(qtbot, conn, director, school, documents):
-    from test_reports import many_entries
-
-    many_entries(conn, director, 250)
-    page = ReportsPage(conn, director)
-    qtbot.addWidget(page)
-    page.resize(1300, 700)
-    page.show()
-    page.tabs.setCurrentIndex(5)
-    view = page.views["audit"]
-    view.first.set_value(date(2020, 1, 1))
-    view.last.set_value(date(2030, 1, 1))
-    qtbot.wait(20)
-    total = reports.audit_count(conn, director, date(2020, 1, 1), date(2030, 1, 1))
-    assert view.table.rowCount() == len(view.entries) == 100
-    assert view.note.text().startswith(f"100 sur {total} opérations")
-
-    bar = view.table.verticalScrollBar()
-
-    def at_the_end() -> bool:
-        bar.setValue(bar.maximum())  # the end of the list
-        return view.table.rowCount() == 200
-
-    qtbot.waitUntil(at_the_end, timeout=3000)
-    assert bar.value() > 0  # the list did not jump back to the top
-    assert len(view.entries) == len(view.report.rows) == 200
-    assert view.note.text().startswith(f"200 sur {total} opérations")
-
-    view.table.selectRow(150)  # a row of the second page: its own detail
-    assert view.entries[150].id < view.entries[99].id
-    assert view.detail.toPlainText().startswith(view.report.rows[150][2])
-
-    while view.table.rowCount() < total:
-        bar.setValue(bar.maximum())
-        qtbot.wait(5)
-    assert view.table.rowCount() == total and view.note.text() == f"{total} opération(s)."
-    bar.setValue(bar.maximum())
-    qtbot.wait(20)
-    assert view.table.rowCount() == total  # nothing more to load
-
-    path = export(qtbot, view, view.excel)  # the file holds every entry, not the pages
-    sheet = load_workbook(path).active
-    assert sheet.max_row - 4 == total
-
-
-def test_a_new_filter_starts_again_at_the_latest(qtbot, conn, director, school):
-    from test_reports import many_entries
-
-    many_entries(conn, director, 150)
-    page = ReportsPage(conn, director)
-    qtbot.addWidget(page)
-    page.resize(1300, 700)
-    page.show()
-    page.tabs.setCurrentIndex(5)
-    view = page.views["audit"]
-    view.first.set_value(date(2020, 1, 1))
-    view.last.set_value(date(2030, 1, 1))  # the entries carry SQLite's clock, not TODAY
-    bar = view.table.verticalScrollBar()
-
-    def scrolled_down() -> bool:  # as a user does: down until the next page is there
-        bar.setValue(bar.maximum())
-        return view.table.rowCount() > 100
-
-    qtbot.waitUntil(scrolled_down, timeout=3000)
-    view.family.setCurrentIndex(view.family.findData("payment"))
-    assert view.table.rowCount() == len(view.entries) <= 100
-    assert {e.action.split(".")[0] for e in view.entries} == {"payment"}

@@ -30,19 +30,6 @@ def delete_leftover_windows():
     QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 
 
-@pytest.fixture(autouse=True)
-def no_save_dialog(monkeypatch, tmp_path):
-    """« Enregistrer sous » answers by itself in tests: the suggested name, in tmp_path (a
-    real dialog would wait for a click; the real Documents folder is never written)."""
-    from pathlib import Path
-
-    from tadris.ui.widgets import common
-
-    monkeypatch.setattr(common, "ask_save_path",
-                        lambda parent, title, suggested, file_filter:
-                        tmp_path / Path(suggested).name)
-
-
 @pytest.fixture
 def conn():
     auth_service._reset_failures()

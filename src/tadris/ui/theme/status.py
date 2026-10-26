@@ -8,6 +8,8 @@ STATUS_STYLE = {
     "group": {"active": "success", "upcoming": "info", "closed": "neutral"},
     "registration": {"active": "success", "cancelled": "neutral"},
     "enrollment": {"trial": "info", "active": "success", "left": "neutral", "switched": "neutral"},
+    "standing": {"active": "success", "expiring": "warning", "ended": "danger",
+                 "none": "danger"},
     "subscription": {
         "upcoming": "info", "active": "success", "expiring": "warning", "ended": "neutral",
         "cancelled": "danger",

@@ -24,7 +24,6 @@ from tadris.ui.pages.dashboard import DashboardPage
 from tadris.ui.pages.groups import GroupsPage
 from tadris.ui.pages.payments_page import PaymentsPage
 from tadris.ui.pages.payouts_page import PayoutsPage
-from tadris.ui.pages.reports import ReportsPage
 from tadris.ui.pages.settings import SettingsPage
 from tadris.ui.pages.students import StudentsPage
 from tadris.ui.pages.subscriptions_page import SubscriptionsPage
@@ -58,7 +57,8 @@ def initials(username: str) -> str:
 
 
 class PlaceholderPage(QWidget):
-    """Page shell until the phase that builds it."""
+    """Page shell until the phase that builds it (SMS; Rapports, until its plan is
+    rewritten)."""
 
     def __init__(self, title: str):
         super().__init__()
@@ -188,7 +188,7 @@ class MainWindow(QMainWindow):
             page.restored.connect(self._restored)
             return page
         student_pages = {"subscriptions": SubscriptionsPage, "payments": PaymentsPage,
-                         "reports": ReportsPage, "dashboard": DashboardPage}
+                         "dashboard": DashboardPage}
         if key in student_pages:
             page = student_pages[key](self._conn, self.ctx)
             page.open_student.connect(self.open_student)

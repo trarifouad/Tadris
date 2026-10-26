@@ -11,9 +11,11 @@ from tadris.services import (
     catalog,
     enrollments,
     groups,
+    payments,
     registrations,
     school_years,
     students,
+    subscriptions,
     teachers,
 )
 from tadris.ui.enrollment_dialogs import EnrollDialog, LeaveDialog, SwitchDialog
@@ -258,6 +260,25 @@ def test_leave_in_the_future_shows_in_the_dialog(qtbot, conn, receptionist, scho
     dialog.date.setText("19/10/2026")
     dialog._submit()
     assert dialog.banner.text() == t["enrollment.leave_future"]
+
+
+def test_leave_dialog_says_what_happens_to_the_months_to_come(qtbot, conn, receptionist,
+                                                               school, amine, monkeypatch):
+    enrollment_id = enrollments.enroll(conn, receptionist, amine, school.maths)  # 18/10
+    monkeypatch.setattr(dates, "today", lambda: date(2026, 11, 14))
+    [month] = subscriptions.for_enrollment(conn, receptionist, enrollment_id)
+    subscriptions.renew(conn, receptionist, month.id)  # 18/11 -> 18/12, ahead
+    dialog = LeaveDialog(conn, receptionist, enrollments.get(conn, receptionist, enrollment_id))
+    qtbot.addWidget(dialog)
+    assert dialog.months_note.text() == t["leave.months_cancelled"].format(
+        months="18 nov. → 18 déc. (3 000 DA)")
+    dialog.date.setText("18/11/2026")  # that month runs on the last day: kept as it is
+    assert dialog.months_note.isHidden()
+    dialog.date.setText("14/11/2026")
+    payments.record(conn, receptionist, amine, 4000, "cash")  # 1 000 paid on the month ahead
+    dialog._months()
+    assert dialog.months_note.text() == t["leave.months_kept"].format(
+        months="18 nov. → 18 déc. (déjà payé 1 000 DA)")
 
 
 # ----- the student page ties both tabs -----

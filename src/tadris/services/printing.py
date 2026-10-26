@@ -1,5 +1,4 @@
 import re
-from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from html import escape
 from pathlib import Path
@@ -23,15 +22,12 @@ from tadris.documents.attendance_sheet import (
 from tadris.documents.payout_slip import PayoutSlip, build_payout_slip
 from tadris.documents.pdf import Footer, School
 from tadris.documents.receipt import ReceiptDoc, build_receipt
-from tadris.documents.report_pdf import ReportDoc, build_report
-from tadris.documents.report_xlsx import build_report_xlsx
-from tadris.domain.models import ATTENDANCE_STATUSES, ReportTable
+from tadris.domain.models import ATTENDANCE_STATUSES
 from tadris.i18n.fr import t
 from tadris.repositories import payments as payments_repo
 from tadris.repositories import print_log
 from tadris.services import (
     attendance,
-    audit,
     debt,
     groups,
     payments,
@@ -178,8 +174,10 @@ def receipt(conn, ctx: UserContext, receipt_id: int, out_dir: Path | None = None
 
 
 def receipt_content(conn, ctx: UserContext, receipt_id: int) -> ReceiptDoc:
-    """What the payment paid, line by line, the part kept as credit, and the student's
-    balance on the day it is printed (a duplicate shows the balance of its own day)."""
+    """What was paid when the payment was recorded, line by line (the same on a duplicate):
+    each charge settled, the credit of earlier payments it used taken off, the part kept as
+    credit. Then what the student owes on the day it is printed (a duplicate shows its own
+    day): what is due, the months to come apart, after the credit."""
     row = payments_repo.receipt(conn, receipt_id)
     if row is None:
         raise NotFound(t["receipt.not_found"])
@@ -192,16 +190,22 @@ def receipt_content(conn, ctx: UserContext, receipt_id: int) -> ReceiptDoc:
         details.append((t["receipt.payer"], p.payer_name))
     details += [(t["receipt.method"], t[f"payment_method.{p.method}"]),
                 (t["receipt.cashier"], p.cashier)]
-    lines = [(line.description, format_dzd(line.amount))
-             for line in payments.lines(conn, ctx, p.id)]
-    if not p.voided and p.unallocated:
-        lines.append((t["receipt.credit_line"], format_dzd(p.unallocated)))
-    balance = debt.for_student(conn, ctx, p.student_id).balance
+    paid = payments.receipt_lines(conn, ctx, p.id)
+    lines = [(line.description, format_dzd(line.amount)) for line in paid]
+    credit_used = sum(line.from_credit for line in paid)
+    if credit_used:
+        lines.append((t["receipt.credit_used"], format_dzd(-credit_used)))
+    kept = p.amount - sum(line.amount - line.from_credit for line in paid)
+    if kept:
+        lines.append((t["receipt.credit_line"], format_dzd(kept)))
+    owed = debt.for_student(conn, ctx, p.student_id).after_credit()
     today = dates.display_date(dates.iso(dates.today()))
     totals = [(t["receipt.total"], format_dzd(p.amount)),
-              (t["receipt.left"].format(date=today), format_dzd(max(balance, 0)))]
-    if balance < 0:
-        totals.append((t["receipt.credit"], format_dzd(-balance)))
+              (t["receipt.left"].format(date=today), format_dzd(owed.overdue))]
+    if owed.due > owed.overdue:
+        totals.append((t["receipt.upcoming"], format_dzd(owed.due - owed.overdue)))
+    if owed.credit:
+        totals.append((t["receipt.credit"], format_dzd(owed.credit)))
     voided_note = ""
     if p.voided:
         voided_note = t["receipt.voided"].format(date=dates.display_date(p.voided_at),
@@ -271,69 +275,3 @@ def payout_slip_content(conn, ctx: UserContext, payout_id: int) -> PayoutSlip:
         stamp=t[f"payout_stamp.{p.status}"], stamp_date=dates.display_date(stamp_day),
         signature=t["payout_slip.signature"], footer=_footer(ctx))
 
-
-# ----- reports -----
-
-def _report_file(report: ReportTable, extension: str, out_dir: Path | None) -> Path:
-    stamp = f"{dates.iso(dates.today())}_{datetime.now():%H%M%S}"
-    return (out_dir or config.documents_dir()) / f"rapport_{report.key}_{stamp}.{extension}"
-
-
-def _log_export(conn, ctx: UserContext, report: ReportTable, extension: str) -> None:
-    """Reports have no id for print_log: an export goes to the audit log (a student list
-    or the audit log leaving the app is worth knowing)."""
-    with atomic(conn):
-        audit.log(conn, ctx, "report.export", "reports", None,
-                  new={"report": report.key, "format": extension, "rows": len(report.rows),
-                       "period": report.period})
-
-
-@dataclass(frozen=True)
-class ReportJob:
-    """An export ready to be written: build() needs no database, so a long one (the
-    Journal, 40 pages) can run outside the window's thread while the window keeps
-    answering; finish() then records it, back on the database's thread."""
-
-    report: ReportTable
-    extension: str  # pdf | xlsx
-    path: Path
-    school: School
-    footer: Footer
-
-    def build(self) -> Path:
-        if self.extension == "pdf":
-            return build_report(ReportDoc(school=self.school, table=self.report,
-                                          footer=self.footer), self.path)
-        return build_report_xlsx(self.report, self.school.name, self.path)
-
-
-def report_file_name(report: ReportTable, extension: str) -> str:
-    """« rapport_recettes-par-mois_2026-10-20.xlsx »: what « Enregistrer sous » offers."""
-    return f"rapport_{report.key}_{dates.iso(dates.today())}.{extension}"
-
-
-def prepare_report(conn, ctx: UserContext, report: ReportTable, extension: str,
-                   out_dir: Path | None = None, path: Path | None = None) -> ReportJob:
-    """path: where the user chose to save it; by default the app's documents folder."""
-    require(ctx, "print.document")
-    return ReportJob(report=report, extension=extension,
-                     path=path or _report_file(report, extension, out_dir),
-                     school=_school(conn), footer=_footer(ctx))
-
-
-def finish_report(conn, ctx: UserContext, job: ReportJob) -> Path:
-    _log_export(conn, ctx, job.report, job.extension)
-    return job.path
-
-
-def report_pdf(conn, ctx: UserContext, report: ReportTable, out_dir: Path | None = None) -> Path:
-    job = prepare_report(conn, ctx, report, "pdf", out_dir)
-    job.build()
-    return finish_report(conn, ctx, job)
-
-
-def report_xlsx(conn, ctx: UserContext, report: ReportTable,
-                out_dir: Path | None = None) -> Path:
-    job = prepare_report(conn, ctx, report, "xlsx", out_dir)
-    job.build()
-    return finish_report(conn, ctx, job)

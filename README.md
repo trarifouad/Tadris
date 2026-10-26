@@ -32,7 +32,7 @@ Tadris runs on a single computer with no internet connection. It replaces paper 
 | Language | Python 3.12+ |
 | UI | PySide6 (Qt) |
 | Database | SQLite (WAL mode, foreign keys on) |
-| Reports | ReportLab (PDF), openpyxl (Excel) |
+| Documents | ReportLab (PDF: receipts, sheets, slips) |
 | Packaging | PyInstaller |
 
 ## Getting started

@@ -1,21 +1,11 @@
-"""The documents folder: « Ouvrir le dossier », « Enregistrer sous » for Excel, and the
-cleanup of the app's old working copies."""
+"""The documents folder: the cleanup of the app's old working copies."""
 
 import json
 import os
 import time
-from datetime import date
 
-import pytest
-from openpyxl import load_workbook
-from PySide6.QtCore import Qt
-
-from tadris import app, config
-from tadris.core import dates
-from tadris.services import auth, documents
-from tadris.ui.pages.reports import ReportsPage
-from tadris.ui.theme import apply_theme, load_fonts
-from tadris.ui.widgets import common
+from tadris import app
+from tadris.services import documents
 
 DAY = 24 * 60 * 60
 
@@ -69,68 +59,3 @@ def test_a_failing_cleanup_never_stops_the_app(conn, monkeypatch, capsys):
     monkeypatch.setattr(app.documents, "clean_at_start", broken)
     app._clean_documents(conn)
     assert "Nettoyage des documents impossible" in capsys.readouterr().err
-
-
-# ----- the reports' buttons -----
-
-@pytest.fixture
-def page(qtbot, qapp, conn, monkeypatch, tmp_path):
-    load_fonts()
-    apply_theme(qapp)
-    monkeypatch.setattr(dates, "today", lambda: date(2026, 10, 18))
-    monkeypatch.setattr(config, "documents_dir", lambda: tmp_path / "documents")
-    (tmp_path / "documents").mkdir()
-    director = auth.bootstrap_director(conn, "directeur", "password1", "École Ennour")
-    reports_page = ReportsPage(conn, director)
-    qtbot.addWidget(reports_page)
-    reports_page.tabs.setCurrentIndex([*reports_page.views].index("students"))
-    return reports_page.views["students"]
-
-
-def test_open_folder_shows_the_apps_documents(qtbot, page, monkeypatch, tmp_path):
-    shown = []
-    monkeypatch.setattr(common, "open_folder", shown.append)
-    qtbot.mouseClick(page.folder, Qt.MouseButton.LeftButton)
-    assert shown == [tmp_path / "documents"]
-    assert page.folder.text() == "Ouvrir le dossier"
-
-
-def test_excel_asks_where_to_save(qtbot, page, monkeypatch, tmp_path):
-    asked = []
-    target = tmp_path / "pour le comptable"
-    target.mkdir()
-    monkeypatch.setattr(common, "open_document", lambda path: None)
-    monkeypatch.setattr(config, "save_dir", lambda: tmp_path / "Documents")
-
-    def answer(parent, title, suggested, file_filter):
-        asked.append((title, suggested, file_filter))
-        return target / "élèves octobre"  # typed without « .xlsx »
-
-    monkeypatch.setattr(common, "ask_save_path", answer)
-    with qtbot.waitSignal(page.exported, timeout=15000) as done:
-        qtbot.mouseClick(page.excel, Qt.MouseButton.LeftButton)
-    assert asked == [("Enregistrer le fichier Excel",
-                      tmp_path / "Documents" / "rapport_liste-eleves_2026-10-18.xlsx",
-                      "Fichier Excel (*.xlsx)")]
-    path = done.args[0]
-    assert path == target / "élèves octobre.xlsx" and load_workbook(path).active["A1"].value
-    assert not list((tmp_path / "documents").iterdir())  # not in the app's folder
-
-
-def test_cancelling_save_as_writes_nothing(qtbot, page, conn, monkeypatch):
-    monkeypatch.setattr(common, "ask_save_path", lambda *args: None)
-    qtbot.mouseClick(page.excel, Qt.MouseButton.LeftButton)
-    qtbot.wait(50)
-    assert page.excel.isEnabled() and page.busy.isHidden()
-    assert conn.execute("SELECT COUNT(*) FROM audit_log WHERE action = 'report.export'"
-                        ).fetchone()[0] == 0
-
-
-def test_the_pdf_still_goes_to_the_apps_folder(qtbot, page, monkeypatch, tmp_path):
-    asked = []
-    monkeypatch.setattr(common, "ask_save_path", lambda *args: asked.append(args))
-    monkeypatch.setattr(common, "open_document", lambda path: None)
-    with qtbot.waitSignal(page.exported, timeout=15000) as done:
-        qtbot.mouseClick(page.pdf, Qt.MouseButton.LeftButton)
-    assert asked == []  # to print: no question
-    assert done.args[0].parent == tmp_path / "documents"

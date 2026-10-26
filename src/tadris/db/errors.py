@@ -18,7 +18,7 @@ _TRIGGER_MESSAGES = (
     ("payment and charge belong to different students", "db.different_students"),
     ("allocations exceed payment amount", "db.alloc_exceed_payment"),
     ("allocations exceed charge amount", "db.alloc_exceed_charge"),
-    ("payment already counted in a teacher payout", "db.void_after_payout"),
+    ("payment already counted in a teacher payout", "db.void_after_payout"),  # dropped in 0016
     ("payment has refunds", "db.void_has_refunds"),
     ("only charges.status and accrual_date may change", "db.charge_locked"),
     ("charge already counted in a teacher payout", "db.charge_in_payout"),

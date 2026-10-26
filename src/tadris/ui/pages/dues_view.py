@@ -1,18 +1,18 @@
-"""What a student has left to pay, as the desk reads it: a few figures (late, due within a
-week, to come, credit), then the lines grouped by urgency, each one ticked or paid on its own.
+"""What a student has left to pay, as the desk reads it: the lines grouped by urgency, and
+« Crédit » when money paid ahead is left. One button pays (the page's « Encaisser »): it
+names the total of the lines ticked here; a double-click on a line pays that line alone.
 
 Late (red): due on or before today. Due soon (amber): within DUE_SOON_DAYS. To come
 (grey): later, months renewed ahead; folded away so they never inflate what is owed now. The
-figures are after the credit, which pays the oldest lines first (as a payment would)."""
+lines are after the credit, which pays the oldest first (as the next payment will): a line it
+covers whole is not shown, one it covers in part shows what is left."""
 
-from dataclasses import dataclass
 from datetime import date, timedelta
 
 from PySide6.QtCore import QRect, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter
 from PySide6.QtWidgets import (
     QAbstractItemView,
-    QFrame,
     QHBoxLayout,
     QLabel,
     QPushButton,
@@ -27,7 +27,7 @@ from tadris.domain.models import ChargeDue, Debt
 from tadris.i18n.fr import t
 from tadris.ui.theme import tokens
 from tadris.ui.theme.delegates import EDGE_WIDTH, TEXT_INSET, BadgeDelegate
-from tadris.ui.widgets.common import primary_button
+from tadris.ui.widgets.common import Badge
 from tadris.ui.widgets.tables import ID_ROLE, RIGHT, fill, fit_columns, item, ruled_table
 
 DUE_SOON_DAYS = 7
@@ -38,7 +38,7 @@ KINDS = {LATE: "danger", SOON: "warning", LATER: "neutral"}
 PILL_ROLE = Qt.ItemDataRole.UserRole + 20
 # A row drawn with a thin coloured edge on its leading side: a kind.
 EDGE_ROLE = Qt.ItemDataRole.UserRole + 21
-COLUMNS = 6  # tick, item, period, due date, left, « Encaisser »
+COLUMNS = 5  # tick, item, period, due date, left
 
 
 def urgency(c: ChargeDue, today: date) -> str:
@@ -48,28 +48,6 @@ def urgency(c: ChargeDue, today: date) -> str:
     if due <= today + timedelta(days=DUE_SOON_DAYS):
         return SOON
     return LATER
-
-
-@dataclass(frozen=True)
-class Buckets:
-    late: int
-    soon: int
-    later: int
-    credit: int  # what is left of the credit once every line is paid
-
-
-def buckets(d: Debt, today: date) -> Buckets:
-    """What is owed by urgency, the credit taken off the oldest first."""
-    sums = dict.fromkeys(GROUPS, 0)
-    for c in d.charges:
-        sums[urgency(c, today)] += c.due
-    credit = d.credit
-    net = {}
-    for key in GROUPS:
-        taken = min(credit, sums[key])
-        net[key] = sums[key] - taken
-        credit -= taken
-    return Buckets(late=net[LATE], soon=net[SOON], later=net[LATER], credit=credit)
 
 
 def tabular(font: QFont | None = None, size: int = 13) -> QFont:
@@ -91,45 +69,6 @@ def left_text(c: ChargeDue) -> str:
         return t["dues.left_of"].format(left=format_dzd(c.due).removesuffix(" DA"),
                                         amount=format_dzd(c.amount))
     return format_dzd(c.due)
-
-
-# ----- the figures -----
-
-class StatBlock(QFrame):
-    def __init__(self, label: str, kind: str):
-        super().__init__()
-        self.setObjectName("statBlock")
-        self.setProperty("kind", kind)
-        self.label = QLabel(label)
-        self.label.setObjectName("statLabel")
-        self.value = QLabel()
-        self.value.setObjectName("statValue")
-        self.value.setProperty("kind", kind)
-        self.value.setFont(tabular(self.value.font(), 17))
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 8, 12, 8)
-        layout.setSpacing(0)
-        layout.addWidget(self.label)
-        layout.addWidget(self.value)
-
-
-class StatBlocks(QWidget):
-    """« Crédit », only when money paid ahead is left once every line is paid (the lines
-    themselves say what is late, due soon or to come)."""
-
-    def __init__(self):
-        super().__init__()
-        self.credit = StatBlock(t["dues.stat.credit"], "info")
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(8)
-        layout.addWidget(self.credit)
-        layout.addStretch()
-
-    def set_buckets(self, b: Buckets) -> None:
-        self.credit.value.setText(format_dzd(b.credit))
-        self.credit.setVisible(b.credit > 0)
-        self.setVisible(b.credit > 0)
 
 
 # ----- the lines -----
@@ -181,7 +120,7 @@ class DueDelegate(BadgeDelegate):
 
 class DueGroup(QWidget):
     """One urgency: a header that folds the lines (« À venir · 4 échéances · 10 000 DA »),
-    then the lines."""
+    then the lines, ticked to be paid together; a double-click pays one."""
 
     ticked = Signal()
     pay_one = Signal(int)
@@ -200,21 +139,14 @@ class DueGroup(QWidget):
         self.header.setCursor(Qt.CursorShape.PointingHandCursor)
         self.header.toggled.connect(self._toggled)
         self.table = ruled_table(["", t["payments_tab.col.item"], t["payments_tab.col.period"],
-                                  t["payments_tab.col.due_date"], t["payments_tab.col.left"],
-                                  ""])
+                                  t["payments_tab.col.due_date"], t["payments_tab.col.left"]])
         self.table.setItemDelegate(DueDelegate(tokens(), self.table))
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         self.table.horizontalHeader().hide()
         fit_columns(self.table, stretch=(1,))
-        if can_pay:  # a cell widget does not size its column: the button's own width
-            probe = QPushButton(t["dues.pay_one"])
-            probe.setObjectName("link")
-            self.table.horizontalHeader().setSectionResizeMode(
-                5, self.table.horizontalHeader().ResizeMode.Fixed)
-            self.table.setColumnWidth(5, probe.sizeHint().width() + 28)
-        else:
-            self.table.setColumnHidden(5, True)
         self.table.itemChanged.connect(self._item_changed)
+        if can_pay:
+            self.table.cellDoubleClicked.connect(self._double_clicked)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(4)
@@ -226,13 +158,6 @@ class DueGroup(QWidget):
         self.table.blockSignals(True)
         try:
             fill(self.table, [self._cells(c, c.id in keep) for c in charges])
-            for r, c in enumerate(charges):
-                if self.can_pay:
-                    button = QPushButton(t["dues.pay_one"])
-                    button.setObjectName("link")
-                    button.setCursor(Qt.CursorShape.PointingHandCursor)
-                    button.clicked.connect(lambda _checked=False, i=c.id: self.pay_one.emit(i))
-                    self.table.setCellWidget(r, 5, button)
         finally:
             self.table.blockSignals(False)
         total = sum(c.due for c in charges)
@@ -244,8 +169,10 @@ class DueGroup(QWidget):
 
     def _cells(self, c: ChargeDue, ticked: bool) -> list:
         tick = QTableWidgetItem()
-        tick.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsUserCheckable)
-        tick.setCheckState(Qt.CheckState.Checked if ticked else Qt.CheckState.Unchecked)
+        tick.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsUserCheckable
+                      if self.can_pay else Qt.ItemFlag.ItemIsEnabled)
+        if self.can_pay:  # who cannot take a payment has nothing to tick
+            tick.setCheckState(Qt.CheckState.Checked if ticked else Qt.CheckState.Unchecked)
         tick.setData(ID_ROLE, c.id)
         name = item(designation(c))
         name.setToolTip(c.description)
@@ -256,12 +183,18 @@ class DueGroup(QWidget):
         period = short_period(c.start_date, c.end_date) if c.start_date and c.end_date else "—"
         left = item(left_text(c), align=RIGHT, tone="danger" if late else None)
         left.setFont(tabular())
-        return [tick, name, item(period), item(display_date(c.due_date), c.due_date), left,
-                item("")]
+        if self.can_pay:
+            for cell in (name, left):
+                cell.setToolTip(f"{c.description}\n{t['dues.double_click']}")
+        return [tick, name, item(period), item(display_date(c.due_date), c.due_date), left]
 
     def ticked_ids(self) -> list[int]:
         return [self.table.item(r, 0).data(ID_ROLE) for r in range(self.table.rowCount())
                 if self.table.item(r, 0).checkState() == Qt.CheckState.Checked]
+
+    def _double_clicked(self, row: int, column: int) -> None:
+        if column != 0:  # the tick column ticks
+            self.pay_one.emit(self.table.item(row, 0).data(ID_ROLE))
 
     def set_ticked(self, ids: set[int]) -> None:
         self.table.blockSignals(True)
@@ -290,9 +223,11 @@ class DueGroup(QWidget):
 
 class DuesView(QWidget):
     """The lines left to pay, grouped by urgency (late and due soon open, to come folded),
-    with a tick on each; a bar sums what is ticked and pays it in one go."""
+    with a tick on each. The page's one « Encaisser » button pays what is ticked (ticked
+    tells it the total changed); a double-click pays one line (pay)."""
 
     pay = Signal(list)  # charge ids to pay
+    ticked = Signal()
 
     def __init__(self, can_pay: bool):
         super().__init__()
@@ -301,39 +236,40 @@ class DuesView(QWidget):
         self.empty.setObjectName("emptyState")
         self.empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.empty.setWordWrap(True)
-        self.bar = QFrame()
-        self.bar.setObjectName("selectionBar")
-        self.bar_text = QLabel()
-        self.bar_text.setObjectName("selectionText")
-        self.pay_selection = primary_button(t["dues.pay_selection"])
-        self.pay_selection.setDefault(False)
-        self.pay_selection.setAutoDefault(False)
-        self.pay_selection.clicked.connect(lambda: self.pay.emit(self.ticked_ids()))
-        self.pay_selection.setVisible(can_pay)
-        bar = QHBoxLayout(self.bar)
-        bar.setContentsMargins(14, 8, 8, 8)
-        bar.addWidget(self.bar_text, 1)
-        bar.addWidget(self.pay_selection)
-        self.bar.hide()
+        # Money paid ahead, once every line is paid: it pays the next lines.
+        self.credit = QWidget()
+        self.credit_badge = Badge("", "info")
+        credit_note = QLabel(t["dues.credit_note"])
+        credit_note.setObjectName("caption")
+        credit = QHBoxLayout(self.credit)
+        credit.setContentsMargins(0, 0, 0, 0)
+        credit.setSpacing(8)
+        credit.addWidget(self.credit_badge)
+        credit.addWidget(credit_note, 1)
+        self.credit.hide()
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(10)
-        layout.addWidget(self.bar)
+        layout.addWidget(self.credit)
         for group in self.groups.values():
-            group.ticked.connect(self._ticked)
+            group.ticked.connect(self.ticked.emit)
             group.pay_one.connect(lambda charge_id: self.pay.emit([charge_id]))
             layout.addWidget(group)
         layout.addWidget(self.empty)
         self.charges: dict[int, ChargeDue] = {}
 
     def set_debt(self, d: Debt, today: date) -> None:
+        """The student's debt as computed (Debt): the credit is taken off here."""
+        d = d.after_credit()
         keep = set(self.ticked_ids())
         self.charges = {c.id: c for c in d.charges}
         keep &= set(self.charges)
         for key, group in self.groups.items():
             group.set_charges([c for c in d.charges if urgency(c, today) == key], keep)
+        self.credit_badge.setText(t["dues.credit"].format(amount=format_dzd(d.credit)))
+        self.credit.setVisible(d.credit > 0)
         self.empty.setVisible(not d.charges)
-        self._ticked()
+        self.ticked.emit()
 
     def ticked_ids(self) -> list[int]:
         return [i for group in self.groups.values() for i in group.ticked_ids()]
@@ -342,9 +278,6 @@ class DuesView(QWidget):
         """What is late or due soon: what « Encaisser un paiement » ticks first."""
         return [c.id for key in (LATE, SOON) for c in self.groups[key].charges]
 
-    def _ticked(self) -> None:
-        ids = self.ticked_ids()
-        self.bar.setVisible(bool(ids))
-        total = sum(self.charges[i].due for i in ids if i in self.charges)
-        self.bar_text.setText(t["dues.selection"].format(
-            count=len(ids), plural="s" if len(ids) > 1 else "", total=format_dzd(total)))
+    def ticked_total(self) -> int:
+        """What is left on the lines ticked (after the credit)."""
+        return sum(self.charges[i].due for i in self.ticked_ids() if i in self.charges)

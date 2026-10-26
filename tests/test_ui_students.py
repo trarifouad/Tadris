@@ -12,7 +12,7 @@ from tadris.services import auth, contacts, students
 from tadris.ui.contact_dialog import ContactDialog
 from tadris.ui.main_window import MainWindow
 from tadris.ui.pages import student_detail
-from tadris.ui.pages.student_detail import StudentDetailView
+from tadris.ui.pages.student_detail import StudentDetailView, StudentInfoDialog
 from tadris.ui.pages.students import StudentsPage
 from tadris.ui.student_dialog import StudentDialog
 from tadris.ui.theme import apply_theme, load_fonts
@@ -264,8 +264,11 @@ def test_the_study_card_keeps_one_line_per_group(qtbot, conn, director, amine, m
     view = StudentDetailView(conn, director, amine)
     qtbot.addWidget(view)
     assert view.group_lines.lines == [] and not view.group_lines.empty.isHidden()
-    assert view.open_groups.text() == t["overview.groups"].format(count=0)
-    assert not view.enroll.isHidden()
+    empty = view.group_lines.empty
+    assert empty.title.text() == t["overview.empty.none.title"]
+    assert not empty.action.isHidden() and empty.action.text() == t["student_groups.enroll"]
+    assert view.enroll.isHidden()  # the empty state offers it: one main button per card
+    assert view.study_foot.isHidden()  # every list is empty: no « (0) » links
     opened = []
 
     def exec_(window):
@@ -273,19 +276,57 @@ def test_the_study_card_keeps_one_line_per_group(qtbot, conn, director, amine, m
         enrollments_service.enroll(conn, director, amine, group_id)  # done in the window
         return 1
     monkeypatch.setattr(SectionWindow, "exec", exec_)
-    click(qtbot, view.open_groups)
+    view.open_window("groups")  # as its link opens it
     assert opened == [t["overview.window.groups"]]
     [line] = view.group_lines.lines  # the page followed
-    assert line.month.text() == t["overview.month"].format(period="18 oct. → 18 nov.",
-                                                           left="reste 3 000 DA")
-    assert line.attendance.text() == t["overview.no_attendance"]
+    assert view.group_lines.empty.isHidden() and not view.enroll.isHidden()
+    assert not view.study_foot.isHidden()
+    assert view.open_groups.text() == t["overview.groups"].format(count=1)
+    assert view.open_sessions.isHidden()  # no session yet: its link waits
+    assert line.badge.text() == "En cours"  # the same four states as the Abonnements page
+    assert line.period.text() == "18 oct. → 18 nov." and line.left.text() == "3 000 DA"
+    assert line.left.property("kind") == "danger"  # due on the month's first day
+    assert line.attendance_detail.text() == t["overview.no_attendance"]
     assert view.open_subscriptions.text() == t["overview.subscriptions"].format(count=1)
 
 
-def test_header_shows_the_age(qtbot, conn, director, amine):
+def test_the_study_card_says_why_there_is_no_group(qtbot, conn, director, amine,
+                                                   monkeypatch):
+    """Not registered for the year: the student card's own button comes first, so no
+    button here; registered: « Inscrire dans un groupe » in the empty state, which does
+    what the groups list's button does; deactivated: nothing to do from here."""
+    from tadris.services import catalog, registrations, school_years
+    from tadris.ui.enrollment_dialogs import EnrollDialog
+
+    monkeypatch.setattr(dates, "today", lambda: date(2026, 10, 18))
+    school_years.create(conn, director, "2026-2027", date(2026, 9, 1), date(2027, 6, 30))
+    level = catalog.create(conn, director, "level", "4AM")
     view = StudentDetailView(conn, director, amine)
     qtbot.addWidget(view)
-    assert view.born.text().startswith("Né(e) le 14/03/2012 (14 ans)")
+    empty = view.group_lines.empty
+    assert empty.title.text() == t["overview.empty.not_registered.title"]
+    assert empty.action.isHidden() and view.enroll.isHidden()
+
+    registrations.register(conn, director, amine, level, 0)
+    view.groups.refresh()
+    view.refresh_overview()
+    assert empty.title.text() == t["overview.empty.none.title"]
+    opened = []
+    monkeypatch.setattr(EnrollDialog, "exec", lambda dialog: opened.append(True) or 0)
+    click(qtbot, empty.action)
+    assert opened == [True]  # the groups list's own « Inscrire dans un groupe »
+
+    view._run(students.deactivate, "students.deactivated")
+    assert empty.title.text() == t["overview.empty.inactive.title"]
+    assert empty.action.isHidden()
+
+
+def test_info_window_shows_the_age(qtbot, conn, director, amine):
+    view = StudentDetailView(conn, director, amine)
+    qtbot.addWidget(view)
+    info = StudentInfoDialog(view.student)
+    qtbot.addWidget(info)
+    assert info.values["born"].text() == "14/03/2012 (14 ans)"
 
 
 def test_no_contact_shows_the_empty_text(qtbot, conn, director):
@@ -301,8 +342,7 @@ def test_receptionist_cannot_deactivate_from_detail(qtbot, conn, receptionist, a
     view = StudentDetailView(conn, receptionist, amine)
     qtbot.addWidget(view)
     assert not view.deactivate.isVisible() and not view.reactivate.isVisible()
-    assert view.more.isHidden()  # nothing to offer in « ⋯ »
-    assert visible(view.edit)
+    assert view.edit.isVisible() and view.info.isVisible()  # both in « ⋯ »
 
 
 def test_director_deactivates_after_confirm(qtbot, conn, director, amine, monkeypatch):
@@ -449,7 +489,7 @@ def test_phase_2_acceptance(qtbot, conn, director, receptionist, monkeypatch):
     auto_exec(monkeypatch, StudentDialog, lambda d: (
         d.first_name.setText("Amine Rayan"), d.submit.click()
     ))
-    click(qtbot, page.detail.edit)
+    page.detail.edit.trigger()
     assert page.detail.name.text() == "Benali Amine Rayan"
     assert not page.detail.deactivate.isVisible()  # front desk cannot deactivate
 

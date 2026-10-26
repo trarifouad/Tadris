@@ -22,7 +22,7 @@ from tadris.domain.models import Teacher
 from tadris.i18n.fr import t
 from tadris.services import groups, payouts, teachers
 from tadris.ui.payout_dialogs import period_text
-from tadris.ui.teacher_dialogs import RateDialog, TeacherDialog
+from tadris.ui.teacher_dialogs import TeacherDialog
 from tadris.ui.theme.status import kind_for
 from tadris.ui.widgets.common import (
     Badge,
@@ -166,14 +166,12 @@ class TeacherDetailView(QWidget):
         self.header.close_meta()
         self.edit = self.header.add_action(QPushButton(t["action.edit"]))
         self.edit.clicked.connect(self._edit)
-        self.new_rate = self.header.add_action(QPushButton(t["teacher_detail.new_rate"]))
-        self.new_rate.clicked.connect(self._new_rate)
         self.deactivate = self.header.add_action(
             variant_button(t["action.deactivate"], "danger"))
         self.deactivate.clicked.connect(self._deactivate)
         self.reactivate = self.header.add_action(QPushButton(t["action.activate"]))
         self.reactivate.clicked.connect(self._reactivate)
-        for button in (self.edit, self.new_rate, self.deactivate, self.reactivate):
+        for button in (self.edit, self.deactivate, self.reactivate):
             button.setVisible(manages)
 
         self.groups = ListSection([
@@ -247,15 +245,13 @@ class TeacherDetailView(QWidget):
         dialog = TeacherDialog(self._conn, self._ctx, self.teacher, parent=self)
         if ask(dialog):
             self.refresh()
-            toast(self, t["teachers.updated"].format(name=self.teacher.full_name))
-
-    def _new_rate(self) -> None:
-        dialog = RateDialog(self._conn, self._ctx, self.teacher, parent=self)
-        if ask(dialog):
-            self.refresh()
-            rate = format_percent(teachers.rates(self._conn, self._ctx,
-                                                 self.teacher_id)[0].percentage_bp)
-            toast(self, t["teachers.rate_set"].format(name=self.teacher.full_name, rate=rate))
+            if dialog.rate_changed:
+                rate = format_percent(teachers.rates(self._conn, self._ctx,
+                                                     self.teacher_id)[0].percentage_bp)
+                toast(self, t["teachers.rate_set"].format(name=self.teacher.full_name,
+                                                          rate=rate))
+            else:
+                toast(self, t["teachers.updated"].format(name=self.teacher.full_name))
 
     def _deactivate(self) -> None:
         if confirm(self, t["teacher_detail.confirm_deactivate_title"],

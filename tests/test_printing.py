@@ -173,7 +173,6 @@ def themed(qapp):
 
 def test_print_buttons(qtbot, themed, conn, desk, school, monkeypatch, tmp_path):
     from tadris import config
-    from tadris.ui.pages.attendance import SessionsView
     from tadris.ui.pages.attendance_entry import AttendanceView
     from tadris.ui.widgets import common
 
@@ -184,12 +183,4 @@ def test_print_buttons(qtbot, themed, conn, desk, school, monkeypatch, tmp_path)
     qtbot.addWidget(view)
     qtbot.mouseClick(view.print_sheet, Qt.MouseButton.LeftButton)
     assert [p.name for p in opened] == ["presence_m1-co_2026-10-19.pdf"]
-
-    page = SessionsView(conn, desk)
-    qtbot.addWidget(page)
-    page.group.setCurrentIndex(page.group.findData(school["maths"]))
-    page.fill_week_sheet()  # one entry per group with sessions this week
-    [entry] = page.week_sheet.actions()
-    entry.trigger()
-    assert opened[-1].name == "presence-semaine_m1-co_2026-10-17.pdf"
-    assert len(logged(conn)) == 2
+    assert len(logged(conn)) == 1

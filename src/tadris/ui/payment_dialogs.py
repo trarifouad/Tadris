@@ -39,6 +39,13 @@ def debt_banner(conn, ctx: UserContext, student_id: int) -> WarningBanner | None
     return banner
 
 
+def owing(plan: PaymentPlan) -> list:
+    """The lines with something left once the credit paid its part, as every screen shows
+    them. A line the credit pays whole is not shown: it is paid all the same when the
+    payment is recorded (the receipt lists it, with the credit used)."""
+    return [line for line in plan.lines if line.charge.due > line.from_credit]
+
+
 def method_combo(selected: str = "cash") -> QComboBox:
     combo = QComboBox()
     for method in PAYMENT_METHODS:
@@ -49,8 +56,8 @@ def method_combo(selected: str = "cash") -> QComboBox:
 
 class PaymentDialog(FormDialog):
     """The student's debt, the amount and how it is paid, and what it will pay: the credit
-    first, then the oldest lines, unless the desk ticks the lines to pay. The submit button
-    names the amount ("Encaisser 2 500 DA")."""
+    first, then the oldest lines, unless the desk ticks the lines to pay. Only what is left
+    after the credit is listed. The submit button names the amount ("Encaisser 2 500 DA")."""
 
     def __init__(self, conn, ctx: UserContext, student: Student,
                  preselect: list[int] | None = None, parent=None):
@@ -64,10 +71,16 @@ class PaymentDialog(FormDialog):
         current = debt.for_student(conn, ctx, student.id)
         self._base = payments.preview(conn, ctx, student.id, 0)  # the credit's part per line
 
-        summary = caption(t["payment_dialog.summary"].format(
-            name=student.full_name, due=format_dzd(current.due),
-            overdue=format_dzd(current.overdue), credit=format_dzd(current.credit)))
-        summary.setWordWrap(True)
+        net = current.after_credit()
+        text = t["payment_dialog.summary"].format(
+            name=student.full_name, due=format_dzd(net.due), overdue=format_dzd(net.overdue))
+        if current.credit > net.credit:
+            text += " " + t["payment_dialog.credit_deducted"].format(
+                amount=format_dzd(current.credit - net.credit))
+        if net.credit:
+            text += " " + t["payment_dialog.credit_left"].format(amount=format_dzd(net.credit))
+        self.summary = caption(text)
+        self.summary.setWordWrap(True)
         suggested = current.owed_now or max(current.balance, 0)
         self.amount = money_edit(suggested or None)
         self.method = method_combo()
@@ -82,10 +95,10 @@ class PaymentDialog(FormDialog):
         select_data(self.payer, main)
         self.choose = QCheckBox(t["payment_dialog.choose"])
         self.table = ruled_table([t["payment_dialog.col.item"], t["payment_dialog.col.due_date"],
-                                  t["payment_dialog.col.left"], t["payment_dialog.col.credit"],
-                                  t["payment_dialog.col.this"], t["payment_dialog.col.after"]])
+                                  t["payment_dialog.col.left"], t["payment_dialog.col.this"],
+                                  t["payment_dialog.col.after"]])
         fit_columns(self.table, stretch=(0,))
-        rows = max(min(len(self._base.lines), VISIBLE_ROWS), 1)
+        rows = max(min(len(owing(self._base)), VISIBLE_ROWS), 1)
         header = self.table.horizontalHeader().height() or ROW_HEIGHT
         self.table.setFixedHeight(header + 2 + ROW_HEIGHT * rows)
         self.nothing = caption(t["payment_dialog.nothing_due"])
@@ -95,7 +108,7 @@ class PaymentDialog(FormDialog):
         banner = debt_banner(conn, ctx, student.id)
         if banner is not None:
             self.add(banner)
-        self.add(summary)
+        self.add(self.summary)
         self.add(row(labeled(t["payment_dialog.amount"], self.amount, required=True),
                      labeled(t["payment_dialog.method"], self.method, required=True),
                      labeled(t["payment_dialog.payer"], self.payer)))
@@ -103,16 +116,16 @@ class PaymentDialog(FormDialog):
         self.add(self.table)
         self.add(self.nothing)
         self.add(self.outcome)
-        has_lines = bool(self._base.lines)
+        has_lines = bool(owing(self._base))
         self.table.setVisible(has_lines)
         self.choose.setVisible(has_lines)
         self.nothing.setVisible(not has_lines)
 
         if preselect:
-            self._checked = set(preselect) & {line.charge.id for line in self._base.lines}
+            self._checked = set(preselect) & {line.charge.id for line in owing(self._base)}
             if self._checked:
                 self.choose.setChecked(True)
-                left = sum(line.left for line in self._base.lines
+                left = sum(line.left for line in owing(self._base)
                            if line.charge.id in self._checked)
                 if left:
                     self.amount.setText(format_dzd(left))
@@ -134,11 +147,12 @@ class PaymentDialog(FormDialog):
 
     def chosen(self, amount: int) -> list[tuple[int, int]] | None:
         """With "choose" on: the amount spread over the ticked lines, oldest first, after
-        the credit's part. None: the oldest-first order."""
-        if not self.choose.isChecked():
+        the credit's part. None: the oldest-first order, also while no line is ticked (the
+        whole amount would otherwise go to credit)."""
+        if not self.choose.isChecked() or not self._checked:
             return None
         chosen, left = [], amount
-        for line in self._base.lines:
+        for line in owing(self._base):
             if line.charge.id in self._checked and left > 0:
                 take = min(left, line.left)
                 if take > 0:
@@ -163,12 +177,13 @@ class PaymentDialog(FormDialog):
     def _fill(self, plan: PaymentPlan) -> None:
         """Rows are made once; later updates change the cells in place. A tick fires
         itemChanged from the ticked cell, which must not be deleted while it does."""
-        ids = [line.charge.id for line in plan.lines]
+        lines = owing(plan)
+        ids = [line.charge.id for line in lines]
         self.table.blockSignals(True)
         try:
             if ids != self._row_ids():
-                fill(self.table, [self._cells(line) for line in plan.lines])
-            for r, line in enumerate(plan.lines):
+                fill(self.table, [self._cells(line) for line in lines])
+            for r, line in enumerate(lines):
                 self._set_amounts(r, line)
                 self._set_checkable(self.table.item(r, 0), line.charge.id)
         finally:
@@ -179,21 +194,20 @@ class PaymentDialog(FormDialog):
 
     @staticmethod
     def _cells(line) -> list:
+        """« Reste dû »: what is left once the credit paid its part."""
         c = line.charge
         return [
             item(c.description, item_id=c.id),
             item(dates.display_date(c.due_date), align=CENTER),
-            item(format_dzd(c.due), align=CENTER, mono=True),
-            item("", align=CENTER, mono=True),
+            item(format_dzd(c.due - line.from_credit), align=CENTER, mono=True),
             item("", align=CENTER, mono=True),
             item("", align=CENTER, mono=True),
         ]
 
     def _set_amounts(self, r: int, line) -> None:
-        self.table.item(r, 3).setText(format_dzd(line.from_credit) if line.from_credit else "—")
-        self.table.item(r, 4).setText(format_dzd(line.from_payment) if line.from_payment
+        self.table.item(r, 3).setText(format_dzd(line.from_payment) if line.from_payment
                                       else "—")
-        self.table.item(r, 5).setText(format_dzd(line.left))
+        self.table.item(r, 4).setText(format_dzd(line.left))
 
     def _set_checkable(self, cell, charge_id: int) -> None:
         flags = cell.flags() & ~Qt.ItemFlag.ItemIsUserCheckable
@@ -217,10 +231,8 @@ class PaymentDialog(FormDialog):
 
     @staticmethod
     def _result_text(plan: PaymentPlan, amount: int | None) -> str:
+        """What the payment leaves (the credit's part is said once, in the summary)."""
         parts = []
-        if plan.credit_used:
-            parts.append(t["payment_dialog.credit_used"].format(
-                amount=format_dzd(plan.credit_used)))
         if amount and plan.to_credit:
             parts.append(t["payment_dialog.to_credit"].format(amount=format_dzd(plan.to_credit)))
         parts.append(t["payment_dialog.left_after"].format(amount=format_dzd(plan.left_to_pay)))

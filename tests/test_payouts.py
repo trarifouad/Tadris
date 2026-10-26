@@ -88,6 +88,13 @@ def school(conn, director):
     return School(conn, director)
 
 
+def rate_starts_late(conn, teacher_id: int, day: str) -> None:
+    """The teacher's rate starting after their first months, as a database from before the
+    rate checks can hold it (a teacher now takes a group only from a day with a rate)."""
+    conn.execute("UPDATE teacher_rates SET valid_from = ? WHERE teacher_id = ?",
+                 (day, teacher_id))
+
+
 def last_audit(conn, action):
     row = conn.execute("SELECT * FROM audit_log WHERE action = ? ORDER BY id DESC",
                        (action,)).fetchone()
@@ -168,13 +175,51 @@ def test_a_teacher_change_splits_by_the_months_first_day(conn, director, school)
 
 def test_no_rate_on_the_months_first_day(conn, director, school):
     teacher = teachers.create(conn, director, TeacherInput("Nadia Kaci"), 5000,
-                              date(2026, 10, 1))
+                              date(2026, 9, 1))
     group = school.group("D", "Anglais", 2000, teacher)
-    school.pupils(group, 1)  # 01/09: before her rate starts
+    school.pupils(group, 1)  # 01/09
+    rate_starts_late(conn, teacher, "2026-10-01")  # before her rate starts
     with pytest.raises(BusinessRuleError) as caught:
         payouts.build_draft(conn, director, teacher, SEPT_END)
     assert caught.value.message == t["payout.no_rate"].format(teacher="Nadia Kaci",
                                                               date="01/09/2026")
+
+
+def test_a_rate_set_to_start_too_late_is_fixed_from_the_teachers_page(conn, director, school):
+    """DAYDA's case: his rate saved from 21/09 while his group's first month starts on 19/09.
+    The draft is refused until the same 40 % starts on his arrival (01/09)."""
+    dayda = teachers.create(conn, director, TeacherInput("DAYDA", hire_date=date(2026, 9, 1)),
+                            4000, date(2026, 9, 1))
+    group = school.group("D", "Anglais", 2000, dayda)
+    school.pupils(group, 1, on=date(2026, 9, 19))
+    rate_starts_late(conn, dayda, "2026-09-21")
+    with pytest.raises(BusinessRuleError) as caught:
+        payouts.build_draft(conn, director, dayda, SEPT_END)
+    assert caught.value.message == t["payout.no_rate"].format(teacher="DAYDA",
+                                                              date="19/09/2026")
+    teachers.update(conn, director, dayda, TeacherInput("DAYDA", hire_date=date(2026, 9, 1)),
+                    4000, date(2026, 9, 1))
+    p = payouts.get(conn, director, payouts.build_draft(conn, director, dayda, SEPT_END))
+    assert (p.months, p.base_amount, p.amount_due) == (1, 2000, 800)
+
+
+def test_a_rate_change_builds_the_teachers_draft_again(conn, director, school):
+    school.pupils(school.a, 1)  # 01/09, 6 000 DA at 60 %
+    payouts.build_draft(conn, director, school.karim, SEPT_END)
+    teachers.set_rate(conn, director, school.karim, 5000, date(2026, 9, 1))  # corrected
+    [p] = payouts.listing(conn, director)
+    assert (p.status, p.amount_due) == ("draft", 3000)  # at the rate now set
+    teachers.set_rate(conn, director, school.karim, 0, date(2026, 9, 1))  # nothing to pay
+    assert payouts.listing(conn, director) == []
+    assert last_audit(conn, "payout.delete") == {"reason": "rate_changed"}
+
+
+def test_a_rate_from_after_the_drafts_months_leaves_it(conn, director, school):
+    school.pupils(school.a, 1)
+    draft = payouts.build_draft(conn, director, school.karim, SEPT_END)
+    teachers.set_rate(conn, director, school.karim, 7000, date(2026, 10, 1))
+    [p] = payouts.listing(conn, director)
+    assert (p.id, p.amount_due) == (draft, 3600)
 
 
 # ----- drafts: rebuilt, never counted twice -----
@@ -225,13 +270,45 @@ def test_a_cancelled_month_is_not_paid(conn, director, school):
                                                               date="30/09/2026")
 
 
-def test_a_counted_month_can_no_longer_be_cancelled(conn, director, school):
+def test_an_approved_month_can_no_longer_be_cancelled(conn, director, school):
     [enrollment] = school.pupils(school.a, 1)
-    payouts.build_draft(conn, director, school.karim, SEPT_END)
+    payouts.approve(conn, director, payouts.build_draft(conn, director, school.karim,
+                                                        SEPT_END))
     [month] = subscriptions.for_enrollment(conn, director, enrollment)
     with pytest.raises(BusinessRuleError) as caught:
         subscriptions.cancel(conn, director, month.id, "Erreur")
     assert caught.value.message == t["subscription.in_payout"]
+
+
+def test_a_month_cancelled_leaves_the_draft(conn, director, school):
+    """Two months of A (6 000 each) and one of B (12 000) in a draft: cancelling one month
+    of A works the line and the totals out again, as building the draft again would."""
+    first, _second = school.pupils(school.a, 2)
+    school.pupils(school.b, 1)
+    draft = payouts.build_draft(conn, director, school.karim, SEPT_END)
+    assert payouts.get(conn, director, draft).amount_due == 14400
+    [month] = subscriptions.for_enrollment(conn, director, first)
+    assert month.can_cancel  # a draft does not hold a month
+    subscriptions.cancel(conn, director, month.id, "Erreur")
+    p = payouts.get(conn, director, draft)
+    assert (p.status, p.base_amount, p.amount_due, p.months) == ("draft", 18000, 10800, 2)
+    assert sorted((line.revenue_basis, line.amount, line.months)
+                  for line in payouts.lines(conn, director, draft)) == [
+        (6000, 3600, 1), (12000, 7200, 1)]
+    assert payouts.stale(conn, director, draft) == 0
+    payouts.approve(conn, director, draft)  # the totals still match its lines
+    assert last_audit(conn, "payout.drop_month") == {
+        "charge_id": month.charge_id, "amount_due": 10800, "deleted": False}
+
+
+def test_the_last_month_cancelled_deletes_the_draft(conn, director, school):
+    [enrollment] = school.pupils(school.a, 1)
+    draft = payouts.build_draft(conn, director, school.karim, SEPT_END)
+    [month] = subscriptions.for_enrollment(conn, director, enrollment)
+    subscriptions.cancel(conn, director, month.id, "Erreur")
+    with pytest.raises(NotFound):
+        payouts.get(conn, director, draft)
+    assert last_audit(conn, "payout.drop_month")["deleted"] is True
 
 
 def test_the_same_period_twice(conn, director, school):
@@ -316,8 +393,9 @@ def test_the_monthly_run_prepares_every_teacher(conn, director, school):
     school.pupils(school.a, 2)
     samias = school.group("C", "Lecture", 2000, school.samia)
     school.pupils(samias, 1)
-    nadia = teachers.create(conn, director, TeacherInput("Nadia Kaci"), 5000, date(2026, 10, 1))
-    school.pupils(school.group("D", "Anglais", 2000, nadia), 1)  # no rate in September
+    nadia = teachers.create(conn, director, TeacherInput("Nadia Kaci"), 5000, date(2026, 9, 1))
+    school.pupils(school.group("D", "Anglais", 2000, nadia), 1)
+    rate_starts_late(conn, nadia, "2026-10-01")  # no rate in September
     due = payouts.due(conn, director, SEPT_END)
     assert [(d.teacher, d.months, d.revenue) for d in due] == [
         ("Karim Haddad", 2, 12_000), ("Nadia Kaci", 1, 2000), ("Samia Rahmani", 1, 2000)]

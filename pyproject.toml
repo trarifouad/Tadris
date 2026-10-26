@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "tadris"
 version = "0.1.0"
 requires-python = ">=3.12"
-dependencies = ["PySide6", "reportlab", "openpyxl", "platformdirs"]
+dependencies = ["PySide6", "reportlab", "platformdirs"]
 
 [project.optional-dependencies]
 dev = ["pytest", "pytest-qt", "ruff"]

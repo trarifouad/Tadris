@@ -91,7 +91,7 @@ def test_roster_with_badges(qtbot, conn, desk, school):
         "Benali Amine", "Benali Lina", "Benali Yanis"]
     assert notes(view) == ["", "", t["attendance_view.trial"]]
     assert view.summary.text() == t["attendance_view.summary"].format(
-        present=0, late=0, absent=0, excused=0, unmarked=3)
+        present=0, absent=0, unmarked=3)
     assert not view.save.isEnabled()  # nothing changed yet
 
 
@@ -103,7 +103,7 @@ def test_mark_and_save(qtbot, conn, desk, school):
     click(qtbot, view.all_present)  # the other two become present
     assert view.marks() == {amine: "present", lina: "absent", yanis: "present"}
     assert view.summary.text() == t["attendance_view.summary"].format(
-        present=2, late=0, absent=1, excused=0, unmarked=0)
+        present=2, absent=1, unmarked=0)
     click(qtbot, view.save)
     assert not view.dirty() and not view.save.isEnabled()
     assert view.status.text() == "Tenue"
@@ -117,9 +117,19 @@ def test_a_correction(qtbot, conn, desk, school):
     lina = school["pupils"]["Lina"]
     attendance.save(conn, desk, session_on(conn, desk, MONDAY).id, {lina: "absent"})
     view = entry(qtbot, conn, desk)
-    click(qtbot, view._marks[lina].buttons["excused"])
+    click(qtbot, view._marks[lina].buttons["present"])
     click(qtbot, view.save)
-    assert attendance.roster(conn, desk, view.session_id)[1].status == "excused"
+    assert attendance.roster(conn, desk, view.session_id)[1].status == "present"
+
+
+def test_only_present_and_absent_are_offered(qtbot, conn, desk, school):
+    lina = school["pupils"]["Lina"]
+    attendance.save(conn, desk, session_on(conn, desk, MONDAY).id, {lina: "late"})
+    view = entry(qtbot, conn, desk)
+    assert list(view._marks[school["pupils"]["Amine"]].buttons) == ["present", "absent"]
+    # an older « En retard » still shows, as it was saved
+    assert list(view._marks[lina].buttons) == ["present", "absent", "late"]
+    assert view._marks[lina].status() == "late" and not view.dirty()
 
 
 def test_a_future_session_is_read_only(qtbot, conn, desk, school):
@@ -134,6 +144,21 @@ def test_a_cancelled_session_is_read_only(qtbot, conn, desk, school):
     view = entry(qtbot, conn, desk)
     assert view.notice.text() == t["attendance_view.cancelled"].format(reason="Grève")
     assert view.save.isHidden()
+
+
+def test_a_session_without_students_stays_at_the_top(qtbot, conn, director, desk, school):
+    """Nothing to count, mark or save; the notice and the empty state are not spread over
+    the page."""
+    for enrollment_id in school["pupils"].values():
+        enrollments.leave(conn, director, enrollment_id, date(2026, 10, 1))
+    view = entry(qtbot, conn, desk)
+    view.resize(1200, 900)
+    view.show()
+    qtbot.waitExposed(view)
+    assert view.table.isHidden() and not view.empty.isHidden()
+    assert view.summary.isHidden() and view.save.isHidden() and view.all_present.isHidden()
+    assert view.empty.height() <= view.empty.sizeHint().height()  # not stretched
+    assert view.empty.geometry().bottom() < 400
 
 
 def test_month_not_renewed_badge(qtbot, conn, director, desk, school, monkeypatch):
@@ -185,8 +210,9 @@ def test_student_attendance_tab(qtbot, conn, desk, school):
     assert view.windows["sessions"].section is tab  # every session opens in a window
     assert view.open_sessions.text() == t["overview.sessions"].format(count=1)
     [line] = view.group_lines.lines
-    assert line.attendance.text() == t["overview.attendance"].format(
-        rate="100 %", sessions=1, absent=0)  # late counts as there
+    assert line.attendance.text() == "100 %"  # late counts as there
+    assert line.attendance_detail.text() == t["overview.attendance_detail"].format(
+        sessions=1, absent=0)
     table = tab.list.table
     assert [table.item(0, c).text() for c in range(4)] == [
         "19/10/2026", "17:00 – 18:30", "M1 · Maths 4AM", "En retard"]

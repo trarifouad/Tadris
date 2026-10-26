@@ -211,7 +211,8 @@ def build_draft(conn, ctx: UserContext, teacher_id: int, until: date) -> int:
 
 
 def rebuild(conn, ctx: UserContext, payout_id: int) -> int:
-    """A draft built again up to the same date: months added or cancelled since count."""
+    """A draft built again up to the same date: months added since count (a month cancelled
+    has already left it, see drop_month)."""
     require(ctx, "payout.manage")
     with atomic(conn):
         row = _require_row(conn, payout_id)
@@ -233,6 +234,52 @@ def run(conn, ctx: UserContext, until: date) -> tuple[list[int], list[str]]:
         except BusinessRuleError as exc:
             refused.append(exc.message)
     return built, refused
+
+
+def drop_month(conn, ctx: UserContext, charge_id: int) -> int | None:
+    """Inside the caller's transaction, before the month's charge is cancelled: the draft
+    that counts the month lets it go, so no draft pays a month no longer owed. Its line and
+    the draft's totals are worked out again (the period stays as built); a line left without
+    a month goes, and the draft too once nothing is left to pay. Returns the draft's id, None
+    when no draft counts the month. Approved and paid payouts never change (triggers)."""
+    held = repo.draft_holding(conn, charge_id)
+    if held is None:
+        return None
+    payout_id, line_id = held["payout_id"], held["line_id"]
+    repo.delete_month(conn, line_id, charge_id)
+    revenue = repo.line_revenue(conn, line_id)
+    if revenue:
+        repo.set_line(conn, line_id, revenue, apply_rate(revenue, held["percentage_bp"]))
+    else:
+        repo.delete_line(conn, line_id)
+    base, due = repo.line_totals(conn, payout_id)
+    if due > 0:
+        repo.set_totals(conn, payout_id, base, due)
+    else:
+        repo.delete_draft(conn, payout_id)
+    audit.log(conn, ctx, "payout.drop_month", "teacher_payouts", payout_id,
+              old={"amount_due": held["amount_due"]},
+              new={"charge_id": charge_id, "amount_due": due, "deleted": due <= 0})
+    return payout_id
+
+
+def refresh_draft(conn, ctx: UserContext, teacher_id: int, since: str) -> int | None:
+    """Inside the caller's transaction, after the teacher's rates changed from `since`: their
+    draft, when it counts a month from that day on, is built again up to its date, so each
+    month counts at the rate now set; a draft that can no longer be built goes. Returns the
+    draft's id (None without one). Approved and paid payouts never change."""
+    draft = repo.draft_of(conn, teacher_id)
+    if draft is None or draft["period_end"] < since:
+        return None if draft is None else draft["id"]
+    try:
+        return _build(conn, ctx, teacher_id, draft["period_end"])
+    except BusinessRuleError:
+        repo.delete_draft(conn, draft["id"])  # _build may have deleted it already
+        audit.log(conn, ctx, "payout.delete", "teacher_payouts", draft["id"],
+                  old={"teacher_id": teacher_id, "period_end": draft["period_end"],
+                       "amount_due": draft["amount_due"]},
+                  new={"reason": "rate_changed"})
+        return None
 
 
 def delete_draft(conn, ctx: UserContext, payout_id: int) -> None:

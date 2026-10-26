@@ -1,7 +1,7 @@
 """The app's own documents folder (config.documents_dir()): what the app writes there to
-open it (a report to print, a receipt, a sheet) is a working copy, cleaned up after a while
-so the folder does not grow for ever. Only files the app named itself are ever removed;
-a report the user saved elsewhere (« Enregistrer sous ») is never touched.
+open it (a receipt, a sheet, a slip) is a working copy, cleaned up after a while so the
+folder does not grow for ever. Only files the app named itself are ever removed. Report
+exports (« rapport_… », written before the Rapports page was taken out) are still cleaned.
 """
 
 import time

@@ -150,6 +150,12 @@ def selected_id(table: QTableWidget) -> int | None:
     return table.item(rows[0].row(), 0).data(ID_ROLE)
 
 
+def selected_ids(table: QTableWidget) -> list[int]:
+    """Every selected row's id, top to bottom (a table that selects several rows)."""
+    rows = sorted(index.row() for index in table.selectionModel().selectedRows())
+    return [table.item(r, 0).data(ID_ROLE) for r in rows]
+
+
 PAGE_SIZE = 100  # rows a long list shows first, then this many more as it is scrolled
 MORE_AHEAD_ROWS = 10  # the next page is loaded this many rows before the end
 

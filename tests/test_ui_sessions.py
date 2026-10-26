@@ -247,24 +247,6 @@ def test_reading_only_without_the_right(qtbot, conn, desk, school, monkeypatch):
     monkeypatch.setattr(page_module, "allowed", lambda _ctx, action: action != "session.manage")
     page = view(qtbot, conn, desk)
     assert page.cards[0].actions_by_key == {} and not shown(page.cards[0].more)
-    assert not page.regenerate.isVisible()
-
-
-def test_regenerate_reports_what_it_did(qtbot, conn, director, desk, school):
-    conn.execute("DELETE FROM sessions WHERE date = '2026-10-26'")
-    page = view(qtbot, conn, desk)
-    page.regenerate.trigger()
-    assert not shown(page.error)
-    assert len(sessions.listing(conn, desk, date(2026, 10, 26), date(2026, 10, 26))) == 1
-    conn.execute("DELETE FROM sessions WHERE date = '2026-10-26'")
-    conn.execute(  # a makeup of P1 now holds Salle A on 26/10 at 17:00
-        "INSERT INTO sessions(group_id, room_id, teacher_id, date, start_time, end_time, "
-        "source) VALUES (?, ?, ?, '2026-10-26', '17:00', '18:00', 'makeup')",
-        (school["physics"], school["room_a"], school["samia"]))
-    page.regenerate.trigger()
-    assert page.error.text() == t["sessions_page.conflicts"].format(
-        count=1, lines=t["sessions_page.conflict_line"].format(
-            date="26/10/2026", message=t["db.room_session_overlap"]))
 
 
 def test_the_page_in_the_sidebar(qtbot, conn, desk, school):
@@ -275,4 +257,3 @@ def test_the_page_in_the_sidebar(qtbot, conn, desk, school):
     window.nav_buttons["attendance"].click()
     page = window.pages.currentWidget()
     assert len(page.sessions.cards) == 1
-    assert page.sessions.regenerate.isVisible()  # both roles manage sessions

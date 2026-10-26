@@ -1,4 +1,5 @@
-"""The student's Abonnements tab: every month of every group, latest first."""
+"""The student's Abonnements tab: every month of every group, latest first. What is left to
+pay on each is after the student's credit, as everywhere else."""
 
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QLabel, QPushButton, QVBoxLayout, QWidget
@@ -9,7 +10,7 @@ from tadris.core.money import format_dzd
 from tadris.core.permissions import allowed
 from tadris.domain.models import Enrollment, Subscription
 from tadris.i18n.fr import t
-from tadris.services import enrollments, subscriptions
+from tadris.services import debt, enrollments, subscriptions
 from tadris.ui.subscription_dialogs import (
     CancelSubscriptionDialog,
     RenewDialog,
@@ -31,6 +32,7 @@ class SubscriptionsTab(QWidget):
         self._ctx = ctx
         self._student_id = student_id
         self._subscriptions: dict[int, Subscription] = {}
+        self._left: dict[int, int] = {}  # charge id -> left to pay, after the credit
         self._latest: set[int] = set()  # the latest month of each enrollment
         self._without: list[Enrollment] = []
 
@@ -73,7 +75,8 @@ class SubscriptionsTab(QWidget):
         self._without = [e for e in enrollments.for_student(self._conn, self._ctx,
                                                             self._student_id)
                          if e.status == "active" and e.id not in covered]
-        due = sum(s.due for s in listed)
+        self._left = debt.left_for_student(self._conn, self._ctx, self._student_id)
+        due = sum(self._left.get(s.charge_id, 0) for s in listed if s.status != "cancelled")
         self.summary.setText(t["subscriptions.summary"].format(due=format_dzd(due)))
         self.start.setVisible(bool(self._without) and allowed(self._ctx, "subscription.manage"))
         self.list.set_rows([self._cells(s) for s in listed])
@@ -84,7 +87,7 @@ class SubscriptionsTab(QWidget):
         elif s.charge_id is None:
             due = t["subscriptions.free"]
         else:
-            due = format_dzd(s.due)
+            due = format_dzd(self._left.get(s.charge_id, 0))
         group = item(s.group_title, item_id=s.id)
         group.setToolTip(s.group_title)  # the column is narrow on the student page
         return [
@@ -104,8 +107,7 @@ class SubscriptionsTab(QWidget):
         self.renew.setEnabled(s is not None and s.id in self._latest
                               and s.enrollment_status == "active")
         # Money paid on the month keeps it (V1 has no refunds).
-        self.cancel.setEnabled(s is not None and s.status != "cancelled" and not s.paid
-                               and not s.in_payout)
+        self.cancel.setEnabled(s is not None and s.can_cancel)
 
     def _done(self, message: str, select: int | None = None) -> None:
         self.list.clear_error()

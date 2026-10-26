@@ -26,7 +26,8 @@ from tadris.services import (
 # The teacher is kept as history in group_teachers, half-open [valid_from, valid_to): a change
 # closes the current period and opens a new one; a change on the current period's own start
 # date corrects it, unless that teacher was already paid for the group. A change can be
-# planned for a later date; until then the group shows its current teacher.
+# planned for a later date; until then the group shows its current teacher. A teacher takes
+# a group only from a day they have a rate (each month is paid at the rate of its first day).
 
 STATUSES = ("planned", "active", "closed")
 
@@ -111,6 +112,7 @@ def create(conn, ctx: UserContext, data: GroupInput, teacher_id: int) -> int:
         catalog.require_active(conn, "subject", data.subject_id)
         teachers.require_active(conn, teacher_id)
         start = dates.iso(data.start_date)
+        teachers.require_rate_on(conn, teacher_id, start)
         group_id = repo.insert(conn, year["id"], data.level_id, data.subject_id, name,
                                data.price, data.capacity, start)
         repo.insert_teacher_row(conn, group_id, teacher_id, start)
@@ -154,11 +156,13 @@ def update(conn, ctx: UserContext, group_id: int, data: GroupInput) -> None:
 
 
 def _move_start(conn, ctx: UserContext, group_id: int, start: str) -> None:
-    """The first teacher starts with the group, and so do its slots."""
+    """The first teacher starts with the group (from a day they have a rate), and so do its
+    slots."""
     first = repo.first_teacher_row(conn, group_id)
     if first["valid_to"] is not None and start >= first["valid_to"]:
         raise BusinessRuleError(t["group.start_after_teacher_change"].format(
             date=dates.display_date(first["valid_to"])))
+    teachers.require_rate_on(conn, first["teacher_id"], start)
     repo.move_teacher_row_start(conn, first["id"], start)
     timetable.follow_group_start(conn, ctx, group_id, start)
 
@@ -176,6 +180,7 @@ def change_teacher(conn, ctx: UserContext, group_id: int, teacher_id: int,
                 start=dates.display_date(row["start_date"]),
                 end=dates.display_date(row["year_end"])))
         teachers.require_active(conn, teacher_id)
+        teachers.require_rate_on(conn, teacher_id, start)
         current = repo.open_teacher_row(conn, group_id)
         if current is not None and current["teacher_id"] == teacher_id:
             raise BusinessRuleError(t["group.same_teacher"])

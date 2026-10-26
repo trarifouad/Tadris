@@ -26,13 +26,12 @@ from tadris.core.errors import BusinessRuleError
 from tadris.core.permissions import allowed
 from tadris.domain.models import Session
 from tadris.i18n.fr import t
-from tadris.services import groups, printing, sessions, teachers
+from tadris.services import groups, sessions, teachers
 from tadris.ui.pages.attendance_entry import AttendanceView
 from tadris.ui.pages.dashboard import ElidedLabel, capitalized, fixed, label
 from tadris.ui.pages.timetable import week_start
 from tadris.ui.session_dialogs import CancelSessionDialog, MakeupDialog, SubstituteDialog
 from tadris.ui.theme import icon, tokens
-from tadris.ui.widgets import common
 from tadris.ui.widgets.common import Badge, PageBanner, ask, toast
 from tadris.ui.widgets.date_edit import DateLineEdit
 from tadris.ui.widgets.forms import ListDetailPage, caption
@@ -40,7 +39,6 @@ from tadris.ui.widgets.inputs import FilterButton, fill_combo, id_combo
 
 WEEK_DAYS = 7
 MAX_DOTS = 5
-MAX_CONFLICTS_SHOWN = 3
 KEY_STEPS = {Qt.Key.Key_Left: -1, Qt.Key.Key_Right: 1, Qt.Key.Key_PageUp: -WEEK_DAYS,
              Qt.Key.Key_PageDown: WEEK_DAYS}
 
@@ -396,23 +394,6 @@ class SessionsView(QWidget):
         self.filters = FilterButton()
         self.filters.add_filter(t["sessions_page.filter.group"], self.group)
         self.filters.add_filter(t["sessions_page.filter.teacher"], self.teacher)
-        self.page_menu = QMenu(self)
-        self.regenerate = self.page_menu.addAction(t["sessions_page.regenerate"])
-        self.regenerate.triggered.connect(self._regenerate)
-        self.regenerate.setVisible(self.manages)
-        self.week_sheet = self.page_menu.addMenu(t["sessions_page.week_sheet"])
-        self.week_sheet.aboutToShow.connect(self.fill_week_sheet)
-        self.week_sheet.menuAction().setVisible(allowed(ctx, "print.document"))
-        self.more = QPushButton()
-        self.more.setObjectName("iconButton")
-        self.more.setIcon(icon("ellipsis", "text"))
-        self.more.setIconSize(QSize(18, 18))
-        self.more.setAutoDefault(False)
-        self.more.setToolTip(t["sessions_page.more"])
-        self.more.clicked.connect(lambda: self.page_menu.exec(
-            self.more.mapToGlobal(QPoint(self.more.width() - self.page_menu.sizeHint().width(),
-                                         self.more.height() + 4))))
-        self.more.setVisible(self.manages or allowed(ctx, "print.document"))
         self.today = QPushButton(t["sessions_page.today"])
         self.today.setAutoDefault(False)
         self.today.clicked.connect(lambda: self.on.set_value(dates.today()))
@@ -428,7 +409,6 @@ class SessionsView(QWidget):
         head.addWidget(self.on)
         head.addSpacing(8)
         head.addWidget(self.filters)
-        head.addWidget(self.more)
 
         self.previous = self._nav_button("chevron-left", t["sessions_page.previous_week"])
         self.previous.clicked.connect(lambda: self._move(-WEEK_DAYS))
@@ -590,36 +570,6 @@ class SessionsView(QWidget):
         self.error.clear_error()
         self.refresh()
         toast(self, message)
-
-    def _regenerate(self) -> None:
-        result = self._run(sessions.generate, self._conn, self._ctx)
-        if result is None:
-            return
-        self._done(t["sessions_page.generated"].format(count=result.created))
-        if result.conflicts:
-            lines = [t["sessions_page.conflict_line"].format(
-                date=dates.display_date(day), message=message)
-                for day, _group, message in result.conflicts[:MAX_CONFLICTS_SHOWN]]
-            self.error.show_error(t["sessions_page.conflicts"].format(
-                count=len(result.conflicts), lines="\n".join(lines)))
-
-    def fill_week_sheet(self) -> None:
-        """One entry per group with sessions this week (only the filtered group, if any)."""
-        self.week_sheet.clear()
-        names = {s.group_id: s.group_name for s in self._sessions.values()}
-        for group_id, name in sorted(names.items(), key=lambda item: item[1].casefold()):
-            action = self.week_sheet.addAction(name)
-            action.triggered.connect(lambda _c=False, g=group_id: self.print_week(g))
-        if not names:
-            self.week_sheet.addAction(t["sessions_page.week_sheet_none"]).setEnabled(False)
-
-    def print_week(self, group_id: int) -> None:
-        first = week_start(self.selected_day())
-        path = self._run(printing.week_sheet, self._conn, self._ctx, group_id, first)
-        if path is None:
-            return
-        common.open_document(path)
-        toast(self, t["print.done"].format(name=path.name))
 
     def _cancel(self, s: Session) -> None:
         if ask(CancelSessionDialog(self._conn, self._ctx, s, parent=self)):

@@ -11,6 +11,7 @@ from tadris.services import (
     catalog,
     enrollments,
     groups,
+    payments,
     registrations,
     school_years,
     students,
@@ -240,28 +241,111 @@ def page(qtbot, conn, ctx):
     return view
 
 
+def double_click(qtbot, table, row: int) -> None:
+    """As a hand does it: a press, then the double-click (Qt activates a row only when the
+    double-click lands where the press did)."""
+    pos = table.visualItemRect(table.item(row, 0)).center()
+    qtbot.mouseClick(table.viewport(), Qt.MouseButton.LeftButton, pos=pos)
+    qtbot.mouseDClick(table.viewport(), Qt.MouseButton.LeftButton, pos=pos)
+
+
 def section_rows(section) -> list[list[str]]:
+    """The cells under a header (a column without one is left out)."""
     table = section.table
-    return [[table.item(r, c).text() for c in range(table.columnCount())]
-            for r in range(table.rowCount())]
+    columns = [c for c in range(table.columnCount())
+               if table.horizontalHeaderItem(c).text()]
+    return [[table.item(r, c).text() for c in columns] for r in range(table.rowCount())]
 
 
-def test_page_lists_months_to_renew(qtbot, conn, receptionist, school, amine, in_maths,
-                                    monkeypatch):
+def view_counts(view) -> list[str]:
+    return [view.status.itemText(i) for i in range(view.status.count())]
+
+
+def select_view(view, key: str) -> None:
+    view.status.setCurrentIndex(view.status.findData(key))
+
+
+def test_page_lists_every_student_in_a_group(qtbot, conn, receptionist, school, amine,
+                                             in_maths, monkeypatch):
+    yanis_in(conn, receptionist, school, "physics")
+    monkeypatch.setattr(dates, "today", lambda: date(2026, 10, 25))
+    view = page(qtbot, conn, receptionist)
+    assert section_rows(view.list) == [
+        ["Benali Amine", "2026-0001", "M1 · Maths 4AM", "du 18/10/2026 au 18/11/2026",
+         "3 000 DA", "En cours"],
+        ["Haddad Yanis", "2026-0002", "P1 · Physique 4AM", "du 18/10/2026 au 18/11/2026",
+         "2 500 DA", "En cours"]]
+    assert view_counts(view) == ["Tous les états (2)", "En cours (2)", "Se terminent bientôt (0)",
+                                 "Expirés (0)", "Sans abonnement (0)"]  # no money view
+    assert view.renew_all.isHidden()  # only in « bientôt » and « expirés »
+    assert view.filters.text() == t["filters.button"]  # nothing filtered yet
+    select_view(view, "ended")
+    assert view.filters.text() == t["filters.button_count"].format(count=1)
+
+
+def test_views_follow_the_dates(qtbot, conn, receptionist, school, amine, in_maths,
+                                monkeypatch):
     monkeypatch.setattr(dates, "today", lambda: date(2026, 11, 15))
     view = page(qtbot, conn, receptionist)
-    assert view.tabs.tabText(0) == t["subscriptions_page.tab.soon"].format(count=1)
-    assert section_rows(view.soon) == [["Benali Amine", "2026-0001", "M1 · Maths 4AM",
-                                        "du 18/10/2026 au 18/11/2026", "3 000 DA"]]
-    assert view.tabs.tabText(1) == t["subscriptions_page.tab.lapsed"].format(count=0)
-    assert not view.renew_lapsed.isEnabled()
+    select_view(view, "expiring")
+    assert [r[-1] for r in section_rows(view.list)] == ["Se termine bientôt"]
     monkeypatch.setattr(dates, "today", lambda: date(2026, 11, 20))
     view.refresh()
-    assert view.tabs.tabText(1) == t["subscriptions_page.tab.lapsed"].format(count=1)
+    assert section_rows(view.list) == []  # no longer « bientôt »
+    select_view(view, "ended")
+    assert [r[-1] for r in section_rows(view.list)] == ["Expiré"]
 
 
-def test_bulk_renewal_with_an_unticked_student(qtbot, conn, receptionist, school, amine,
-                                              in_maths, monkeypatch):
+def test_search_and_group_filter(qtbot, conn, receptionist, school, amine, in_maths):
+    yanis_in(conn, receptionist, school, "physics")
+    view = page(qtbot, conn, receptionist)
+    view.search.setText("yan")
+    view._show()
+    assert [r[0] for r in section_rows(view.list)] == ["Haddad Yanis"]
+    view.search.clear()
+    view.group.setCurrentIndex(view.group.findData(school["maths"]))
+    assert [r[0] for r in section_rows(view.list)] == ["Benali Amine"]
+    assert view.count.text() == t["subscriptions_page.count"].format(count=1)
+
+
+def test_a_paid_line_shows_nothing_left(qtbot, conn, director, receptionist, amine,
+                                       in_maths):
+    month = subscriptions.for_student(conn, director, amine)[0]
+    pay(conn, director, amine, month.id, 3000)
+    view = page(qtbot, conn, receptionist)
+    assert section_rows(view.list)[0][4] == "0 DA"
+
+
+def test_renew_the_selected_line(qtbot, conn, receptionist, amine, in_maths, monkeypatch):
+    auto_exec(monkeypatch, RenewDialog, lambda d: d._submit())
+    view = page(qtbot, conn, receptionist)
+    assert not view.renew.isEnabled()  # nothing selected
+    view.list.table.selectRow(0)
+    click(qtbot, view.renew)
+    months = subscriptions.for_student(conn, receptionist, amine)
+    assert [m.start_date for m in months] == ["2026-11-18", "2026-10-18"]
+    # paid ahead: the same « En cours », only the end of the period moves
+    assert section_rows(view.list)[0][3:] == ["du 18/10/2026 au 18/12/2026", "6 000 DA",
+                                              "En cours"]
+    assert view.list.table.item(0, 5).toolTip() == t["subscription_line.tip.lined_up"].format(
+        date="18/11/2026")
+
+
+def test_a_month_to_come_after_a_break_is_en_cours(qtbot, conn, receptionist, amine,
+                                                    in_maths, monkeypatch):
+    monkeypatch.setattr(dates, "today", lambda: date(2026, 11, 20))  # 18/10 → 18/11 is over
+    month = subscriptions.for_student(conn, receptionist, amine)[0]
+    subscriptions.renew(conn, receptionist, month.id, date(2026, 11, 25))
+    view = page(qtbot, conn, receptionist)
+    state = view.list.table.item(0, 5)
+    assert state.text() == "En cours"  # only four states: nothing to do here
+    assert state.toolTip() == t["subscription_line.tip.lined_up"].format(date="25/11/2026")
+    assert view_counts(view)[:4] == ["Tous les états (1)", "En cours (1)", "Se terminent bientôt (0)",
+                                     "Expirés (0)"]
+
+
+def test_renew_all_in_the_ending_soon_view(qtbot, conn, receptionist, school, amine,
+                                           in_maths, monkeypatch):
     from tadris.ui.subscription_dialogs import BulkRenewDialog
 
     yanis_in(conn, receptionist, school, "physics")
@@ -276,14 +360,17 @@ def test_bulk_renewal_with_an_unticked_student(qtbot, conn, receptionist, school
         dialog._submit()
     auto_exec(monkeypatch, BulkRenewDialog, fill)
     view = page(qtbot, conn, receptionist)
-    click(qtbot, view.renew_soon)
+    select_view(view, "expiring")
+    assert shown(view.renew_all)
+    assert view.renew_all.text() == t["subscriptions_page.renew_all"].format(count=2)
+    click(qtbot, view.renew_all)
     assert seen["rows"] == 2
     assert seen["total"] == t["bulk_renew.total"].format(count=2, total="5 500 DA")
     assert seen["after"] == t["bulk_renew.total"].format(count=1, total="3 000 DA")
     starts = {s.student_name: s.start_date for s in subscriptions.ending_soon(
         conn, receptionist, days=40)}
     assert starts == {"Benali Amine": "2026-11-18", "Haddad Yanis": "2026-10-18"}
-    assert view.tabs.tabText(0) == t["subscriptions_page.tab.soon"].format(count=1)
+    assert [r[0] for r in section_rows(view.list)] == ["Haddad Yanis"]
 
 
 def test_nothing_ticked_cannot_be_submitted(qtbot, conn, receptionist, in_maths, amine,
@@ -313,22 +400,23 @@ def test_bulk_refusal_shows_in_the_dialog_and_renews_nothing(qtbot, conn, recept
     assert len(subscriptions.for_student(conn, receptionist, amine)) == 1
 
 
-def test_missing_tab_starts_a_month(qtbot, conn, director, receptionist, amine, in_maths,
-                                    monkeypatch):
+def test_a_line_without_a_month_starts_one(qtbot, conn, director, receptionist, amine,
+                                          in_maths, monkeypatch):
     subscriptions.cancel(conn, director, subscriptions.for_student(conn, director, amine)[0].id,
                          "Erreur")
-
-    def fill(dialog):
-        dialog._submit()
-    auto_exec(monkeypatch, StartDialog, fill)
+    auto_exec(monkeypatch, StartDialog, lambda d: d._submit())
     view = page(qtbot, conn, receptionist)
-    assert view.tabs.tabText(2) == t["subscriptions_page.tab.missing"].format(count=1)
-    view.missing.table.selectRow(0)
+    select_view(view, "none")
+    assert section_rows(view.list) == [["Benali Amine", "2026-0001", "M1 · Maths 4AM", "—",
+                                        "0 DA", "Sans abonnement"]]
+    view.list.table.selectRow(0)
+    assert view.start.isEnabled() and not view.renew.isEnabled()
     click(qtbot, view.start)
-    assert view.tabs.tabText(2) == t["subscriptions_page.tab.missing"].format(count=0)
+    assert section_rows(view.list) == []
+    assert view_counts(view)[4] == "Sans abonnement (0)"
 
 
-def test_double_click_opens_the_student_page(qtbot, conn, receptionist, amine, in_maths,
+def test_voir_la_fiche_opens_the_student_page(qtbot, conn, receptionist, amine, in_maths,
                                              monkeypatch):
     from tadris.ui.main_window import MainWindow
 
@@ -338,7 +426,80 @@ def test_double_click_opens_the_student_page(qtbot, conn, receptionist, amine, i
     assert "subscriptions" in window.nav_buttons
     window.nav_buttons["subscriptions"].click()
     subs = window.pages.currentWidget()
-    subs.soon.activated.emit(subs.soon.ids()[0])
+    subs.list.table.selectRow(0)
+    click(qtbot, subs.open_profile)
     students_page = window.pages.currentWidget()
     assert window.nav_buttons["students"].isChecked()
     assert students_page.detail.student_id == amine
+
+
+def test_credit_paid_before_the_fee_and_the_month(qtbot, conn, receptionist, school):
+    """Money received first (4 000 DA of credit), then the year's fee (600) and a group
+    (3 000): the credit covers both, 400 DA of it is left. No screen says 3 000 DA left."""
+    from tadris.ui.pages.payments_tab import PaymentsTab
+    from tadris.ui.pages.registration_tab import RegistrationTab
+
+    lina = students.create(conn, receptionist, StudentInput("Lina", "Saidi"))
+    payments.record(conn, receptionist, lina, 4000, "cash")
+    registrations.register(conn, receptionist, lina, school["level"], 600)
+    enrollments.enroll(conn, receptionist, lina, school["maths"])
+    tab = make_tab(qtbot, conn, receptionist, lina)
+    assert tab.summary.text() == t["subscriptions.summary"].format(due="0 DA")
+    assert tab.list.table.item(0, 3).text() == "0 DA"
+    registration = RegistrationTab(conn, receptionist, lina)
+    qtbot.addWidget(registration)
+    assert registration.due.text() == "0 DA"
+    dues = PaymentsTab(conn, receptionist, lina).dues
+    qtbot.addWidget(dues)
+    assert not dues.empty.isHidden() and dues.credit_badge.text() == "Crédit 400 DA"
+    [line] = page(qtbot, conn, receptionist)._lines.values()
+    assert line.owed == 0
+
+
+def test_paying_ahead_extends_the_period_on_the_student_page(qtbot, conn, receptionist, amine,
+                                                             in_maths):
+    month = subscriptions.for_student(conn, receptionist, amine)[0]
+    subscriptions.renew(conn, receptionist, month.id)  # the next month, made ahead
+    view = StudentDetailView(conn, receptionist, amine)
+    qtbot.addWidget(view)
+    [line] = view.group_lines.lines
+    assert (line.badge.text(), line.period.text(), line.left.text()) == (
+        "En cours", "18 oct. → 18 déc.", "6 000 DA")
+
+
+def test_the_credit_counts_on_the_student_page_and_the_list(qtbot, conn, receptionist, amine,
+                                                           in_maths):
+    """3 000 DA paid ahead pay the next month at the next payment: nothing is left to pay
+    on the tile nor on the Abonnements page."""
+    payments.record(conn, receptionist, amine, 6000, "cash")
+    month = subscriptions.for_student(conn, receptionist, amine)[0]
+    subscriptions.renew(conn, receptionist, month.id)
+    view = StudentDetailView(conn, receptionist, amine)
+    qtbot.addWidget(view)
+    [line] = view.group_lines.lines
+    assert line.left.text() == t["overview.paid"]
+    assert [row[4] for row in section_rows(page(qtbot, conn, receptionist).list)] == ["0 DA"]
+
+
+def test_double_click_opens_the_student_page(qtbot, conn, receptionist, amine, in_maths):
+    """Abonnements is for renewals: a line opens the student's page, it takes no payment
+    (that is the Paiements page's)."""
+    view = page(qtbot, conn, receptionist)
+    view.show()
+    opened = []
+    view.open_student.connect(opened.append)
+    double_click(qtbot, view.list.table, 0)
+    assert opened == [amine]
+
+
+def test_the_page_takes_no_payment(qtbot, conn, receptionist, school, amine, in_maths):
+    from PySide6.QtWidgets import QAbstractItemView, QPushButton
+
+    enrollments.enroll(conn, receptionist, amine, school["physics"])
+    view = page(qtbot, conn, receptionist)
+    labels = [b.text() for b in view.findChildren(QPushButton)]
+    assert not any(label.startswith("Encaisser") for label in labels)
+    selection = view.list.table.selectionMode()
+    assert selection == QAbstractItemView.SelectionMode.SingleSelection  # one line at a time
+    view.list.table.selectRow(1)
+    assert view.open_profile.isEnabled() and view.renew.isEnabled()

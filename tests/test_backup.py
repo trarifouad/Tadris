@@ -433,17 +433,14 @@ def test_retention_on_the_second_location_by_file_name(tmp_path):
     assert len(removed) == 60 - 15
 
 
-def test_the_journal_shows_a_failed_copy_to_the_second_location(school, folder, usb,
-                                                                director):
-    from tadris.repositories import reports as reports_repo
-
+def test_a_failed_copy_to_the_second_location_is_in_the_audit_log(school, folder, usb,
+                                                                   director):
     backup.set_second_root(school, director, str(usb))
     usb.rmdir()
     with pytest.raises(backup.MirrorFailed):
         backup.take(school, folder)
-    shown = [row["action"] for row in reports_repo.audit_entries(
-        school, "2000-01-01", "2100-01-01", None, None, None, 100)]
-    assert "backup.mirror_failed" in shown and "backup.create" not in shown
+    logged = [row[0] for row in school.execute("SELECT action FROM audit_log")]
+    assert "backup.mirror_failed" in logged
 
 
 def test_the_app_warns_about_the_second_location_and_goes_on(monkeypatch):

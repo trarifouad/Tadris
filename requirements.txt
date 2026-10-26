@@ -1,8 +1,6 @@
 altgraph==0.17.5
 charset-normalizer==3.5.2
-et_xmlfile==2.0.0
 iniconfig==2.3.1
-openpyxl==3.1.5
 packaging==26.3
 pillow==13.0.0
 platformdirs==4.13.3

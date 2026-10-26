@@ -1,5 +1,5 @@
 """Fill a database with a demo school, lived day by day from the groups' start to today, so
-every page and report has realistic rows.
+every page has realistic rows.
 
 The school: a year, 7 levels, 6 subjects, 8 rooms, 10 teachers, 34 groups with three weekly
 slots each, about 30 families (55 to 60 students, some inactive). Then, day by day through

@@ -13,7 +13,7 @@ from tadris.core.permissions import allowed
 from tadris.domain.models import Payment
 from tadris.i18n.fr import t
 from tadris.services import debt, payments, printing, students
-from tadris.ui.pages.dues_view import DuesView, StatBlocks, buckets, tabular
+from tadris.ui.pages.dues_view import DuesView, tabular
 from tadris.ui.payment_dialogs import PaymentDialog, VoidPaymentDialog
 from tadris.ui.widgets import common
 from tadris.ui.widgets.common import ask, primary_button, toast, variant_button
@@ -42,18 +42,19 @@ class PaymentsTab(QWidget):
         self._student_id = student_id
         self._payments: dict[int, Payment] = {}
 
-        # What is owed, by urgency, then the lines (see dues_view).
-        self.stats = StatBlocks()
+        # What is owed, by urgency (see dues_view). The one button that pays: « Encaisser un
+        # paiement », or « Encaisser 1 600 DA » for the lines ticked.
         self.receive = primary_button(t["payments_tab.receive"])
         self.receive.setDefault(False)
-        self.receive.clicked.connect(lambda: self._receive())
+        self.receive.clicked.connect(lambda: self._receive(self.dues.ticked_ids() or None))
         self.receive.setVisible(allowed(ctx, "payment.record"))
         self.head = QHBoxLayout()
         self.head.setSpacing(12)
-        self.head.addWidget(self.stats, 1)
+        self.head.addStretch()
         self.head.addWidget(self.receive, 0, Qt.AlignmentFlag.AlignTop)
         self.dues = DuesView(allowed(ctx, "payment.record"))
         self.dues.pay.connect(self._receive)
+        self.dues.ticked.connect(self._name_receive)
 
         history_title = QLabel(t["payments_tab.history"])
         history_title.setObjectName("sectionTitle")
@@ -85,7 +86,6 @@ class PaymentsTab(QWidget):
     def refresh(self) -> None:
         current = debt.for_student(self._conn, self._ctx, self._student_id)
         today = date.fromisoformat(current.as_of)
-        self.stats.set_buckets(buckets(current, today))
         self.dues.set_debt(current, today)
         # The latest page, or as many as were shown: a payment voided far down stays in view.
         self._total = payments.count_for_student(self._conn, self._ctx, self._student_id)
@@ -141,8 +141,20 @@ class PaymentsTab(QWidget):
         self.changed.emit()
         toast(self, message)
 
+    def _name_receive(self) -> None:
+        """The button says what it pays: the lines ticked, or a payment to choose."""
+        ids = self.dues.ticked_ids()
+        if ids:
+            self.receive.setText(t["dues.pay_selection"].format(
+                total=format_dzd(self.dues.ticked_total())))
+            self.receive.setToolTip(t["dues.selection"].format(
+                count=len(ids), plural="s" if len(ids) > 1 else ""))
+        else:
+            self.receive.setText(t["payments_tab.receive"])
+            self.receive.setToolTip("")
+
     def _receive(self, charge_ids: list[int] | None = None) -> None:
-        """charge_ids: the lines to pay (a row's « Encaisser », the ticked ones); by default
+        """charge_ids: the lines to pay (the ticked ones, a line double-clicked); by default
         what is late or due soon."""
         student = students.get(self._conn, self._ctx, self._student_id)
         dialog = PaymentDialog(self._conn, self._ctx, student,

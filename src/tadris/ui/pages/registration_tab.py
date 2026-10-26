@@ -17,7 +17,7 @@ from tadris.core.money import format_dzd
 from tadris.core.permissions import allowed
 from tadris.domain.models import Registration, SchoolYear
 from tadris.i18n.fr import t
-from tadris.services import registrations, school_years, students
+from tadris.services import debt, registrations, school_years, students
 from tadris.ui.registration_dialogs import (
     CancelRegistrationDialog,
     ChangeLevelDialog,
@@ -140,12 +140,13 @@ class RegistrationTab(QWidget):
                                                                            "active"))
             self.level.setText(reg.level)
             self.fee.setText(format_dzd(reg.fee_amount))
-            self.due.setText(format_dzd(reg.fee_due))
+            # What is left on the fee after the student's credit, as everywhere else.
+            left = debt.left_for_student(self._conn, self._ctx, self._student_id)
+            self.due.setText(format_dzd(left.get(reg.fee_charge_id, 0)))
             self.registered_on.setText(display_date(reg.registered_at))
             self.groups.setText(str(reg.live_enrollments))
             self.summary.setText(t["registration_tab.summary"].format(
-                level=reg.level, fee=format_dzd(reg.fee_amount), due=format_dzd(reg.fee_due),
-                date=display_date(reg.registered_at)))
+                level=reg.level, date=display_date(reg.registered_at)))
         can_register = allowed(self._ctx, "registration.create")
         in_year = reg is not None and reg.live_enrollments == 0
         self.change_level.setVisible(in_year and can_register)

@@ -2,6 +2,7 @@ from datetime import date
 
 import pytest
 from PySide6.QtCore import QPointF, Qt
+from PySide6.QtWidgets import QLabel
 
 from tadris.core import dates
 from tadris.core.money import format_dzd
@@ -27,7 +28,7 @@ from tadris.ui.pages.settings import SettingsPage
 from tadris.ui.pages.teachers import TeacherDetailView, TeachersPage
 from tadris.ui.pages.timetable import TimetablePage, week_start
 from tadris.ui.setup_dialogs import NameDialog, RoomDialog, YearDialog
-from tadris.ui.teacher_dialogs import RateDialog, TeacherDialog
+from tadris.ui.teacher_dialogs import TeacherDialog
 from tadris.ui.theme import apply_theme, load_fonts
 from tadris.ui.widgets.timetable_grid import GUTTER, HEADER, HOUR_HEIGHT
 
@@ -210,6 +211,33 @@ def test_teacher_dialog_creates_with_rate(qtbot, conn, director):
     assert (rate.percentage_bp, rate.valid_from) == (6250, "2026-10-18")
 
 
+def test_teacher_dialog_rate_starts_on_the_arrival(qtbot, conn, director):
+    dialog = keep(qtbot, TeacherDialog(conn, director))
+    dialog.full_name.setText("DAYDA")
+    dialog.rate.setText("40")
+    dialog.hire_date.setText("18/10/2026")
+    assert dialog.rate_from.text() == "18/10/2026"  # follows the arrival
+    dialog.rate_from.setText("21/10/2026")  # chosen by hand: no longer follows
+    dialog.hire_date.setText("17/10/2026")
+    assert dialog.rate_from.text() == "21/10/2026"
+    dialog.rate_from.setText("16/10/2026")  # before the arrival: refused
+    click(qtbot, dialog.submit)
+    assert dialog.banner.text() == t["rate.before_hire"].format(date="17/10/2026")
+
+
+def test_teacher_dialog_moves_the_first_rate_earlier(qtbot, conn, director):
+    """DAYDA: 40 % saved from 21/10; the same 40 % from 18/10 makes it start there."""
+    dayda = teachers.create(conn, director, TeacherInput("DAYDA", hire_date=date(2026, 10, 18)),
+                            4000, date(2026, 10, 21))
+    dialog = keep(qtbot, TeacherDialog(conn, director, teachers.get(conn, director, dayda)))
+    assert "depuis le 21/10/2026" in dialog.findChildren(QLabel, "caption")[-1].text()
+    dialog.rate_from.setText("18/10/2026")
+    click(qtbot, dialog.submit)
+    assert dialog.rate_changed
+    assert [(r.percentage_bp, r.valid_from) for r in teachers.rates(conn, director, dayda)] == [
+        (4000, "2026-10-18")]
+
+
 def test_teacher_dialog_invalid_rate(qtbot, conn, director):
     dialog = keep(qtbot, TeacherDialog(conn, director))
     dialog.full_name.setText("Nabil Cherif")
@@ -221,9 +249,9 @@ def test_teacher_dialog_invalid_rate(qtbot, conn, director):
 def test_teacher_detail_new_rate(qtbot, conn, director, school, monkeypatch):
     view = keep(qtbot, TeacherDetailView(conn, director, school["karim"]))
     assert rows(view.groups.table)[0][0] == "Maths 4AM G1"
-    auto_exec(monkeypatch, RateDialog, lambda d: (
-        d.rate.setText("65"), d.valid_from.set_value(date(2027, 1, 1)), d.submit.click()))
-    click(qtbot, view.new_rate)
+    auto_exec(monkeypatch, TeacherDialog, lambda d: (
+        d.rate.setText("65"), d.rate_from.set_value(date(2027, 1, 1)), d.submit.click()))
+    click(qtbot, view.edit)  # the rate is in the same window as the rest
     assert [r[:2] for r in rows(view.rates.table)] == [["65 %", "01/01/2027"],
                                                        ["60 %", "01/09/2026"]]
     assert view.rate.text() == t["teacher_detail.rate"].format(rate="65 %")

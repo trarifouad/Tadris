@@ -17,7 +17,7 @@ from tadris.core import dates
 from tadris.core.context import UserContext
 from tadris.core.errors import BusinessRuleError
 from tadris.core.permissions import allowed
-from tadris.domain.models import ATTENDANCE_STATUSES, RosterLine
+from tadris.domain.models import RosterLine
 from tadris.i18n.fr import t
 from tadris.services import attendance, printing, sessions
 from tadris.ui.theme.status import kind_for
@@ -26,9 +26,13 @@ from tadris.ui.widgets.common import Badge, PageBanner, confirm, primary_button,
 from tadris.ui.widgets.forms import HeaderCard, caption, padded
 from tadris.ui.widgets.tables import fit_columns, frozen_columns, item, ruled_table
 
+# What is marked now: present or absent. « En retard » and « Excusé » are no longer offered.
+MARKS = ("present", "absent")
+
 
 class MarkButtons(QWidget):
-    """Présent, En retard, Absent, Excusé: at most one checked."""
+    """Présent, Absent: at most one checked. A line already marked late or excused keeps
+    that mark's button too, so what was saved shows and is not changed unasked."""
 
     changed = Signal()
 
@@ -40,7 +44,7 @@ class MarkButtons(QWidget):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(6)
-        for status_key in ATTENDANCE_STATUSES:
+        for status_key in MARKS + ((status,) if status and status not in MARKS else ()):
             button = QPushButton(t[f"attendance_status.{status_key}"])
             button.setObjectName("mark")
             button.setProperty("kind", kind_for("attendance", status_key))
@@ -131,6 +135,7 @@ class AttendanceView(QWidget):
         body.addLayout(toolbar)
         body.addWidget(self.table, 1)
         body.addWidget(self.empty)
+        body.addStretch()  # no table (no student): what is shown stays at the top
         content = QWidget()
         content.setLayout(body)
         layout = QVBoxLayout(self)
@@ -160,8 +165,10 @@ class AttendanceView(QWidget):
         self.notice.setVisible(bool(notice))
         lines = attendance.roster(self._conn, self._ctx, self.session_id)
         self._fill(lines, editable)
-        self.save.setVisible(editable)
-        self.all_present.setVisible(editable)
+        # Without a student there is nothing to count, mark or save.
+        self.summary.setVisible(bool(lines))
+        self.save.setVisible(editable and bool(lines))
+        self.all_present.setVisible(editable and bool(lines))
         self._update_summary()
 
     def _editable(self, s) -> tuple[bool, str]:
@@ -219,9 +226,10 @@ class AttendanceView(QWidget):
     def _update_summary(self) -> None:
         current = [m.status() for m in self._marks.values()]
         summary = attendance.summarize(s for s in current if s is not None)
+        # Older late and excused marks count with present and absent.
         self.summary.setText(t["attendance_view.summary"].format(
-            present=summary.present, late=summary.late, absent=summary.absent,
-            excused=summary.excused, unmarked=current.count(None)))
+            present=summary.present + summary.late, absent=summary.absent + summary.excused,
+            unmarked=current.count(None)))
         self.save.setEnabled(self.dirty())
 
     # ----- actions -----

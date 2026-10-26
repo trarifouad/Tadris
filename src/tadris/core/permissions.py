@@ -37,8 +37,8 @@ ACTIONS: dict[str, frozenset[str]] = {
     "academic.manage": DIRECTOR_ONLY,
     "teacher.view": BOTH,
     "teacher.manage": DIRECTOR_ONLY,
-    "report.view": BOTH,
-    "report.finance": DIRECTOR_ONLY,  # revenue, teacher summary, the dashboard's money
+    "report.view": BOTH,  # the Rapports page (to come) and the day's cash
+    "report.finance": DIRECTOR_ONLY,  # the dashboard's money
     "sms.view": BOTH,
     "sms.manage": DIRECTOR_ONLY,
     "settings.view": DIRECTOR_ONLY,
@@ -46,7 +46,6 @@ ACTIONS: dict[str, frozenset[str]] = {
     "user.view": DIRECTOR_ONLY,
     "user.create": DIRECTOR_ONLY,
     "user.disable": DIRECTOR_ONLY,
-    "audit.view": DIRECTOR_ONLY,
     "backup.create": DIRECTOR_ONLY,
     "backup.restore": DIRECTOR_ONLY,
     "print.document": BOTH,

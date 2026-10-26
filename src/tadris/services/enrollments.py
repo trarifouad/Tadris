@@ -25,7 +25,9 @@ from tadris.services import audit, groups, subscriptions
 # everyone. A second group of the same subject needs the director with an audited reason.
 # The first month (subscription) is created here, in the same transaction: from the entry
 # date when enrolled as active, from the confirmation when a trial is confirmed, and after a
-# switch from the end of the month running in the old group.
+# switch from the end of the month running in the old group. Leaving a group (a switch, a
+# group closed) cancels its months that start after the last day, unless money was paid on
+# one or a teacher was paid for it: those are kept (V1 has no refunds) and the audit says so.
 
 LIVE = ("trial", "active")
 
@@ -254,15 +256,18 @@ def confirm_trial(conn, ctx: UserContext, enrollment_id: int) -> None:
 
 def leave(conn, ctx: UserContext, enrollment_id: int, left_on: date | None = None,
           reason: str = "") -> None:
-    """The student leaves the group (a trial not followed up leaves too). The seat is freed."""
+    """The student leaves the group (a trial not followed up leaves too). The seat is freed,
+    and the months starting after the last day are cancelled (see release_after)."""
     require(ctx, "enrollment.update")
     with atomic(conn):
         row = _require_live(conn, enrollment_id)
         end = _end_date(conn, row, left_on)
         repo.end(conn, enrollment_id, "left", end)
+        cancelled, kept = subscriptions.release_after(conn, ctx, enrollment_id, end, "left")
         audit.log(conn, ctx, "enrollment.leave", "enrollments", enrollment_id,
                   old={"status": row["status"]},
-                  new={"status": "left", "left_on": end, "reason": clean(reason) or None})
+                  new={"status": "left", "left_on": end, "reason": clean(reason) or None,
+                       **_released(cancelled, kept)})
 
 
 def switch(conn, ctx: UserContext, enrollment_id: int, group_id: int, on: date | None = None,
@@ -270,8 +275,8 @@ def switch(conn, ctx: UserContext, enrollment_id: int, group_id: int, on: date |
     """Move the student to another group: the old enrollment ends as 'switched' on `on`, the new
     one points to it and starts that day (or on the new group's first day if later). A trial
     stays a trial without using the student's one trial again. The month running in the old
-    group stays there; the first month in the new group starts when it ends. Returns the new
-    id."""
+    group stays there, the old group's months to come are cancelled (kept when paid); the
+    first month in the new group starts when the last month kept ends. Returns the new id."""
     require(ctx, "enrollment.update")
     with atomic(conn):
         old = _require_live(conn, enrollment_id)
@@ -279,13 +284,15 @@ def switch(conn, ctx: UserContext, enrollment_id: int, group_id: int, on: date |
             raise ValidationError(t["enrollment.same_group"])
         end = _end_date(conn, old, on)
         repo.end(conn, enrollment_id, "switched", end)
+        cancelled, kept = subscriptions.release_after(conn, ctx, enrollment_id, end,
+                                                      "switched")
         target = groups_repo.get(conn, group_id, _today())
         entry_on = date.fromisoformat(end if target is None else max(end, target["start_date"]))
         new_id, entry = _place(conn, ctx, old["student_id"], group_id, entry_on, old["status"],
                                False, override_reason, switched_from_id=enrollment_id)
         audit.log(conn, ctx, "enrollment.switch", "enrollments", new_id,
                   old={"enrollment_id": enrollment_id, "group_id": old["group_id"],
-                       "status": old["status"], "left_on": end},
+                       "status": old["status"], "left_on": end, **_released(cancelled, kept)},
                   new={**entry, "switched_from_id": enrollment_id})
         if old["status"] == "active":
             _first_month_after_switch(conn, ctx, enrollment_id, new_id, entry["enrolled_on"])
@@ -294,8 +301,10 @@ def switch(conn, ctx: UserContext, enrollment_id: int, group_id: int, on: date |
 
 def _first_month_after_switch(conn, ctx: UserContext, old_id: int, new_id: int,
                               entry_on: str) -> None:
-    """The old group keeps its running month: the new group's first month starts when that
-    month ends (on the entry date when none runs). Past the end of the year, no month."""
+    """The old group keeps its running month (and a month to come already paid, which its
+    months to come released before cannot be): the new group's first month starts when the
+    last of them ends (on the entry date when none runs). Past the end of the year, no
+    month."""
     running = subscriptions_repo.latest(conn, old_id)
     start = entry_on if running is None else max(entry_on, running["end_date"])
     year_end = groups_repo.get(conn, repo.get(conn, new_id)["group_id"], _today())["year_end"]
@@ -304,10 +313,20 @@ def _first_month_after_switch(conn, ctx: UserContext, old_id: int, new_id: int,
 
 
 def end_for_closed_group(conn, ctx: UserContext, group_id: int) -> int:
-    """Inside a transaction: the students of a group being closed leave it today. Returns how
-    many left."""
-    ended = repo.end_live_for_group(conn, group_id, _today())
+    """Inside a transaction: the students of a group being closed leave it today, and its
+    months starting after today are cancelled (kept when paid). Returns how many left."""
+    today = _today()
+    ended = repo.end_live_for_group(conn, group_id, today)
     for enrollment_id in ended:
+        cancelled, kept = subscriptions.release_after(conn, ctx, enrollment_id, today,
+                                                      "group_closed")
         audit.log(conn, ctx, "enrollment.leave", "enrollments", enrollment_id,
-                  new={"status": "left", "reason": "group_closed"})
+                  new={"status": "left", "reason": "group_closed",
+                       **_released(cancelled, kept)})
     return len(ended)
+
+
+def _released(cancelled: list[int], kept: list[int]) -> dict:
+    """For the audit: the months to come a leaving cancelled, and those it had to keep."""
+    return {**({"months_cancelled": cancelled} if cancelled else {}),
+            **({"months_kept": kept} if kept else {})}

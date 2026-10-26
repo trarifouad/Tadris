@@ -190,6 +190,53 @@ def insert_month(conn, line_id: int, charge_id: int, amount: int) -> None:
     )
 
 
+def draft_holding(conn, charge_id: int):
+    """The draft that counts a month, if one does: payout_id, amount_due, line_id and the
+    line's rate."""
+    return conn.execute(
+        """
+        SELECT p.id AS payout_id, p.amount_due, l.id AS line_id, l.percentage_bp
+          FROM payout_line_charges plc
+          JOIN payout_lines l ON l.id = plc.payout_line_id
+          JOIN teacher_payouts p ON p.id = l.payout_id
+         WHERE plc.charge_id = ? AND p.status = 'draft'
+        """,
+        (charge_id,),
+    ).fetchone()
+
+
+def delete_month(conn, line_id: int, charge_id: int) -> None:
+    conn.execute("DELETE FROM payout_line_charges WHERE payout_line_id = ? AND charge_id = ?",
+                 (line_id, charge_id))
+
+
+def line_revenue(conn, line_id: int) -> int:
+    """The full prices of the months a line still counts."""
+    return conn.execute("SELECT COALESCE(SUM(amount), 0) FROM payout_line_charges "
+                        "WHERE payout_line_id = ?", (line_id,)).fetchone()[0]
+
+
+def set_line(conn, line_id: int, revenue: int, amount: int) -> None:
+    conn.execute("UPDATE payout_lines SET revenue_basis = ?, amount = ? WHERE id = ?",
+                 (revenue, amount, line_id))
+
+
+def delete_line(conn, line_id: int) -> None:
+    conn.execute("DELETE FROM payout_lines WHERE id = ?", (line_id,))
+
+
+def line_totals(conn, payout_id: int) -> tuple[int, int]:
+    """(base, share): the sums of a payout's lines."""
+    row = conn.execute("SELECT COALESCE(SUM(revenue_basis), 0), COALESCE(SUM(amount), 0) "
+                       "FROM payout_lines WHERE payout_id = ?", (payout_id,)).fetchone()
+    return row[0], row[1]
+
+
+def set_totals(conn, payout_id: int, base: int, due: int) -> None:
+    conn.execute("UPDATE teacher_payouts SET base_amount = ?, amount_due = ? WHERE id = ?",
+                 (base, due, payout_id))
+
+
 def delete_draft(conn, payout_id: int) -> None:
     """A draft with its lines and months (the triggers refuse it once approved)."""
     conn.execute(

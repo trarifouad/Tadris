@@ -124,14 +124,14 @@ def make_dialog(qtbot, conn, ctx, student_id) -> PaymentDialog:
 
 def test_tab_lists_what_is_left_to_pay(qtbot, conn, receptionist, amine):
     tab = make_tab(qtbot, conn, receptionist, amine)
-    assert tab.stats.isHidden()  # no credit: no block at all
     late = tab.dues.groups["late"]
     assert late.header.text() == "En retard · 2 échéances · 4 000 DA ▾"
-    # tick · item (the group's name, not the sentence) · period · due date · left · action
+    # tick · item (the group's name, not the sentence) · period · due date · left
     assert rows(late.table) == [
-        ["", "Frais d'inscription 2026-2027", "—", "18/10/2026", "1 000 DA", ""],
-        ["", "M1", "18 oct. → 18 nov.", "18/10/2026", "3 000 DA", ""]]
-    assert late.table.item(1, 1).toolTip() == "Abonnement M1 du 18/10/2026 au 18/11/2026"
+        ["", "Frais d'inscription 2026-2027", "—", "18/10/2026", "1 000 DA"],
+        ["", "M1", "18 oct. → 18 nov.", "18/10/2026", "3 000 DA"]]
+    assert late.table.item(1, 1).toolTip() == (
+        "Abonnement M1 du 18/10/2026 au 18/11/2026\n" + t["dues.double_click"])
     color = late.table.item(0, 4).foreground().color()
     assert color == QColor(tokens()["danger"])  # late amounts in the red pen
     assert tab.dues.groups["soon"].isHidden() and tab.dues.groups["later"].isHidden()
@@ -142,32 +142,45 @@ def test_tab_lists_what_is_left_to_pay(qtbot, conn, receptionist, amine):
 def test_tab_with_credit(qtbot, conn, director, amine):
     payments.record(conn, director, amine, 5000, "cash")
     tab = make_tab(qtbot, conn, director, amine)
-    assert shown(tab.stats.credit) and tab.stats.credit.value.text() == "1 000 DA"
     assert shown(tab.dues.empty)
     assert all(group.isHidden() for group in tab.dues.groups.values())
+    assert shown(tab.dues.credit) and tab.dues.credit_badge.text() == "Crédit 1 000 DA"
+
+
+def test_lines_are_shown_after_the_credit(qtbot, conn, director, amine):
+    """The credit pays the oldest lines first, as the next payment will: the month to come
+    shows what is left once the 1 000 DA of credit is on it, and no credit is left over."""
+    payments.record(conn, director, amine, 5000, "cash")  # fee, October, 1 000 of credit
+    [month] = subscriptions.for_student(conn, director, amine)
+    subscriptions.renew(conn, director, month.id)  # 18/11 -> 18/12, 3 000
+    tab = make_tab(qtbot, conn, director, amine)
+    later = tab.dues.groups["later"]
+    assert later.header.text() == "À venir · 1 échéance · 2 000 DA ▸"
+    assert rows(later.table)[0][4] == "2 000 / 3 000 DA"
+    assert tab.dues.credit.isHidden()
 
 
 def test_lines_are_grouped_and_ticked_to_pay(qtbot, conn, director, receptionist, amine,
                                              monkeypatch):
-    """Late and due soon open, to come folded; ticking sums the selection; « Encaisser la
-    sélection », a row's « Encaisser » and « Encaisser un paiement » open the payment
-    dialog with those lines ticked."""
+    """Late and due soon open, to come folded. One button pays: « Encaisser un paiement »
+    (what is late or due soon, ticked in the dialog), « Encaisser 5 500 DA » once lines
+    are ticked; a double-click pays one line."""
     [month] = subscriptions.for_student(conn, director, amine)
     subscriptions.renew(conn, director, month.id)  # 18/11: to come
     payments.record(conn, director, amine, 1500, "cash")  # fee 1 000, month 500 of 3 000
     tab = make_tab(qtbot, conn, receptionist, amine)
     late, later = tab.dues.groups["late"], tab.dues.groups["later"]
     assert rows(late.table) == [["", "M1", "18 oct. → 18 nov.", "18/10/2026",
-                                 "2 500 / 3 000 DA", ""]]  # paid in part
+                                 "2 500 / 3 000 DA"]]  # paid in part, no button per line
     assert later.header.text() == "À venir · 1 échéance · 3 000 DA ▸"  # folded
     assert later.table.isHidden()
     later.header.click()
     assert not later.table.isHidden()
-    assert tab.dues.bar.isHidden()
+    assert tab.receive.text() == "Encaisser un paiement"
     later.table.item(0, 0).setCheckState(Qt.CheckState.Checked)
     late.table.item(0, 0).setCheckState(Qt.CheckState.Checked)
-    assert not tab.dues.bar.isHidden()
-    assert tab.dues.bar_text.text() == "2 échéances sélectionnées · total 5 500 DA"
+    assert tab.receive.text() == "Encaisser 5 500 DA"
+    assert tab.receive.toolTip() == "2 échéances cochées"
 
     seen = []
 
@@ -175,9 +188,12 @@ def test_lines_are_grouped_and_ticked_to_pay(qtbot, conn, director, receptionist
         seen.append((sorted(dialog._checked), dialog.choose.isChecked(), dialog.amount.text()))
         return 0
     monkeypatch.setattr(PaymentDialog, "exec", fill)
-    click(qtbot, tab.dues.pay_selection)
+    click(qtbot, tab.receive)  # the lines ticked
+    tab.dues.groups["late"].set_ticked(set())
+    later.set_ticked(set())
+    assert tab.receive.text() == "Encaisser un paiement"
     click(qtbot, tab.receive)  # what is late or due soon, ticked
-    late.table.cellWidget(0, 5).click()  # one line
+    late.table.cellDoubleClicked.emit(0, 1)  # one line
     month_now, month_next = late.charges[0].id, later.charges[0].id
     assert seen == [
         (sorted([month_now, month_next]), True, "5 500 DA"),
@@ -200,7 +216,7 @@ def test_dialog_preview_follows_the_amount(qtbot, conn, receptionist, amine):
     dialog = make_dialog(qtbot, conn, receptionist, amine)
     dialog.amount.setText("2 500")
     assert dialog.submit.text() == "Encaisser 2 500 DA"
-    assert [r[4:] for r in rows(dialog.table)] == [["1 000 DA", "0 DA"],
+    assert [r[3:] for r in rows(dialog.table)] == [["1 000 DA", "0 DA"],
                                                    ["1 500 DA", "1 500 DA"]]
     assert dialog.outcome.text() == t["payment_dialog.left_after"].format(amount="1 500 DA")
     dialog.amount.setText("5 000")
@@ -233,14 +249,46 @@ def test_dialog_chosen_lines(qtbot, conn, receptionist, amine):
     month.setCheckState(Qt.CheckState.Checked)  # the month only, not the fee
     assert dialog.table.item(1, 0) is month  # updated in place, not rebuilt
     assert dialog.chosen(3000) == [(month_id, 3000)]
-    assert [r[4] for r in rows(dialog.table)] == ["—", "3 000 DA"]
+    assert [r[3] for r in rows(dialog.table)] == ["—", "3 000 DA"]
     dialog.choose.setChecked(False)  # back to the oldest first: no boxes
     assert dialog.table.item(1, 0).data(Qt.ItemDataRole.CheckStateRole) is None
-    assert [r[4] for r in rows(dialog.table)] == ["1 000 DA", "2 000 DA"]
+    assert [r[3] for r in rows(dialog.table)] == ["1 000 DA", "2 000 DA"]
     dialog.choose.setChecked(True)  # the ticks are remembered
     dialog._submit()
     d = debt.for_student(conn, receptionist, amine)
     assert [(c.kind, c.due) for c in d.charges] == [("registration", 1000)]
+
+
+def test_dialog_lists_only_what_the_credit_leaves(qtbot, conn, receptionist, school,
+                                                monkeypatch):
+    """3 000 DA paid ahead, then the fee (600), the month (3 000) and the next month renewed
+    ahead: the credit pays the fee and 2 400 of the month; only what is left is listed."""
+    lina = students.create(conn, receptionist, StudentInput("Lina", "Saidi"))
+    payments.record(conn, receptionist, lina, 3000, "cash")
+    registrations.register(conn, receptionist, lina, school["level"], 600)
+    enrollments.enroll(conn, receptionist, lina, school["maths"])
+    [month] = subscriptions.for_student(conn, receptionist, lina)
+    subscriptions.renew(conn, receptionist, month.id)  # 18/11 -> 18/12, 3 000
+    dialog = make_dialog(qtbot, conn, receptionist, lina)
+    assert dialog.summary.text() == (
+        "Saidi Lina : reste à payer 3 600 DA, dont 600 DA en retard. "
+        "Le crédit déjà versé (3 000 DA) est déduit.")
+    assert [r[:3] for r in rows(dialog.table)] == [
+        ["Abonnement M1 du 18/10/2026 au 18/11/2026", "18/10/2026", "600 DA"],
+        ["Abonnement M1 du 18/11/2026 au 18/12/2026", "18/11/2026", "3 000 DA"]]
+    assert dialog.amount.text() == "600 DA"  # what is late, after the credit
+    dialog._submit()  # the credit pays the fee and 2 400, the 600 DA the rest of October
+    d = debt.for_student(conn, receptionist, lina)
+    assert ([(c.due_date, c.due) for c in d.charges], d.credit) == ([("2026-11-18", 3000)], 0)
+
+
+def test_dialog_choose_without_a_tick_pays_the_oldest_first(qtbot, conn, receptionist,
+                                                             amine):
+    dialog = make_dialog(qtbot, conn, receptionist, amine)
+    dialog.amount.setText("3 000")
+    dialog.choose.setChecked(True)  # nothing ticked: not everything to credit
+    assert dialog.chosen(3000) is None
+    assert [r[3] for r in rows(dialog.table)] == ["1 000 DA", "2 000 DA"]
 
 
 def test_dialog_with_nothing_due(qtbot, conn, director, school):
@@ -359,6 +407,25 @@ def desk(conn, director, school, amine, monkeypatch):
     return {"amine": amine, "sara": sara}
 
 
+def double_click(qtbot, table, row: int) -> None:
+    """As a hand does it: a press, then the double-click (Qt activates a row only when the
+    double-click lands where the press did)."""
+    pos = table.visualItemRect(table.item(row, 0)).center()
+    qtbot.mouseClick(table.viewport(), Qt.MouseButton.LeftButton, pos=pos)
+    qtbot.mouseDClick(table.viewport(), Qt.MouseButton.LeftButton, pos=pos)
+
+
+def select_rows(table, rows: list[int]) -> None:
+    """Several rows selected, as with Ctrl + click."""
+    from PySide6.QtCore import QItemSelectionModel
+
+    table.clearSelection()
+    for r in rows:
+        table.selectionModel().select(table.model().index(r, 0),
+                                      QItemSelectionModel.SelectionFlag.Select
+                                      | QItemSelectionModel.SelectionFlag.Rows)
+
+
 def make_page(qtbot, conn, ctx) -> PaymentsPage:
     page = PaymentsPage(conn, ctx)
     qtbot.addWidget(page)
@@ -371,7 +438,31 @@ def test_debtors_list(qtbot, conn, receptionist, desk):
     assert rows(table) == [["Benali Amine", "2026-0001", "4 000 DA", "4 000 DA", "18/10/2026",
                             "15"],
                            ["Kaci Sara", "2026-0002", "500 DA", "500 DA", "18/10/2026", "15"]]
-    assert page.debtors.total.text() == t["debtors.total"].format(count=2, total="4 500 DA")
+    assert page.debtors.total.text() == t["debtors.total_all"].format(
+        count=2, total="4 500 DA", late="4 500 DA")
+
+
+def test_debtors_show_every_rest_and_filter_the_late(qtbot, conn, director, receptionist,
+                                                     school, desk):
+    """By default every student with something left to pay, late or not; « En retard »
+    keeps those late."""
+    lina = students.create(conn, director, StudentInput("Lina", "Saidi"))
+    registrations.register(conn, director, lina, school["level"], 0)
+    enrollments.enroll(conn, director, lina, school["maths"],
+                       enrolled_on=date(2026, 11, 10))  # her month is due on 10/11
+    page = make_page(qtbot, conn, receptionist)
+    view = page.debtors
+    assert view.state.currentData() == "all"
+    assert rows(view.list.table)[-1] == ["Saidi Lina", "2026-0003", "0 DA", "3 000 DA", "—",
+                                         "—"]
+    assert view.total.text() == t["debtors.total_all"].format(
+        count=3, total="7 500 DA", late="4 500 DA")
+    view.state.setCurrentIndex(view.state.findData("late"))
+    assert [r[0] for r in rows(view.list.table)] == ["Benali Amine", "Kaci Sara"]
+    assert view.total.text() == t["debtors.total"].format(count=2, total="4 500 DA")
+    view.group.setCurrentIndex(view.group.findData(school["physics"]))
+    view.min_days.setValue(16)
+    assert view.list.empty.text() == t["debtors.empty.late"]
 
 
 def test_debtors_filters(qtbot, conn, receptionist, school, desk):
@@ -396,8 +487,61 @@ def test_debtors_open_the_student(qtbot, conn, receptionist, desk):
     page = make_page(qtbot, conn, receptionist)
     opened = []
     page.open_student.connect(opened.append)
-    page.debtors.list.activated.emit(desk["sara"])
+    assert not page.debtors.open_profile.isEnabled()  # nothing selected
+    page.debtors.list.table.selectRow(1)
+    click(qtbot, page.debtors.open_profile)
     assert opened == [desk["sara"]]
+
+
+def test_double_click_on_a_debtor_takes_the_payment(qtbot, conn, receptionist, desk,
+                                                    documents, monkeypatch):
+    auto_exec(monkeypatch, PaymentDialog, lambda dialog: dialog._submit())
+    page = make_page(qtbot, conn, receptionist)
+    page.show()
+    opened = []
+    page.open_student.connect(opened.append)
+    double_click(qtbot, page.debtors.list.table, 1)  # Sara owes 500
+    assert opened == []  # the payment, not the student's page
+    assert [r[0] for r in rows(page.debtors.list.table)] == ["Benali Amine"]
+    assert rows(page.cash.list.table)[0][2:4] == ["Kaci Sara", "500 DA"]  # today's cash
+    assert len(documents) == 1  # the receipt
+
+
+def test_several_debtors_paid_one_after_the_other(qtbot, conn, receptionist, desk,
+                                                  documents, monkeypatch):
+    paid = []
+
+    def fill(dialog):
+        paid.append(dialog._student.full_name)
+        dialog._submit()
+    auto_exec(monkeypatch, PaymentDialog, fill)
+    page = make_page(qtbot, conn, receptionist)
+    select_rows(page.debtors.list.table, [0, 1])
+    assert page.debtors.pay.text() == t["debtors.collect_many"].format(count=2)
+    assert not page.debtors.open_profile.isEnabled()  # one student at a time
+    click(qtbot, page.debtors.pay)
+    assert paid == ["Benali Amine", "Kaci Sara"]  # one payment each, each its receipt
+    assert len(documents) == 2
+    assert page.debtors.list.table.isHidden()  # no one late any more
+
+
+def test_collect_any_student_from_the_page(qtbot, conn, receptionist, desk, documents,
+                                           monkeypatch):
+    from tadris.ui.student_picker import StudentPicker
+
+    def pick(picker):
+        picker.student_id = desk["amine"]
+        picker.accept()
+    auto_exec(monkeypatch, StudentPicker, pick)
+
+    def fill(dialog):
+        dialog.amount.setText("1 000")
+        dialog._submit()
+    auto_exec(monkeypatch, PaymentDialog, fill)
+    page = make_page(qtbot, conn, receptionist)
+    assert page.receive.text() == t["payments_tab.receive"] and shown(page.receive)
+    click(qtbot, page.receive)
+    assert rows(page.debtors.list.table)[0][:3] == ["Benali Amine", "2026-0001", "3 000 DA"]
 
 
 def test_cash_report(qtbot, conn, director, receptionist, desk):
@@ -422,7 +566,8 @@ def test_the_page_in_the_sidebar(qtbot, conn, receptionist, desk):
     window.nav_buttons["payments"].click()
     page = window.pages.currentWidget()
     assert isinstance(page, PaymentsPage)
-    page.debtors.list.activated.emit(desk["amine"])
+    page.debtors.list.select_id(desk["amine"])
+    click(qtbot, page.debtors.open_profile)  # « Voir la fiche »
     assert window.nav_buttons["students"].isChecked()
 
 

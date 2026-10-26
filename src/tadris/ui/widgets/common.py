@@ -194,14 +194,6 @@ def open_folder(path) -> None:
     QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
 
 
-def ask_save_path(parent: QWidget, title: str, suggested, file_filter: str):
-    """« Enregistrer sous »: the path chosen, or None when cancelled."""
-    from PySide6.QtWidgets import QFileDialog
-
-    chosen, _filter = QFileDialog.getSaveFileName(parent, title, str(suggested), file_filter)
-    return Path(chosen) if chosen else None
-
-
 def ask_folder(parent: QWidget, title: str, start) -> Path | None:
     """Choose a folder (a USB drive, a synced folder): the one chosen, or None."""
     from PySide6.QtWidgets import QFileDialog

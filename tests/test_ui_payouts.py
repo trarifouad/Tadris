@@ -125,10 +125,13 @@ def test_what_is_owed_up_to_the_date(qtbot, conn, director, school):
 
 
 def test_the_monthly_run(qtbot, conn, director, school):
-    nadia = teachers.create(conn, director, TeacherInput("Nadia Kaci"), 5000, date(2026, 10, 1))
+    nadia = teachers.create(conn, director, TeacherInput("Nadia Kaci"), 5000, date(2026, 9, 1))
     groups.create(conn, director, GroupInput(
         school["year"], school["level"], catalog.create(conn, director, "subject", "Anglais"),
         "A1", 2000, 30, date(2026, 9, 1)), nadia)
+    # Her rate starting on 01/10, as a database from before the rate checks can hold it.
+    conn.execute("UPDATE teacher_rates SET valid_from = '2026-10-01' WHERE teacher_id = ?",
+                 (nadia,))
     student = students.create(conn, director, StudentInput("Rania", "Test"))
     registrations.register(conn, director, student, school["level"], 0)
     a1 = next(g.id for g in groups.search(conn, director) if g.name == "A1")

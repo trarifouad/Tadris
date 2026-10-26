@@ -48,8 +48,6 @@ def build_qss(t: dict, chevron: str = "", check: str = "") -> str:
     QPushButton#backLink {{ border: none; background: transparent; color: {t['primary']};
         font-weight: 600; padding: 0 10px; min-height: 30px; border-radius: 6px; }}
     QPushButton#backLink:hover {{ background: {t['primary_soft']}; }}
-    QTextBrowser#journalDetail {{ background: {t['surface']}; border: 1px solid {t['border']};
-        border-radius: 10px; padding: 12px 16px; font-size: 14px; }}
     QPushButton:disabled {{ background: {t['surface_alt']}; color: {t['faint']};
                             border-color: {t['surface_alt']}; }}
 
@@ -145,6 +143,12 @@ def build_qss(t: dict, chevron: str = "", check: str = "") -> str:
                    color: {t['muted']}; }}
     QLabel#emptyState {{ background: {t['surface']}; border: 1px solid {t['border']};
         border-radius: 10px; padding: 48px 24px; color: {t['muted']}; font-size: 13px; }}
+    QFrame#emptyPanel {{ background: transparent; border: 1px dashed {t['border_strong']};
+        border-radius: 10px; }}
+    QFrame#emptyPanel QLabel {{ background: transparent; }}
+    QFrame#emptyPanel QLabel#emptyIcon {{ background: {t['primary_soft']};
+        border-radius: 24px; }}
+    QLabel#emptyTitle {{ font-size: 14px; font-weight: 600; }}
     QLabel#badge {{ border-radius: 4px; padding: 2px 8px; font-size: 11.5px; font-weight: 500; }}
 {badges}
 
@@ -155,25 +159,12 @@ def build_qss(t: dict, chevron: str = "", check: str = "") -> str:
     QPushButton#rowAction {{ min-height: 28px; max-height: 28px; padding: 0 12px;
         font-size: 13px; }}
 
-    QFrame#statBlock {{ background: {t['surface_alt']}; border-radius: 8px; }}
-    QFrame#statBlock[kind="danger"] {{ background: {t['danger_bg']}; }}
-    QFrame#statBlock[kind="warning"] {{ background: {t['warning_bg']}; }}
-    QFrame#statBlock[kind="info"] {{ background: {t['info_bg']}; }}
-    QLabel#statLabel {{ font-size: 11.5px; font-weight: 500; color: {t['muted']};
-        background: transparent; }}
-    QLabel#statValue {{ font-weight: 600; background: transparent; color: {t['text']}; }}
-    QLabel#statValue[kind="danger"] {{ color: {t['danger']}; }}
-    QLabel#statValue[kind="warning"] {{ color: {t['warning']}; }}
-    QLabel#statValue[kind="info"] {{ color: {t['info']}; }}
     QPushButton#dueGroup {{ background: transparent; border: none; padding: 2px 0;
         min-height: 0; text-align: left; font-size: 12.5px; font-weight: 600;
         color: {t['muted']}; }}
     QPushButton#dueGroup[kind="danger"] {{ color: {t['danger']}; }}
     QPushButton#dueGroup[kind="warning"] {{ color: {t['warning']}; }}
     QPushButton#dueGroup:hover {{ text-decoration: underline; }}
-    QFrame#selectionBar {{ background: {t['primary_soft']}; border: 1px solid {t['primary']};
-        border-radius: 8px; }}
-    QLabel#selectionText {{ font-weight: 600; color: {t['primary']}; background: transparent; }}
     QToolButton#moreButton {{ background: transparent; border: 1px solid {t['border']};
         border-radius: 6px; padding: 3px; }}
     QToolButton#moreButton:hover {{ background: {t['surface_alt']}; }}
@@ -197,6 +188,15 @@ def build_qss(t: dict, chevron: str = "", check: str = "") -> str:
     QFrame#dashRow:hover {{ background: {t['surface_alt']}; }}
     QFrame#cardFoot {{ border: none; border-top: 1px solid {t['border']}; }}
     QLabel#rowTitle {{ font-size: 13px; font-weight: 500; }}
+    QFrame#groupTile {{ background: {t['surface']}; border: 1px solid {t['border']};
+        border-radius: 8px; }}
+    QFrame#groupTile QLabel {{ background: transparent; }}
+    QLabel#tileTitle {{ font-size: 14px; font-weight: 600; }}
+    QLabel#metricLabel {{ font-size: 10.5px; font-weight: 600; color: {t['faint']}; }}
+    QLabel#metricValue {{ font-size: 13px; font-weight: 500; color: {t['text']}; }}
+    QLabel#metricValue[kind="success"] {{ color: {t['success']}; }}
+    QLabel#metricValue[kind="warning"] {{ color: {t['warning']}; }}
+    QLabel#metricValue[kind="danger"] {{ color: {t['danger']}; }}
     QLabel#rowTitle[struck="true"] {{ color: {t['muted']}; }}
     QLabel#rowTime {{ font-family: "IBM Plex Mono"; font-size: 13px; font-weight: 500; }}
     QLabel#rowTime[struck="true"] {{ color: {t['faint']}; }}

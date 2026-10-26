@@ -14,6 +14,10 @@ _CURRENT_RATE = """
     SELECT percentage_bp FROM teacher_rates r
      WHERE r.teacher_id = t.id AND r.valid_to IS NULL
 """
+_CURRENT_RATE_FROM = """
+    SELECT valid_from FROM teacher_rates r
+     WHERE r.teacher_id = t.id AND r.valid_to IS NULL
+"""
 
 
 def insert(conn, full_name: str, phone: str | None, hire_date: str | None) -> int:
@@ -28,7 +32,8 @@ def get(conn, teacher_id: int, today: str):
     return conn.execute(
         f"""
         SELECT t.id, t.full_name, t.phone, t.status, t.hire_date,
-               ({_CURRENT_RATE}) AS current_rate_bp, ({_CURRENT_GROUPS}) AS group_count
+               ({_CURRENT_RATE}) AS current_rate_bp, ({_CURRENT_RATE_FROM}) AS current_rate_from,
+               ({_CURRENT_GROUPS}) AS group_count
           FROM teachers t WHERE t.id = :id
         """,
         {"id": teacher_id, "today": today},
@@ -63,7 +68,8 @@ def search(conn, folded_terms: list[str], status: str | None, today: str) -> lis
     return conn.execute(
         f"""
         SELECT t.id, t.full_name, t.phone, t.status, t.hire_date,
-               ({_CURRENT_RATE}) AS current_rate_bp, ({_CURRENT_GROUPS}) AS group_count
+               ({_CURRENT_RATE}) AS current_rate_bp, ({_CURRENT_RATE_FROM}) AS current_rate_from,
+               ({_CURRENT_GROUPS}) AS group_count
           FROM teachers t
           {clause}
          ORDER BY fold(t.full_name)
@@ -131,6 +137,16 @@ def close_rate(conn, rate_id: int, valid_to: str) -> None:
 
 def correct_rate(conn, rate_id: int, bp: int) -> None:
     conn.execute("UPDATE teacher_rates SET percentage_bp = ? WHERE id = ?", (bp, rate_id))
+
+
+def first_rate_from(conn, teacher_id: int) -> str | None:
+    """The day the teacher's first rate starts (None without any rate)."""
+    return conn.execute("SELECT MIN(valid_from) FROM teacher_rates WHERE teacher_id = ?",
+                        (teacher_id,)).fetchone()[0]
+
+
+def move_rate_start(conn, rate_id: int, valid_from: str) -> None:
+    conn.execute("UPDATE teacher_rates SET valid_from = ? WHERE id = ?", (valid_from, rate_id))
 
 
 def has_locked_payout_since(conn, teacher_id: int, since: str) -> bool:

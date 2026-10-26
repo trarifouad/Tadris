@@ -1,9 +1,11 @@
 from datetime import date
 
-from PySide6.QtCore import QSize, Qt, QUrl, Signal
-from PySide6.QtGui import QAction, QDesktopServices
+from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
+    QDialog,
     QFrame,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QMenu,
@@ -27,8 +29,10 @@ from tadris.i18n.fr import t
 from tadris.services import (
     attendance,
     contacts,
+    debt,
     enrollments,
     payments,
+    registrations,
     students,
     subscriptions,
 )
@@ -86,9 +90,6 @@ class StudentDetailView(QWidget):
         self.number = QLabel()
         self.number.setObjectName("mono")
         self.status = Badge()
-        self.born = QLabel()
-        self.born.setObjectName("caption")
-        self.born.setWordWrap(True)
         self.notes = QLabel()
         self.notes.setObjectName("caption")
         self.notes.setWordWrap(True)
@@ -101,19 +102,22 @@ class StudentDetailView(QWidget):
         identity.setSpacing(6)
         identity.addWidget(self.name)
         identity.addLayout(meta)
-        identity.addWidget(self.born)
         identity.addWidget(self.notes)
 
-        self.edit = QPushButton(t["action.edit"])
-        self.edit.setAutoDefault(False)
-        self.edit.clicked.connect(self._edit)
+        # Behind « ⋯ »: the details (birth date, age, file created) in a small window, then
+        # the rare actions, out of reach of a stray click (then a confirmation).
+        self.info = QAction(t["student_detail.info"], self)
+        self.info.triggered.connect(self._show_info)
+        self.edit = QAction(t["action.edit"], self)
+        self.edit.triggered.connect(self._edit)
         self.edit.setVisible(allowed(ctx, "student.update"))
-        # The rare actions, out of reach of a stray click: « ⋯ », then a confirmation.
         self.deactivate = QAction(t["student_detail.deactivate"], self)
         self.deactivate.triggered.connect(self._deactivate)
         self.reactivate = QAction(t["student_detail.reactivate"], self)
         self.reactivate.triggered.connect(self._reactivate)
         self.more_menu = QMenu(self)
+        self.more_menu.addAction(self.info)
+        self.more_menu.addAction(self.edit)
         self.more_menu.addAction(self.deactivate)
         self.more_menu.addAction(self.reactivate)
         self.more = QToolButton()
@@ -197,7 +201,6 @@ class StudentDetailView(QWidget):
         head = QHBoxLayout()
         head.setSpacing(8)
         head.addLayout(identity, 1)
-        head.addWidget(small(self.edit), 0, Qt.AlignmentFlag.AlignTop)
         head.addWidget(self.more, 0, Qt.AlignmentFlag.AlignTop)
         body = card.layout()
         body.addLayout(head)
@@ -229,7 +232,6 @@ class StudentDetailView(QWidget):
         head.addStretch()
         head.addWidget(small(payments.receive))
         body.addLayout(head)
-        body.addWidget(payments.stats)
         compact_list(payments.history, None, 3)
         # The view's name is the segment's: the list's own title goes.
         first = payments.history.toolbar.itemAt(0).widget()
@@ -255,8 +257,10 @@ class StudentDetailView(QWidget):
         return card
 
     def _study_card(self) -> QFrame:
-        """The year's study at a glance: one line per group (its month, its attendance);
-        the groups with their history, every session and every month open in a window."""
+        """The year's study at a glance: one line per group (its month, its attendance), or
+        an empty state with the next step; at the foot, the groups with their history,
+        every session and every month, each opening in a window (only when there is
+        something in it)."""
         card = section_card()
         title = QLabel(t["student_detail.study"])
         title.setObjectName("sectionTitle")
@@ -270,6 +274,8 @@ class StudentDetailView(QWidget):
         head.addStretch()
         head.addWidget(self.enroll)
         self.group_lines = GroupLines()
+        self._empty_step: str | None = None  # what the empty state's button does
+        self.group_lines.empty.action.clicked.connect(self._first_step)
         self.open_groups = link_button()
         self.open_sessions = link_button()
         self.open_subscriptions = link_button()
@@ -280,12 +286,17 @@ class StudentDetailView(QWidget):
             button.clicked.connect(lambda _checked=False, k=key: self.open_window(k))
             links.addWidget(button)
         links.addStretch()
+        # The links sit at the card's foot, under its lines (or its empty state).
+        self.study_foot = QWidget()
+        foot = QVBoxLayout(self.study_foot)
+        foot.setContentsMargins(0, 0, 0, 0)
+        foot.setSpacing(12)
+        foot.addWidget(rule())
+        foot.addLayout(links)
         body = card.layout()
         body.addLayout(head)
-        body.addWidget(self.group_lines)
-        body.addWidget(rule())
-        body.addLayout(links)
-        body.addStretch()
+        body.addWidget(self.group_lines, 1)
+        body.addWidget(self.study_foot)
         return card
 
     def refresh_overview(self) -> None:
@@ -294,15 +305,51 @@ class StudentDetailView(QWidget):
         groups = enrollments.for_student(self._conn, self._ctx, self.student_id)
         months = subscriptions.for_student(self._conn, self._ctx, self.student_id)
         marks = attendance.summary_by_enrollment(self._conn, self._ctx, self.student_id)
-        self.group_lines.set_lines(groups, months, marks, today)
-        self.open_groups.setText(t["overview.groups"].format(count=len(groups)))
-        self.open_sessions.setText(t["overview.sessions"].format(
-            count=sum(s.total for s in marks.values())))
-        self.open_subscriptions.setText(t["overview.subscriptions"].format(count=len(months)))
+        left = debt.left_for_student(self._conn, self._ctx, self.student_id)
+        self.group_lines.set_lines(groups, months, marks, today, left)
+        counts = {"groups": len(groups), "sessions": sum(s.total for s in marks.values()),
+                  "subscriptions": len(months)}
+        # A link to an empty list says « (0) » for nothing: it goes, and the foot with them.
+        for key, button in (("groups", self.open_groups), ("sessions", self.open_sessions),
+                            ("subscriptions", self.open_subscriptions)):
+            button.setText(t[f"overview.{key}"].format(count=counts[key]))
+            button.setVisible(counts[key] > 0)
+        self.study_foot.setVisible(any(counts.values()))
         self.open_payments.setText(t["overview.payments"].format(
             count=payments.count_for_student(self._conn, self._ctx, self.student_id)))
-        self.enroll.setVisible(not self.groups.enroll.isHidden())
+        # Next to the tiles, « Inscrire dans un groupe » stays in the card's head; without
+        # any tile, the empty state offers it (one main button per card).
+        can_enroll = not self.groups.enroll.isHidden()
+        self.enroll.setVisible(can_enroll and bool(self.group_lines.lines))
         self.enroll.setEnabled(self.groups.enroll.isEnabled())
+        if not self.group_lines.lines:
+            self._show_empty(had_groups=bool(groups), can_enroll=can_enroll)
+
+    def _show_empty(self, had_groups: bool, can_enroll: bool) -> None:
+        """Why the student is in no group, and « Inscrire dans un groupe » when it is the next
+        step. Not registered for the year: the student card's own button comes first, so
+        the text points to it; deactivated: reactivated from « ⋯ »."""
+        student = students.get(self._conn, self._ctx, self.student_id)
+        registered = registrations.current(self._conn, self._ctx, self.student_id) is not None
+        if student.status != "active":
+            case, step = "inactive", None
+        elif not registered:
+            case, step = "not_registered", None
+        elif had_groups:
+            case, step = "left", "enroll" if can_enroll else None
+        else:
+            case, step = "none", "enroll" if can_enroll else None
+        self._empty_step = step
+        text = t[f"overview.empty.{case}.text"]
+        if case == "none" and step is None:
+            text = t["overview.no_group"]  # no right to enroll: only the fact
+        action = t["student_groups.enroll"] if step == "enroll" else ""
+        self.group_lines.empty.set_message(t[f"overview.empty.{case}.title"], text, action)
+
+    def _first_step(self) -> None:
+        """The empty state's button: what the groups list's own button does."""
+        if self._empty_step == "enroll":
+            self.groups.enroll.click()
 
     def open_window(self, key: str) -> None:
         """A whole list in a window; the page follows what was done there."""
@@ -320,19 +367,14 @@ class StudentDetailView(QWidget):
         self.number.setText(t["student_detail.number"].format(number=s.student_number))
         self.status.setText(t[f"student_status.{s.status}"])
         self.status.set_kind(kind_for("student", s.status))
-        today = dates.today()
-        born = ""
-        if s.birth_date:
-            born = t["student_detail.born_age"].format(
-                date=display_date(s.birth_date), age=age_on(s.birth_date, today))
-        since = t["student_detail.since"].format(date=display_date(s.created_at))
-        self.born.setText(" · ".join(part for part in (born, since) if part))
         self.notes.setText(s.notes)
         self.notes.setVisible(bool(s.notes))
         active = s.status == "active"
         self.deactivate.setVisible(active and allowed(self._ctx, "student.deactivate"))
         self.reactivate.setVisible(not active and allowed(self._ctx, "student.reactivate"))
-        self.more.setVisible(self.deactivate.isVisible() or self.reactivate.isVisible())
+
+    def _show_info(self) -> None:
+        StudentInfoDialog(self.student, parent=self).exec()
 
     def _edit(self) -> None:
         dialog = StudentDialog(self._conn, self._ctx, self.student, parent=self)
@@ -363,7 +405,57 @@ class StudentDetailView(QWidget):
         self.refresh()
         self.registration.refresh()  # an inactive student cannot be registered or enrolled
         self.groups.refresh()
+        self.refresh_overview()
         toast(self, t[message_key].format(name=self.student.full_name))
+
+
+class StudentInfoDialog(QDialog):
+    """The student's details kept off the card: birth date and age, file created on."""
+
+    def __init__(self, s, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(s.full_name)
+        title = QLabel(s.full_name)
+        title.setObjectName("dialogTitle")
+        born = "—"
+        if s.birth_date:
+            born = t["student_info.born_value"].format(
+                date=display_date(s.birth_date), age=age_on(s.birth_date, dates.today()))
+        rows = [
+            ("number", s.student_number),
+            ("status", t[f"student_status.{s.status}"]),
+            ("born", born),
+            ("since", display_date(s.created_at)),
+        ]
+        if s.notes:
+            rows.append(("notes", s.notes))
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(24)
+        grid.setVerticalSpacing(8)
+        self.values: dict[str, QLabel] = {}
+        for r, (key, text) in enumerate(rows):
+            label = QLabel(t[f"student_info.{key}"])
+            label.setObjectName("fieldLabel")
+            value = QLabel(text)
+            value.setWordWrap(True)
+            value.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            grid.addWidget(label, r, 0, Qt.AlignmentFlag.AlignTop)
+            grid.addWidget(value, r, 1)
+            self.values[key] = value
+        grid.setColumnStretch(1, 1)
+        close = QPushButton(t["action.close"])
+        close.setAutoDefault(False)
+        close.clicked.connect(self.accept)
+        actions = QHBoxLayout()
+        actions.addStretch()
+        actions.addWidget(close)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(28, 24, 28, 24)
+        layout.setSpacing(16)
+        layout.addWidget(title)
+        layout.addLayout(grid)
+        layout.addLayout(actions)
+        self.setFixedWidth(400)
 
 
 def age_on(birth: str, today: date) -> int:
@@ -443,7 +535,6 @@ class ContactsTab(QWidget):
         self.empty.setObjectName("emptyState")
         self.empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.empty.setWordWrap(True)
-        self.table.cellClicked.connect(self._clicked)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 16, 0, 0)
@@ -486,26 +577,14 @@ class ContactsTab(QWidget):
     def _cells(c: StudentContact) -> list:
         sms = t["contacts.sms_yes" if c.can_receive_sms else "contacts.sms_no"]
         main = item(t["contacts.main_badge"], kind="info") if c.is_main else item("")
-        phone = item(format_phone(c.phone), mono=True, tone="primary" if c.phone else None)
-        if c.phone:
-            phone.setToolTip(t["contacts.call"].format(phone=format_phone(c.phone)))
         return [
             item(c.full_name, item_id=c.contact_id),
             item(c.relation),
-            phone,
+            item(format_phone(c.phone), mono=True),
             item(format_phone(c.phone_2), mono=True),
             item(sms),
             main,
         ]
-
-    def _clicked(self, row: int, column: int) -> None:
-        """A click on a phone number calls it, where the computer can (tel:)."""
-        if column != 2:
-            return
-        contact = self._contacts.get(self.table.item(row, 0).data(ID_ROLE))
-        if contact is not None and contact.phone:
-            digits = "".join(ch for ch in contact.phone if ch.isdigit() or ch == "+")
-            QDesktopServices.openUrl(QUrl(f"tel:{digits}"))
 
     def selected(self) -> StudentContact | None:
         contact_id = selected_id(self.table)

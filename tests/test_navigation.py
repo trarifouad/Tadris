@@ -151,3 +151,17 @@ def test_a_student_opened_from_the_dashboard_can_go_back(conn, director, window)
     assert window.back_button.text() == "← Retour : Aujourd'hui"
     window.back()
     assert current(window) == "dashboard"
+
+
+@pytest.mark.parametrize("key", ["reports", "sms"])
+def test_pages_to_come_show_one_line(window, key):
+    """Rapports (until its plan is rewritten) and SMS: the title and one sentence."""
+    from PySide6.QtWidgets import QLabel
+
+    from tadris.ui.main_window import PlaceholderPage
+
+    window.nav_buttons[key].click()
+    page = window.pages.currentWidget()
+    assert isinstance(page, PlaceholderPage)
+    assert [label.text() for label in page.findChildren(QLabel)] == [
+        t[f"nav.{key}"], t["page.placeholder"]]

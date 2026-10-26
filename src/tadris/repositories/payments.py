@@ -189,10 +189,35 @@ def insert(conn, student_id: int, payer_contact_id: int | None, amount: int, met
     return int(cur.lastrowid)
 
 
-def insert_allocation(conn, payment_id: int, charge_id: int, amount: int) -> int:
+def recorded_with(conn, payment_id: int) -> list:
+    """What the recording of a payment paid, charge by charge, in the order of the charges'
+    due dates: its own money and the credit of earlier payments it used (from_credit). Its
+    credit used later is left out. Allocations made before 0016 (recorded_with NULL) count as
+    the payment's own."""
+    return conn.execute(
+        """
+        SELECT pa.charge_id, c.description, c.due_date,
+               SUM(pa.amount) AS amount,
+               SUM(CASE WHEN pa.payment_id <> :payment THEN pa.amount ELSE 0 END) AS from_credit
+          FROM payment_allocations pa
+          JOIN charges c ON c.id = pa.charge_id
+         WHERE pa.recorded_with = :payment
+            OR (pa.recorded_with IS NULL AND pa.payment_id = :payment)
+         GROUP BY pa.charge_id
+         ORDER BY c.due_date, c.id
+        """,
+        {"payment": payment_id},
+    ).fetchall()
+
+
+def insert_allocation(conn, payment_id: int, charge_id: int, amount: int,
+                      recorded_with: int) -> int:
+    """recorded_with: the payment being recorded (payment_id itself, or a later payment
+    whose recording uses this one's credit)."""
     cur = conn.execute(
-        "INSERT INTO payment_allocations(payment_id, charge_id, amount) VALUES (?, ?, ?)",
-        (payment_id, charge_id, amount),
+        "INSERT INTO payment_allocations(payment_id, charge_id, amount, recorded_with) "
+        "VALUES (?, ?, ?, ?)",
+        (payment_id, charge_id, amount, recorded_with),
     )
     return int(cur.lastrowid)
 

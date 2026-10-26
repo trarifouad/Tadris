@@ -290,10 +290,92 @@ def test_rate_change_keeps_history_without_gap_or_overlap(conn, director, school
     assert teachers.get(conn, director, school.karim).current_rate_bp == 7000
 
 
-def test_rate_cannot_start_before_the_current_one(conn, director, school):
+def test_update_saves_the_profile_and_the_rate_together(conn, director, school):
+    teachers.update(conn, director, school.karim, TeacherInput("Karim H."), 6500,
+                    date(2027, 1, 1))
+    x = teachers.get(conn, director, school.karim)
+    assert (x.full_name, x.current_rate_bp) == ("Karim H.", 6500)
+    with pytest.raises(ValidationError):  # a rate before the current one: nothing saved
+        teachers.update(conn, director, school.karim, TeacherInput("Karim Z."), 7000,
+                        date(2026, 12, 1))
+    assert teachers.get(conn, director, school.karim).full_name == "Karim H."
+
+
+def test_rate_cannot_start_before_the_current_one_once_there_is_history(conn, director,
+                                                                       school):
+    teachers.set_rate(conn, director, school.karim, 6500, date(2027, 1, 1))
     with pytest.raises(ValidationError) as exc:
-        teachers.set_rate(conn, director, school.karim, 6500, date(2026, 8, 1))
-    assert exc.value.message == t["rate.before_current"].format(date="01/09/2026")
+        teachers.set_rate(conn, director, school.karim, 7000, date(2026, 12, 1))
+    assert exc.value.message == t["rate.before_current"].format(date="01/01/2027")
+
+
+# DAYDA: arrived on 18/10, his 40 % rate saved from 21/10 by mistake.
+
+def late_rate_teacher(conn, director) -> int:
+    return teachers.create(conn, director, TeacherInput("DAYDA", hire_date=date(2026, 10, 18)),
+                           4000, date(2026, 10, 21))
+
+
+def test_a_teacher_takes_a_group_only_from_a_day_with_a_rate(conn, director, school):
+    dayda = late_rate_teacher(conn, director)
+    with pytest.raises(BusinessRuleError) as exc:
+        groups.create(conn, director, group_input(school, start=date(2026, 10, 18)), dayda)
+    assert exc.value.message == t["group.teacher_no_rate"].format(teacher="DAYDA",
+                                                                  date="18/10/2026")
+    g1 = groups.create(conn, director, group_input(school, start=date(2026, 10, 21)), dayda)
+    with pytest.raises(BusinessRuleError):  # its start moved before the rate: refused too
+        groups.update(conn, director, g1, group_input(school, start=date(2026, 10, 19)))
+    g2 = groups.create(conn, director, group_input(school, "G2"), school.karim)
+    with pytest.raises(BusinessRuleError) as exc:  # nor a change of teacher
+        groups.change_teacher(conn, director, g2, dayda, date(2026, 10, 20))
+    assert exc.value.message == t["group.teacher_no_rate"].format(teacher="DAYDA",
+                                                                  date="20/10/2026")
+
+
+def test_the_first_rate_can_start_earlier(conn, director, school):
+    """The same 40 % from 18/10: the rate starts on his arrival, the history stays one line,
+    the audit says what changed, and the group can start on 18/10."""
+    dayda = late_rate_teacher(conn, director)
+    teachers.update(conn, director, dayda, TeacherInput("DAYDA", hire_date=date(2026, 10, 18)),
+                    4000, date(2026, 10, 18))
+    assert [(r.percentage_bp, r.valid_from, r.valid_to)
+            for r in teachers.rates(conn, director, dayda)] == [(4000, "2026-10-18", None)]
+    entry = conn.execute("SELECT old_value, new_value FROM audit_log "
+                         "WHERE action = 'teacher.rate_correct'").fetchone()
+    assert (json.loads(entry["old_value"]), json.loads(entry["new_value"])) == (
+        {"percentage_bp": 4000, "valid_from": "2026-10-21"},
+        {"percentage_bp": 4000, "valid_from": "2026-10-18"})
+    assert teachers.get(conn, director, dayda).current_rate_from == "2026-10-18"
+    groups.create(conn, director, group_input(school, start=date(2026, 10, 18)), dayda)
+
+
+def test_a_rate_never_starts_before_the_arrival(conn, director, school):
+    dayda = late_rate_teacher(conn, director)
+    with pytest.raises(ValidationError) as exc:
+        teachers.set_rate(conn, director, dayda, 4000, date(2026, 10, 17))
+    assert exc.value.message == t["rate.before_hire"].format(date="18/10/2026")
+    with pytest.raises(ValidationError):  # created so
+        teachers.create(conn, director, TeacherInput("Nadia", hire_date=date(2026, 10, 18)),
+                        5000, date(2026, 10, 1))
+    with pytest.raises(ValidationError):  # nor by moving the arrival after the rate
+        teachers.update(conn, director, dayda,
+                        TeacherInput("DAYDA", hire_date=date(2026, 10, 22)))
+    assert teachers.get(conn, director, dayda).hire_date == "2026-10-18"
+
+
+def test_starting_earlier_at_another_rate_keeps_approved_payouts(conn, director, school):
+    """Another percentage from an earlier day changes the months after it: refused once an
+    approved payout used the rate; the same percentage is still allowed."""
+    dayda = late_rate_teacher(conn, director)
+    conn.execute(
+        "INSERT INTO teacher_payouts(teacher_id, period_start, period_end, base_amount, "
+        "amount_due, status) VALUES (?, '2026-10-21', '2026-10-31', 100, 40, 'approved')",
+        (dayda,))
+    with pytest.raises(BusinessRuleError) as exc:
+        teachers.set_rate(conn, director, dayda, 5000, date(2026, 10, 18))
+    assert exc.value.message == t["rate.locked"]
+    teachers.set_rate(conn, director, dayda, 4000, date(2026, 10, 18))
+    assert teachers.rate_on(conn, dayda, date(2026, 10, 18)) == 4000
 
 
 def test_same_day_rate_corrects_until_a_payout_used_it(conn, director, school):

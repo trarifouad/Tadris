@@ -5,14 +5,14 @@ from tadris.core.context import UserContext
 from tadris.core.errors import BusinessRuleError, NotFound, ValidationError
 from tadris.core.money import format_dzd
 from tadris.core.permissions import require
-from tadris.core.text import clean
+from tadris.core.text import clean, fold
 from tadris.db.errors import atomic
-from tadris.domain.models import MissingSubscription, Subscription
+from tadris.domain.models import MissingSubscription, Subscription, SubscriptionLine
 from tadris.i18n.fr import t
 from tadris.repositories import enrollments as enrollments_repo
 from tadris.repositories import groups as groups_repo
 from tadris.repositories import subscriptions as repo
-from tadris.services import audit
+from tadris.services import audit, debt, payouts
 
 # A subscription is one month of a paid enrollment: [start, start + 1 month), at a snapshot
 # of the group's price, with a charge due (and accrued) on its first day. Absence never
@@ -20,7 +20,10 @@ from tadris.services import audit
 # Renewal is done by the desk: the next month starts when the previous one ends, or later
 # after a gap, never earlier. A trial has no subscription. Cancelling (director only) is
 # refused once something was paid on the month (V1 has no refunds: only a void of the payment,
-# by the director, frees it) or once it was counted in a teacher payout.
+# by the director, frees it) or once an approved or paid teacher payout counted it; a draft
+# lets it go. A student who leaves a group (or switches, or whose group closes) owes no month
+# that starts after their last day: those are cancelled the same way, or kept and listed when
+# they cannot be.
 
 EXPIRING_DAYS = 7
 
@@ -185,12 +188,43 @@ def cancel(conn, ctx: UserContext, subscription_id: int, reason: str) -> None:
         if row["paid"]:
             raise BusinessRuleError(t["subscription.paid"].format(
                 amount=format_dzd(row["paid"])))
-        if row["charge_id"] is not None and row["charge_status"] == "open":
-            repo.cancel_charge(conn, row["charge_id"])
-        repo.set_status(conn, subscription_id, "cancelled")
-        audit.log(conn, ctx, "subscription.cancel", "subscriptions", subscription_id,
-                  old={"status": row["status"]},
-                  new={"status": "cancelled", "reason": reason, "charge_id": row["charge_id"]})
+        _cancel_in(conn, ctx, row, reason)
+
+
+def _cancel_in(conn, ctx: UserContext, row, reason: str) -> None:
+    """Inside a transaction: a month with nothing paid, in no approved or paid payout, is
+    cancelled with its charge; a draft counting it lets it go first."""
+    if row["charge_id"] is not None and row["charge_status"] == "open":
+        payouts.drop_month(conn, ctx, row["charge_id"])
+        repo.cancel_charge(conn, row["charge_id"])
+    repo.set_status(conn, row["id"], "cancelled")
+    audit.log(conn, ctx, "subscription.cancel", "subscriptions", row["id"],
+              old={"status": row["status"]},
+              new={"status": "cancelled", "reason": reason, "charge_id": row["charge_id"]})
+
+
+# ----- leaving a group -----
+
+def after(conn, ctx: UserContext, enrollment_id: int, last_day: date) -> list[Subscription]:
+    """The enrollment's months that start after `last_day`: what leaving the group that day
+    cancels (can_cancel) or keeps (money paid on it, or a teacher paid for it)."""
+    require(ctx, "student.view")
+    return [_to_subscription(row)
+            for row in repo.starting_after(conn, enrollment_id, dates.iso(last_day))]
+
+
+def release_after(conn, ctx: UserContext, enrollment_id: int, last_day: str,
+                  reason: str) -> tuple[list[int], list[int]]:
+    """Inside the transaction that ends the enrollment: its months starting after
+    `last_day` are cancelled, those that cannot be are kept. Returns (cancelled, kept)."""
+    cancelled, kept = [], []
+    for row in repo.starting_after(conn, enrollment_id, last_day):
+        if _to_subscription(row).can_cancel:
+            _cancel_in(conn, ctx, row, reason)
+            cancelled.append(row["id"])
+        else:
+            kept.append(row["id"])
+    return cancelled, kept
 
 
 # ----- start-up bookkeeping and the desk's lists -----
@@ -236,3 +270,32 @@ def missing(conn, ctx: UserContext) -> list[MissingSubscription]:
             group_title=_title(row), enrolled_on=row["enrolled_on"])
         for row in repo.active_without_subscription(conn)
     ]
+
+
+def lines(conn, ctx: UserContext) -> list[SubscriptionLine]:
+    """The Abonnements page: each student in each group (not on trial) with the latest month
+    and what is left to pay on all of its months (after the student's credit), those with no
+    month left too. By name, then group."""
+    require(ctx, "student.view")
+    months: dict[int, list[Subscription]] = {}
+    for row in repo.live_months(conn):
+        months.setdefault(row["enrollment_id"], []).append(_to_subscription(row))
+    left = debt.left_after_credit(debt.every_debt(conn).values())
+    result = []
+    today = _today()
+    for mine in months.values():
+        latest = max(mine, key=lambda m: m.end_date)
+        start = min((m.start_date for m in mine if m.end_date > today),
+                    default=latest.start_date)
+        result.append(SubscriptionLine(
+            enrollment_id=latest.enrollment_id, student_id=latest.student_id,
+            student_number=latest.student_number, student_name=latest.student_name,
+            group_id=latest.group_id, group_title=latest.group_title, month=latest,
+            owed=sum(left.get(m.charge_id, 0) for m in mine), period_start=start))
+    result += [SubscriptionLine(
+        enrollment_id=m.enrollment_id, student_id=m.student_id,
+        student_number=m.student_number, student_name=m.student_name, group_id=m.group_id,
+        group_title=m.group_title, month=None, owed=0, period_start=None)
+        for m in missing(conn, ctx)]
+    result.sort(key=lambda line: (fold(line.student_name), fold(line.group_title)))
+    return result

@@ -1,5 +1,6 @@
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QDialog,
     QFrame,
     QHBoxLayout,
@@ -14,7 +15,7 @@ from PySide6.QtWidgets import (
 from tadris.core.errors import BusinessRuleError
 from tadris.i18n.fr import t
 from tadris.ui.widgets.common import ErrorBanner, PageBanner, fit_to_content, primary_button
-from tadris.ui.widgets.tables import ID_ROLE, fill, ruled_table, selected_id
+from tadris.ui.widgets.tables import ID_ROLE, fill, ruled_table, selected_id, selected_ids
 
 
 def row(*widgets, stretch_last: bool = False) -> QHBoxLayout:
@@ -98,7 +99,9 @@ class ListSection(QWidget):
     activated = Signal(int)
     selection_changed = Signal()
 
-    def __init__(self, headers: list[str], empty_text: str, sortable: bool = False):
+    def __init__(self, headers: list[str], empty_text: str, sortable: bool = False,
+                 multi: bool = False):
+        """multi: several rows can be selected (Ctrl, Maj), for an action on all of them."""
         super().__init__()
         self.error = PageBanner()
         self.toolbar = QHBoxLayout()
@@ -108,6 +111,8 @@ class ListSection(QWidget):
         self.toolbar.addStretch()
         self.toolbar.addLayout(self._end)
         self.table = ruled_table(headers, sortable=sortable)
+        if multi:
+            self.table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         if sortable:
             # Qt starts descending; lists open sorted A to Z on their first column.
             self.table.setSortingEnabled(True)
@@ -147,6 +152,9 @@ class ListSection(QWidget):
 
     def selected_id(self) -> int | None:
         return selected_id(self.table)
+
+    def selected_ids(self) -> list[int]:
+        return selected_ids(self.table)
 
     def select_id(self, item_id: int) -> None:
         for r in range(self.table.rowCount()):

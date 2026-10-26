@@ -19,13 +19,13 @@ from tadris.services import (
     teachers,
 )
 from tadris.ui.pages.registration_tab import RegistrationTab
-from tadris.ui.pages.setup_tabs import SchoolTab
 from tadris.ui.pages.student_detail import StudentDetailView
 from tadris.ui.registration_dialogs import (
     CancelRegistrationDialog,
     ChangeLevelDialog,
     RegistrationDialog,
 )
+from tadris.ui.settings_dialogs import DefaultsDialog, IdentityDialog
 from tadris.ui.theme import apply_theme, load_fonts
 from tadris.ui.widgets.inputs import select_data
 
@@ -234,24 +234,34 @@ def test_director_cancels_with_a_reason(qtbot, conn, director, year, levels, ami
 
 # ----- Paramètres: default fee -----
 
-def test_school_tab_saves_the_default_fee(qtbot, conn, director):
-    tab = SchoolTab(conn, director)
-    qtbot.addWidget(tab)
-    assert tab.registration_fee.text() == "0 DA"
-    tab.registration_fee.setText("2 500")
-    click(qtbot, tab.save)
+def test_defaults_dialog_saves_the_default_fee(qtbot, conn, director):
+    dialog = DefaultsDialog(conn, director)
+    qtbot.addWidget(dialog)
+    assert dialog.registration_fee.text() == "0 DA"
+    dialog.registration_fee.setText("2 500")
+    click(qtbot, dialog.submit)
     assert registrations.default_fee(conn) == 2500
-    assert tab.registration_fee.text() == "2 500 DA"
+    assert DefaultsDialog(conn, director).registration_fee.text() == "2 500 DA"
 
 
-def test_school_tab_refuses_a_bad_fee_and_saves_nothing(qtbot, conn, director):
-    tab = SchoolTab(conn, director)
-    qtbot.addWidget(tab)
-    tab.phone.setText("0550 12 34 56")
-    tab.registration_fee.setText("abc")
-    click(qtbot, tab.save)
-    assert tab.error.text() == t["money.invalid"]
-    assert settings.get(conn, "school.phone") is None
+def test_defaults_dialog_refuses_a_bad_fee_and_saves_nothing(qtbot, conn, director):
+    dialog = DefaultsDialog(conn, director)
+    qtbot.addWidget(dialog)
+    dialog.group_price.setText("3 000")
+    dialog.registration_fee.setText("abc")
+    click(qtbot, dialog.submit)
+    assert dialog.banner.text() == t["money.invalid"]
+    assert settings.get(conn, "defaults.group_price") is None
+
+
+def test_identity_dialog_needs_a_name(qtbot, conn, director):
+    dialog = IdentityDialog(conn, director)
+    qtbot.addWidget(dialog)
+    dialog.phone.setText("0550 12 34 56")
+    dialog.name.setText("")
+    click(qtbot, dialog.submit)
+    assert dialog.banner.text() == t["auth.school_name_required"]
+    assert settings.get(conn, "school.phone") is None  # nothing saved
 
 
 # ----- TADRIS_DB -----

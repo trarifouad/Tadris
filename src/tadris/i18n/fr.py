@@ -1184,9 +1184,60 @@ t = {
     "filters.button": "Filtres",
     "filters.button_count": "Filtres ({count})",
     "filters.reset": "Réinitialiser",
-    "settings.tab.school": "École",
-    "settings.tab.users": "Utilisateurs",
-    "settings.tab.holidays": "Vacances",
+    "settings.section.school": "École",
+    "settings.section.structure": "Structure",
+    "settings.section.users": "Utilisateurs",
+    "settings.section.data": "Données",
+    "settings.manage": "Gérer",
+    "school_card.identity": "Identité",
+    "school_dialog.identity": "Identité de l'école",
+    "school_card.no_contact": "Téléphone et adresse non renseignés.",
+    "school_card.hours": "{opens} → {closes}, tous les jours",
+    "school_card.fee": "Frais d'inscription",
+    "school_card.group_price": "Prix d'un nouveau groupe",
+    "school_card.debt_warning": "Alerte de dette",
+    "school_card.none": "Aucun",
+    "school_card.off": "Désactivée",
+    "school_card.from": "À partir de {amount}",
+    "school_card.header": "En-tête",
+    "school_card.footer": "Bas de page",
+    "school_card.no_lines": (
+        "Aucune ligne ajoutée : les reçus portent le nom, l'adresse et le téléphone de l'école."
+    ),
+    "structure.caption": (
+        "Le squelette de l'école, dans l'ordre où il se met en place. « Gérer » ouvre la "
+        "liste complète et ses actions."
+    ),
+    "structure.years": "Année scolaire",
+    "structure.levels": "Niveaux",
+    "structure.subjects": "Matières",
+    "structure.rooms": "Salles",
+    "structure.year_dates": "Du {start} au {end} · {groups} groupe(s)",
+    "structure.year_next": "Puis {label}, à venir à partir du {start}",
+    "structure.no_open_year": "Aucune année ouverte : ouvrez-en une avec « Gérer ».",
+    "structure.no_year": "Aucune année scolaire : créez la première avec « Gérer ».",
+    "structure.holidays": "Vacances : {count} période(s) · prochaine : {label}, {period}",
+    "structure.holiday_period": "du {start} au {end}",
+    "structure.holiday_day": "le {day}",
+    "structure.holidays_past": "Vacances : {count} période(s), toutes passées",
+    "structure.no_holidays": "Vacances : aucune période (jours fériés, congés…)",
+    "structure.manage_holidays": "Gérer les vacances",
+    "structure.levels_empty": "Aucun niveau : ajoutez les niveaux enseignés (par exemple 4AM).",
+    "structure.subjects_empty": "Aucune matière : ajoutez les matières enseignées.",
+    "structure.rooms_empty": "Aucune salle : ajoutez les salles et leur capacité.",
+    "structure.room_chip": "{name} · {capacity} places",
+    "structure.window.years": "Années scolaires",
+    "structure.window.holidays": "Vacances",
+    "structure.window.levels": "Niveaux",
+    "structure.window.subjects": "Matières",
+    "structure.window.rooms": "Salles",
+    "data.backups": "Sauvegardes",
+    "data.manage": "Gérer les sauvegardes",
+    "data.last": "Dernière copie : {when}",
+    "data.none": "Aucune sauvegarde pour l'instant.",
+    "data.second": "Chaque copie est aussi écrite dans : {folder}",
+    "data.no_second": "Pas de second emplacement : les copies restent sur cet ordinateur.",
+    "data.about": "À propos",
     "holidays.caption": (
         "Les jours sans cours (vacances, jours fériés). Aucune séance n'est prévue ces jours-là."
     ),
@@ -1242,7 +1293,6 @@ t = {
     "school.receipt_footer": "Ligne de bas de page",
     "school.receipt_footer_hint": "Ex. : Les frais d'inscription ne sont pas remboursables.",
     "school.receipt_line_too_long": "Une ligne de reçu fait au plus {max} caractères.",
-    "settings.tab.backups": "Sauvegardes",
     "backups.caption": (
         "Une copie de la base est faite chaque jour à l'ouverture et à chaque fermeture, puis "
         "vérifiée. Sont gardées : les 3 dernières, une par jour sur 14 jours et une par mois "
@@ -1301,7 +1351,6 @@ t = {
         "Les données de la sauvegarde sont en place.\n\nCopie de sécurité des données "
         "d'avant : {safety}\n\nReconnectez-vous."
     ),
-    "settings.tab.about": "À propos",
     "about.caption": (
         "La version de l'application et de la base de données, et l'endroit où sont "
         "enregistrées les données. Utile si vous appelez pour de l'aide."
@@ -1311,10 +1360,6 @@ t = {
     "about.database": "Fichier de la base",
     "about.in_memory": "En mémoire (test)",
     "about.open_folder": "Ouvrir le dossier des données",
-    "settings.tab.years": "Années scolaires",
-    "settings.tab.levels": "Niveaux",
-    "settings.tab.subjects": "Matières",
-    "settings.tab.rooms": "Salles",
     "year_state.open": "Ouverte",
     "year_state.upcoming": "À venir",
     "year_state.closed": "Clôturée",

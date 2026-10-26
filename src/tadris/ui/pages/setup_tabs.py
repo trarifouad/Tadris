@@ -1,45 +1,16 @@
-"""Paramètres tabs: the school's details and hours, years, levels, subjects and rooms."""
+"""The lists of Paramètres → Structure, each opened whole in a window: years, holidays,
+levels, subjects and rooms."""
 
-from PySide6.QtWidgets import (
-    QFrame,
-    QHBoxLayout,
-    QLabel,
-    QLineEdit,
-    QPushButton,
-    QScrollArea,
-    QSizePolicy,
-    QVBoxLayout,
-    QWidget,
-)
+from PySide6.QtWidgets import QLabel, QPushButton, QVBoxLayout, QWidget
 
 from tadris.core.context import UserContext
 from tadris.core.dates import display_date
-from tadris.core.errors import BusinessRuleError
-from tadris.core.money import format_dzd
 from tadris.i18n.fr import t
-from tadris.services import (
-    catalog,
-    debt,
-    groups,
-    holidays,
-    registrations,
-    rooms,
-    school_years,
-    settings,
-)
+from tadris.services import catalog, holidays, rooms, school_years
 from tadris.ui.setup_dialogs import HolidayDialog, NameDialog, RoomDialog, YearDialog
 from tadris.ui.theme.status import kind_for
-from tadris.ui.widgets.common import (
-    PageBanner,
-    ask,
-    confirm,
-    labeled,
-    primary_button,
-    toast,
-    variant_button,
-)
-from tadris.ui.widgets.forms import ListSection, row
-from tadris.ui.widgets.inputs import money_edit, read_money, time_combo
+from tadris.ui.widgets.common import ask, confirm, primary_button, toast, variant_button
+from tadris.ui.widgets.forms import ListSection
 from tadris.ui.widgets.tables import CENTER, item
 
 
@@ -330,131 +301,3 @@ class HolidaysTab(SetupTab):
         if self.list.run(holidays.remove, self._conn, self._ctx, holiday.id):
             self._done(t["holidays.removed"].format(label=holiday.label))
 
-
-class SchoolTab(QWidget):
-    """School details printed on documents, and the opening hours that bound the timetable."""
-
-    FORM_WIDTH = 640
-
-    def __init__(self, conn, ctx: UserContext):
-        super().__init__()
-        self._conn = conn
-        self._ctx = ctx
-        intro = QLabel(t["school.caption"])
-        intro.setObjectName("caption")
-        intro.setWordWrap(True)
-        self.error = PageBanner()
-        self.name = QLineEdit()
-        self.phone = QLineEdit()
-        self.address = QLineEdit()
-        self.opens_at = time_combo()
-        self.closes_at = time_combo()
-        hours_title = QLabel(t["school.hours"])
-        hours_title.setObjectName("sectionTitle")
-        hours_caption = QLabel(t["school.hours_caption"])
-        hours_caption.setObjectName("caption")
-        hours_caption.setWordWrap(True)
-        self.registration_fee = money_edit()
-        self.debt_warning = money_edit()
-        self.debt_warning.setPlaceholderText(t["school.debt_warning_off"])
-        fees_title = QLabel(t["school.fees"])
-        fees_title.setObjectName("sectionTitle")
-        fees_caption = QLabel(t["school.fees_caption"])
-        fees_caption.setObjectName("caption")
-        fees_caption.setWordWrap(True)
-        self.group_price = money_edit()
-        self.group_price.setPlaceholderText(t["school.group_price_off"])
-        receipts_title = QLabel(t["school.receipts"])
-        receipts_title.setObjectName("sectionTitle")
-        receipts_caption = QLabel(t["school.receipts_caption"])
-        receipts_caption.setObjectName("caption")
-        receipts_caption.setWordWrap(True)
-        self.receipt_header = QLineEdit()
-        self.receipt_header.setPlaceholderText(t["school.receipt_header_hint"])
-        self.receipt_header.setMaxLength(settings.RECEIPT_LINE_MAX)
-        self.receipt_footer = QLineEdit()
-        self.receipt_footer.setPlaceholderText(t["school.receipt_footer_hint"])
-        self.receipt_footer.setMaxLength(settings.RECEIPT_LINE_MAX)
-        self.save = primary_button(t["action.save"])
-        self.save.setDefault(False)
-        self.save.clicked.connect(self._save)
-
-        form = QVBoxLayout()
-        form.setSpacing(16)
-        form.addWidget(labeled(t["school.name"], self.name, required=True))
-        form.addLayout(row(labeled(t["school.phone"], self.phone),
-                           labeled(t["school.address"], self.address)))
-        form.addSpacing(4)
-        form.addWidget(hours_title)
-        form.addWidget(hours_caption)
-        form.addLayout(row(labeled(t["school.opens_at"], self.opens_at, required=True),
-                           labeled(t["school.closes_at"], self.closes_at, required=True)))
-        form.addSpacing(4)
-        form.addWidget(fees_title)
-        form.addWidget(fees_caption)
-        form.addLayout(row(labeled(t["school.registration_fee"], self.registration_fee),
-                           labeled(t["school.group_price"], self.group_price)))
-        form.addLayout(row(labeled(t["school.debt_warning"], self.debt_warning), QWidget()))
-        form.addSpacing(4)
-        form.addWidget(receipts_title)
-        form.addWidget(receipts_caption)
-        form.addWidget(labeled(t["school.receipt_header"], self.receipt_header))
-        form.addWidget(labeled(t["school.receipt_footer"], self.receipt_footer))
-        actions = QHBoxLayout()
-        actions.addStretch()
-        actions.addWidget(self.save)
-        form.addLayout(actions)
-        box = QWidget()
-        box.setMaximumWidth(self.FORM_WIDTH)
-        box.setLayout(form)
-        # Its full height always: the scroll area scrolls it rather than squeeze the fields.
-        box.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
-
-        # A long form scrolls instead of squeezing its fields (a laptop screen at 125 %).
-        content = QWidget()
-        inner = QVBoxLayout(content)
-        inner.setContentsMargins(0, 16, 0, 0)
-        inner.setSpacing(12)
-        inner.addWidget(intro)
-        inner.addWidget(self.error)
-        inner.addWidget(box)
-        inner.addStretch()
-        self.scroll = QScrollArea()
-        self.scroll.setWidgetResizable(True)
-        self.scroll.setFrameShape(QFrame.Shape.NoFrame)
-        self.scroll.setWidget(content)
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(self.scroll)
-        self.refresh()
-
-    def refresh(self) -> None:
-        self.name.setText(settings.get(self._conn, "school.name", ""))
-        self.phone.setText(settings.get(self._conn, "school.phone", ""))
-        self.address.setText(settings.get(self._conn, "school.address", ""))
-        opens_at, closes_at = settings.school_hours(self._conn)
-        self.opens_at.setCurrentText(opens_at)
-        self.closes_at.setCurrentText(closes_at)
-        self.registration_fee.setText(format_dzd(registrations.default_fee(self._conn)))
-        threshold = debt.warning_threshold(self._conn)
-        self.debt_warning.setText(format_dzd(threshold) if threshold else "")
-        price = groups.default_price(self._conn)
-        self.group_price.setText(format_dzd(price) if price else "")
-        self.receipt_header.setText(settings.get(self._conn, "receipt.header", ""))
-        self.receipt_footer.setText(settings.get(self._conn, "receipt.footer", ""))
-
-    def _save(self) -> None:
-        try:
-            settings.save_school(self._conn, self._ctx, self.name.text(), self.phone.text(),
-                                 self.address.text(), self.opens_at.currentText(),
-                                 self.closes_at.currentText(),
-                                 read_money(self.registration_fee, empty=0),
-                                 read_money(self.debt_warning, empty=0),
-                                 read_money(self.group_price, empty=0),
-                                 self.receipt_header.text(), self.receipt_footer.text())
-        except BusinessRuleError as exc:
-            self.error.show_error(exc.message)
-            return
-        self.error.clear_error()
-        self.refresh()
-        toast(self, t["school.saved"])

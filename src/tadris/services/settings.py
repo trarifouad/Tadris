@@ -70,20 +70,54 @@ def save_school(conn, ctx: UserContext, name: str, phone: str, address: str,
                 opens_at: str, closes_at: str, registration_fee: int | None = None,
                 debt_warning: int | None = None, group_price: int | None = None,
                 receipt_header: str | None = None, receipt_footer: str | None = None) -> None:
-    """The École tab, all or nothing: details, opening hours, the default registration fee,
-    the debt warning threshold, the default price of a new group and the receipts' extra
-    lines (each left unchanged when None; a threshold or price of 0 turns it off, an empty
-    line prints nothing)."""
+    """Every part of the school at once, all or nothing: details, opening hours, the default
+    registration fee, the debt warning threshold, the default price of a new group and the
+    receipts' extra lines (each left unchanged when None; a threshold or price of 0 turns it
+    off, an empty line prints nothing). Paramètres saves one part at a time (below)."""
     require(ctx, "settings.change")
-    details = {key: _coerce(key, value) for key, value in (
+    details = {**_identity(name, phone, address),
+               **_defaults(registration_fee, group_price, debt_warning),
+               **_receipt_lines(receipt_header, receipt_footer)}
+    with atomic(conn):
+        _set_hours(conn, ctx, opens_at, closes_at)
+        for key, stored in details.items():
+            _store(conn, ctx, key, stored)
+
+
+def save_identity(conn, ctx: UserContext, name: str, phone: str, address: str) -> None:
+    """The school's name (required), phone and address, printed on every document."""
+    require(ctx, "settings.change")
+    _save(conn, ctx, _identity(name, phone, address))
+
+
+def save_defaults(conn, ctx: UserContext, registration_fee: int, group_price: int,
+                  debt_warning: int) -> None:
+    """What a registration and a new group start with, and the debt warning threshold
+    (0: no default price, no warning)."""
+    require(ctx, "settings.change")
+    _save(conn, ctx, _defaults(registration_fee, group_price, debt_warning))
+
+
+def save_receipt_lines(conn, ctx: UserContext, header: str, footer: str) -> None:
+    """The receipts' extra lines, under the school's name and at the foot (empty: none)."""
+    require(ctx, "settings.change")
+    _save(conn, ctx, _receipt_lines(header, footer))
+
+
+def _save(conn, ctx: UserContext, details: dict[str, str]) -> None:
+    with atomic(conn):
+        for key, stored in details.items():
+            _store(conn, ctx, key, stored)
+
+
+def _identity(name: str, phone: str, address: str) -> dict[str, str]:
+    return {key: _coerce(key, value) for key, value in (
         ("school.name", name), ("school.phone", phone), ("school.address", address))}
-    for key, line in (("receipt.header", receipt_header), ("receipt.footer", receipt_footer)):
-        if line is not None:
-            stored = _coerce(key, line)
-            if len(stored) > RECEIPT_LINE_MAX:
-                raise ValidationError(t["school.receipt_line_too_long"].format(
-                    max=RECEIPT_LINE_MAX))
-            details[key] = stored
+
+
+def _defaults(registration_fee: int | None, group_price: int | None,
+              debt_warning: int | None) -> dict[str, str]:
+    details = {}
     if group_price is not None:
         if group_price < 0:
             raise ValidationError(t["group.price_invalid"])
@@ -96,10 +130,19 @@ def save_school(conn, ctx: UserContext, name: str, phone: str, address: str,
         if debt_warning < 0:
             raise ValidationError(t["school.debt_warning_invalid"])
         details["defaults.max_debt_warning"] = str(debt_warning)
-    with atomic(conn):
-        _set_hours(conn, ctx, opens_at, closes_at)
-        for key, stored in details.items():
-            _store(conn, ctx, key, stored)
+    return details
+
+
+def _receipt_lines(header: str | None, footer: str | None) -> dict[str, str]:
+    details = {}
+    for key, line in (("receipt.header", header), ("receipt.footer", footer)):
+        if line is not None:
+            stored = _coerce(key, line)
+            if len(stored) > RECEIPT_LINE_MAX:
+                raise ValidationError(t["school.receipt_line_too_long"].format(
+                    max=RECEIPT_LINE_MAX))
+            details[key] = stored
+    return details
 
 
 def _store(conn, ctx: UserContext, key: str, stored: str) -> None:

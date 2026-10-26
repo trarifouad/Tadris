@@ -1,15 +1,13 @@
-"""The student page keeps the essentials; the long lists open in a window.
+"""The student page keeps the essentials; the long lists open in a window (SectionWindow).
 
 GroupLines: one tile per group the student is in now (trial or active): its status, its
 subject and entry date, then the month that runs (or comes next), what is left to pay on it,
-and the attendance in that group. SectionWindow: a list of the page (groups with their history, every session
-with its attendance, every month, every payment) in a window, with all its actions."""
+and the attendance in that group."""
 
 from datetime import date, timedelta
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QDialog,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -239,30 +237,6 @@ class GroupLines(QWidget):
         self.empty.setVisible(not self.lines)
         if self.lines:
             self._layout.addStretch()
-
-
-class SectionWindow(QDialog):
-    """One section of the student page, whole, in a window: its list and its actions."""
-
-    def __init__(self, title: str, section: QWidget, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle(title)
-        self.section = section
-        heading = QLabel(title)
-        heading.setObjectName("dialogTitle")
-        self.close_button = QPushButton(t["action.close"])
-        self.close_button.setAutoDefault(False)
-        self.close_button.clicked.connect(self.accept)
-        actions = QHBoxLayout()
-        actions.addStretch()
-        actions.addWidget(self.close_button)
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(28, 24, 28, 24)
-        layout.setSpacing(16)
-        layout.addWidget(heading)
-        layout.addWidget(section, 1)
-        layout.addLayout(actions)
-        self.resize(980, 640)
 
 
 def link_button(text: str = "") -> QPushButton:

@@ -97,6 +97,24 @@ def kind_text(b: Backup) -> str:
     return t[f"backups.kind.{b.type}"]
 
 
+def backups_folder(conn) -> Path | None:
+    """Next to the database in use, as config.backup_dir() (None: a test in memory)."""
+    database = about.database_file(conn)
+    return None if database is None else database.parent / "backups"
+
+
+def take_now(conn, ctx: UserContext, folder: Path) -> tuple[Backup | None, str | None]:
+    """« Sauvegarder maintenant »: the copy made (None when refused) and what to tell the
+    user when something went wrong (refused, or made but missing from the second
+    location)."""
+    try:
+        return backup.take_now(conn, ctx, folder), None
+    except backup.MirrorFailed as exc:  # made here; only the second copy is missing
+        return exc.backup, t["backups.second_warning"].format(error=exc.message)
+    except BusinessRuleError as exc:
+        return None, exc.message
+
+
 class BackupsTab(QWidget):
     """The copies of the database (latest first), « Sauvegarder maintenant », the second
     location, and restoring a copy. `restored(safety copy's path)` is emitted once a copy is
@@ -109,9 +127,7 @@ class BackupsTab(QWidget):
         self._conn = conn
         self._ctx = ctx
         self._backups: dict[int, Backup] = {}
-        database = about.database_file(conn)
-        # Next to the database in use, as config.backup_dir() (None: a test in memory).
-        self.folder = None if database is None else database.parent / "backups"
+        self.folder = backups_folder(conn)
 
         intro = caption(t["backups.caption"])
         intro.setWordWrap(True)
@@ -217,21 +233,13 @@ class BackupsTab(QWidget):
     # ----- a copy now -----
 
     def _take_now(self) -> None:
-        try:
-            taken = backup.take_now(self._conn, self._ctx, self.folder)
-        except backup.MirrorFailed as exc:  # made here; only the second copy is missing
-            self.refresh()
-            self._show(t["backups.second_warning"].format(error=exc.message))
-            self.list.select_id(exc.backup.id)
-            return
-        except BusinessRuleError as exc:
-            self.refresh()
-            self._show(exc.message)
-            return
-        self._show(None)
+        taken, problem = take_now(self._conn, self._ctx, self.folder)
         self.refresh()
-        self.list.select_id(taken.id)
-        toast(self, t["backups.taken"].format(name=Path(taken.file_path).name))
+        self._show(problem)
+        if taken is not None:
+            self.list.select_id(taken.id)
+        if problem is None:
+            toast(self, t["backups.taken"].format(name=Path(taken.file_path).name))
 
     # ----- second location -----
 

@@ -12,13 +12,14 @@ from tadris.services import (
     auth,
     catalog,
     groups,
+    holidays,
     rooms,
     school_years,
     settings,
     teachers,
     timetable,
 )
-from tadris.ui import group_dialogs
+from tadris.ui import group_dialogs, settings_dialogs
 from tadris.ui.group_dialogs import ChangeTeacherDialog, GroupDialog, SlotDialog
 from tadris.ui.main_window import MainWindow
 from tadris.ui.pages import groups as groups_page
@@ -102,12 +103,64 @@ def keep(qtbot, widget):
 
 # ----- Paramètres -----
 
-def test_settings_has_structure_tabs(qtbot, conn, director):
+def test_settings_has_four_sections_in_a_side_list(qtbot, conn, director):
     page = keep(qtbot, SettingsPage(conn, director))
-    assert [page.tabs.tabText(i) for i in range(page.tabs.count())] == [
-        t[f"settings.tab.{k}"]
-        for k in ("school", "users", "years", "levels", "subjects", "rooms", "holidays",
-                  "backups", "about")]
+    assert [b.text() for b in page.nav.buttons.values()] == [
+        t[f"settings.section.{k}"] for k in ("school", "structure", "users", "data")]
+    assert page.current_section() == "school"
+    page.nav.buttons["structure"].click()
+    assert page.current_section() == "structure"
+    assert page.stack.currentWidget().widget().layout().itemAt(0).widget() \
+        is page.sections["structure"]
+    for old, section in (("backups", "data"), ("about", "data"), ("rooms", "structure"),
+                         ("users", "users"), ("nowhere", "users")):
+        page.show_tab(old)  # the old tab names still lead somewhere (an unknown one: stays)
+        assert page.current_section() == section
+
+
+def test_structure_sums_up_each_step(qtbot, conn, director, school):
+    holidays.create(conn, director, "Vacances d'hiver", date(2026, 12, 20), date(2027, 1, 3))
+    catalog.set_active(conn, director, "subject", school["physics"], False)
+    page = keep(qtbot, SettingsPage(conn, director))
+    page.show_section("structure")
+    s = page.sections["structure"]
+    assert [step.mark.text() for step in (s.years, s.levels, s.subjects, s.rooms)] == [
+        "✓", "✓", "✓", "✓"]
+    assert (s.year.text(), s.year_state.text()) == ("2026-2027", "Ouverte")
+    assert s.year_detail.text() == t["structure.year_dates"].format(
+        start="01/09/2026", end="30/06/2027", groups=1)
+    assert s.holidays_text.text() == t["structure.holidays"].format(
+        count=1, label="Vacances d'hiver", period="du 20/12/2026 au 03/01/2027")
+    chips = [(c.text(), c.property("faint")) for c in s.subjects.findChildren(QLabel, "badge")]
+    assert chips == [("Mathématiques", False), ("Physique", True)]  # off: faint
+    assert [c.text() for c in s.rooms.findChildren(QLabel, "badge")] == [
+        "Salle A · 20 places", "Salle B · 12 places"]
+
+
+def test_an_empty_structure_says_what_to_add(qtbot, conn, director):
+    page = keep(qtbot, SettingsPage(conn, director))  # held: its widgets live with it
+    s = page.sections["structure"]
+    assert [step.mark.text() for step in (s.years, s.levels, s.subjects, s.rooms)] == [
+        "1", "2", "3", "4"]
+    assert s.year_detail.text() == t["structure.no_year"]
+    assert visible(s.levels_empty) and s.levels_empty.text() == t["structure.levels_empty"]
+
+
+def test_gerer_opens_the_whole_list_and_the_step_follows(qtbot, conn, director, monkeypatch):
+    """« Gérer »: the list in a window, with its actions; closed, the summary is read again."""
+    from tadris.ui.widgets.forms import SectionWindow
+
+    def exec_(window):
+        assert isinstance(window.section, setup_tabs.CatalogTab)
+        catalog.create(conn, director, "level", "4AM")  # as « Nouveau niveau » would
+        return 0
+    monkeypatch.setattr(SectionWindow, "exec", exec_)
+    page = keep(qtbot, SettingsPage(conn, director))
+    s = page.sections["structure"]
+    assert s.levels.mark.text() == "2"
+    click(qtbot, s.levels.manage)
+    assert s.levels.mark.text() == "✓"
+    assert [c.text() for c in s.levels.findChildren(QLabel, "badge")] == ["4AM"]
 
 
 def test_year_dialog_suggests_the_label(qtbot, conn, director):
@@ -597,51 +650,68 @@ def test_grid_widens_for_an_older_slot_outside_the_hours(qtbot, conn, director, 
     assert (page.grid.first_hour, page.grid.last_hour) == (8, 22)
 
 
-# ----- École tab (details and opening hours) -----
+# ----- Paramètres → École: one card per part, « Modifier » opens its dialog -----
 
-def test_school_tab_saves_details_and_hours(qtbot, conn, director):
-    tab = keep(qtbot, setup_tabs.SchoolTab(conn, director))
-    assert tab.name.text() == "École Ennour"
-    assert (tab.opens_at.currentText(), tab.closes_at.currentText()) == ("08:00", "20:00")
-    tab.phone.setText("048 55 12 30")
-    tab.opens_at.setCurrentText("8h30")
-    tab.closes_at.setCurrentText("19:00")
-    click(qtbot, tab.save)
-    assert tab.error.isHidden()
+def test_school_cards_sum_up_and_each_dialog_saves_its_part(qtbot, conn, director,
+                                                            monkeypatch):
+    page = keep(qtbot, SettingsPage(conn, director))
+    section = page.sections["school"]
+    assert (section.name.text(), section.contact.text()) == (
+        "École Ennour", t["school_card.no_contact"])
+    assert section.hours.text() == t["school_card.hours"].format(opens="08:00",
+                                                                 closes="20:00")
+    assert (section.group_price.text(), section.debt_warning.text()) == (
+        t["school_card.none"], t["school_card.off"])
+    assert visible(section.no_lines) and section.header.isHidden()
+
+    def identity(d):
+        d.phone.setText("048 55 12 30")
+        d._submit()
+    auto_exec(monkeypatch, settings_dialogs.IdentityDialog, identity)
+    click(qtbot, section.edit_identity)
+    assert section.contact.text() == "048 55 12 30"
+
+    def hours(d):
+        assert (d.opens_at.currentText(), d.closes_at.currentText()) == ("08:00", "20:00")
+        d.opens_at.setCurrentText("8h30")
+        d.closes_at.setCurrentText("19:00")
+        d._submit()
+    auto_exec(monkeypatch, settings_dialogs.HoursDialog, hours)
+    click(qtbot, section.edit_hours)
     assert settings.school_hours(conn) == ("08:30", "19:00")
-    assert settings.get(conn, "school.phone") == "048 55 12 30"
-    assert tab.opens_at.currentText() == "08:30"
+    assert section.hours.text() == t["school_card.hours"].format(opens="08:30",
+                                                                 closes="19:00")
 
-
-
-def test_school_tab_saves_the_group_price_and_receipt_lines(qtbot, conn, director):
-    tab = keep(qtbot, setup_tabs.SchoolTab(conn, director))
-    assert (tab.group_price.text(), tab.receipt_header.text()) == ("", "")
-    tab.group_price.setText("3500")
-    tab.receipt_header.setText("Agrément n° 12")
-    tab.receipt_footer.setText("Frais non remboursables.")
-    click(qtbot, tab.save)
-    assert tab.error.isHidden()
+    def defaults(d):
+        d.group_price.setText("3500")
+        d.debt_warning.setText("10 000")
+        d._submit()
+    auto_exec(monkeypatch, settings_dialogs.DefaultsDialog, defaults)
+    click(qtbot, section.edit_defaults)
     assert groups.default_price(conn) == 3500
+    assert (section.group_price.text(), section.debt_warning.text()) == (
+        "3 500 DA", t["school_card.from"].format(amount="10 000 DA"))
+
+    def receipts(d):
+        assert d.receipt_header.maxLength() == settings.RECEIPT_LINE_MAX
+        d.receipt_header.setText("Agrément n° 12")
+        d.receipt_footer.setText("Frais non remboursables.")
+        d._submit()
+    auto_exec(monkeypatch, settings_dialogs.ReceiptLinesDialog, receipts)
+    click(qtbot, section.edit_receipts)
     assert settings.get(conn, "receipt.footer") == "Frais non remboursables."
-    assert tab.group_price.text() == "3 500 DA"  # shown as saved
-    tab.group_price.setText("")
-    click(qtbot, tab.save)
-    assert groups.default_price(conn) == 0
-    assert tab.receipt_header.maxLength() == settings.RECEIPT_LINE_MAX
+    assert (section.header.text(), section.no_lines.isHidden()) == ("Agrément n° 12", True)
 
 
-def test_school_tab_refuses_hours_that_cut_a_slot(qtbot, conn, director, school):
+def test_hours_that_cut_a_slot_are_refused(qtbot, conn, director, school):
     timetable.add_slot(conn, director, SlotInput(school["g1"], school["room_a"], 2, "18:30",
                                                  "20:00"))
-    tab = keep(qtbot, setup_tabs.SchoolTab(conn, director))
-    tab.closes_at.setCurrentText("19:00")
-    tab.phone.setText("0550 00 00 00")
-    click(qtbot, tab.save)
-    assert tab.error.text() == t["hours.slots_outside"].format(
+    dialog = keep(qtbot, settings_dialogs.HoursDialog(conn, director))
+    dialog.closes_at.setCurrentText("19:00")
+    click(qtbot, dialog.submit)
+    assert dialog.banner.text() == t["hours.slots_outside"].format(
         count=1, group="Maths 4AM G1", day="mardi", start="18:30", end="20:00")
-    assert settings.school_hours(conn) == ("08:00", "20:00")
-    assert settings.get(conn, "school.phone") is None  # nothing saved
+    assert settings.school_hours(conn) == ("08:00", "20:00")  # nothing saved
 
 
 def test_slot_dialog_offers_only_opening_hours(qtbot, conn, director, school):

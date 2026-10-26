@@ -26,9 +26,9 @@ from tadris.services import (
 from tadris.ui.enrollment_dialogs import EnrollDialog
 from tadris.ui.pages.payments_page import PaymentsPage
 from tadris.ui.pages.payments_tab import PaymentsTab
-from tadris.ui.pages.setup_tabs import SchoolTab
 from tadris.ui.pages.student_detail import StudentDetailView
 from tadris.ui.payment_dialogs import PaymentDialog, VoidPaymentDialog
+from tadris.ui.settings_dialogs import DefaultsDialog
 from tadris.ui.subscription_dialogs import RenewDialog
 from tadris.ui.theme import apply_theme, load_fonts, tokens
 from tadris.ui.widgets import common
@@ -592,14 +592,16 @@ def test_renew_dialog_warns_about_debt(qtbot, conn, director, amine):
     assert dialog.findChild(common.WarningBanner) is not None
 
 
-def test_school_tab_saves_the_threshold(qtbot, conn, director):
-    tab = SchoolTab(conn, director)
-    qtbot.addWidget(tab)
-    assert tab.debt_warning.text() == ""
-    tab.debt_warning.setText("5 000")
-    click(qtbot, tab.save)
+def test_defaults_dialog_saves_the_threshold(qtbot, conn, director):
+    dialog = DefaultsDialog(conn, director)
+    qtbot.addWidget(dialog)
+    assert dialog.debt_warning.text() == ""
+    dialog.debt_warning.setText("5 000")
+    click(qtbot, dialog.submit)
     assert debt.warning_threshold(conn) == 5000
-    assert tab.debt_warning.text() == "5 000 DA"
-    tab.debt_warning.setText("")
-    click(qtbot, tab.save)
+    again = DefaultsDialog(conn, director)
+    qtbot.addWidget(again)
+    assert again.debt_warning.text() == "5 000 DA"
+    again.debt_warning.setText("")  # empty: no warning
+    click(qtbot, again.submit)
     assert debt.warning_threshold(conn) == 0

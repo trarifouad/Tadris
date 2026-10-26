@@ -299,7 +299,7 @@ def test_links_open_their_page(qtbot, conn, director, school):
     click(qtbot, page.backup.more)
     assert window.nav_buttons["settings"].isChecked()
     settings = window.pages.currentWidget()
-    assert settings.tabs.currentWidget() is settings.backups
+    assert settings.current_section() == "data"  # where the backups are
 
 
 def test_every_table_header_lines_up_with_its_cells(qtbot, conn, director, school):

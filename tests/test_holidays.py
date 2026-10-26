@@ -123,16 +123,13 @@ def themed(qapp):
     apply_theme(qapp)
 
 
-def test_vacances_tab(qtbot, themed, conn, director, monkeypatch):
+def test_vacances_from_the_structure(qtbot, themed, conn, director, monkeypatch):
+    """Paramètres → Structure, « Gérer les vacances »: the whole list in a window, where
+    periods are added and removed; closed, the year's card says what is coming."""
     from tadris.ui.pages import setup_tabs
     from tadris.ui.pages.settings import SettingsPage
     from tadris.ui.setup_dialogs import HolidayDialog
-
-    page = SettingsPage(conn, director)
-    qtbot.addWidget(page)
-    tab = page.holidays
-    assert page.tabs.tabText(page.tabs.indexOf(tab)) == t["settings.tab.holidays"]
-    assert not tab.list.empty.isHidden()
+    from tadris.ui.widgets.forms import SectionWindow
 
     def fill(dialog):
         dialog.label.setText("Vacances d'hiver")
@@ -140,14 +137,38 @@ def test_vacances_tab(qtbot, themed, conn, director, monkeypatch):
         dialog.end.setText("03/01/2027")
         dialog._submit()
     monkeypatch.setattr(HolidayDialog, "exec", lambda self: (fill(self), self.result())[1])
-    qtbot.mouseClick(tab.new, Qt.MouseButton.LeftButton)
-    table = tab.list.table
-    assert [table.item(0, c).text() for c in range(4)] == [
-        "Vacances d'hiver", "20/12/2026", "03/01/2027", "15"]
     monkeypatch.setattr(setup_tabs, "confirm", lambda *_args: True)
-    tab.list.table.selectRow(0)
-    qtbot.mouseClick(tab.remove, Qt.MouseButton.LeftButton)
-    assert table.rowCount() == 0
+    seen = []
+
+    def use(window):
+        tab = window.section
+        assert window.windowTitle() == t["structure.window.holidays"]
+        assert not tab.list.empty.isHidden()
+        qtbot.mouseClick(tab.new, Qt.MouseButton.LeftButton)
+        table = tab.list.table
+        seen.append([table.item(0, c).text() for c in range(4)])
+        return 0
+    monkeypatch.setattr(SectionWindow, "exec", use)
+    page = SettingsPage(conn, director)
+    qtbot.addWidget(page)
+    page.show_tab("holidays")
+    structure = page.sections["structure"]
+    assert structure.holidays_text.text() == t["structure.no_holidays"]
+    qtbot.mouseClick(structure.manage_holidays, Qt.MouseButton.LeftButton)
+    assert seen == [["Vacances d'hiver", "20/12/2026", "03/01/2027", "15"]]
+    assert structure.holidays_text.text() == t["structure.holidays"].format(
+        count=1, label="Vacances d'hiver", period="du 20/12/2026 au 03/01/2027")
+
+    def remove(window):
+        tab = window.section
+        tab.list.table.selectRow(0)
+        qtbot.mouseClick(tab.remove, Qt.MouseButton.LeftButton)
+        seen.append(tab.list.table.rowCount())
+        return 0
+    monkeypatch.setattr(SectionWindow, "exec", remove)
+    qtbot.mouseClick(structure.manage_holidays, Qt.MouseButton.LeftButton)
+    assert seen[-1] == 0
+    assert structure.holidays_text.text() == t["structure.no_holidays"]
 
 
 def test_single_day_dialog(qtbot, themed, conn, director):

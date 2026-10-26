@@ -41,7 +41,7 @@ from tadris.ui.pages.payments_tab import PaymentsTab
 from tadris.ui.pages.registration_tab import RegistrationTab
 from tadris.ui.pages.student_attendance_tab import StudentAttendanceTab
 from tadris.ui.pages.student_groups_tab import StudentGroupsTab
-from tadris.ui.pages.student_overview import GroupLines, SectionWindow, link_button
+from tadris.ui.pages.student_overview import GroupLines, link_button
 from tadris.ui.pages.subscriptions_tab import SubscriptionsTab
 from tadris.ui.student_dialog import StudentDialog
 from tadris.ui.theme import icon
@@ -58,6 +58,7 @@ from tadris.ui.widgets.compact import (
     share_width,
     small,
 )
+from tadris.ui.widgets.forms import SectionWindow
 from tadris.ui.widgets.tables import ID_ROLE, fill, item, ruled_table, selected_id
 
 

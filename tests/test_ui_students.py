@@ -250,7 +250,7 @@ def test_the_study_card_keeps_one_line_per_group(qtbot, conn, director, amine, m
     from tadris.domain.models import GroupInput, TeacherInput
     from tadris.services import catalog, groups, registrations, school_years, teachers
     from tadris.services import enrollments as enrollments_service
-    from tadris.ui.pages.student_overview import SectionWindow
+    from tadris.ui.widgets.forms import SectionWindow
 
     monkeypatch.setattr(dates, "today", lambda: date(2026, 10, 18))
     year = school_years.create(conn, director, "2026-2027", date(2026, 9, 1), date(2027, 6, 30))

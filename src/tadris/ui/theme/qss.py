@@ -151,6 +151,20 @@ def build_qss(t: dict, chevron: str = "", check: str = "") -> str:
     QLabel#emptyTitle {{ font-size: 14px; font-weight: 600; }}
     QLabel#badge {{ border-radius: 4px; padding: 2px 8px; font-size: 11.5px; font-weight: 500; }}
 {badges}
+    QLabel#badge[faint="true"] {{ background: transparent; color: {t['faint']};
+        border: 1px dashed {t['border_strong']}; }}
+
+    QPushButton#sideNavItem {{ background: transparent; border: none; border-radius: 6px;
+        text-align: left; padding: 9px 12px; color: {t['muted']}; font-size: 14px;
+        font-weight: 500; }}
+    QPushButton#sideNavItem:hover {{ background: {t['surface_alt']}; color: {t['text']}; }}
+    QPushButton#sideNavItem:checked {{ background: {t['primary_soft']}; color: {t['primary']};
+        font-weight: 600; }}
+    QLabel#stepNumber {{ background: {t['surface_alt']}; color: {t['muted']};
+        border-radius: 14px; font-size: 13px; font-weight: 600; }}
+    QLabel#stepNumber[done="true"] {{ background: {t['success_bg']}; color: {t['success']}; }}
+    QLabel#summaryTitle {{ font-size: 15px; font-weight: 600; }}
+    QLabel#summaryValue {{ font-size: 13.5px; }}
 
     QPushButton#link {{ background: transparent; border: none; padding: 0; min-height: 0;
         color: {t['primary']}; font-size: 13px; font-weight: 500; }}

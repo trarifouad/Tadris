@@ -116,6 +116,58 @@ def test_receptionist_cannot_change_settings(conn, receptionist):
     assert settings.get(conn, "school.phone") is None
 
 
+# ----- Paramètres → École: one part at a time -----
+
+def setting_changes(conn) -> list[str]:
+    return [json.loads(row[0])["key"] for row in conn.execute(
+        "SELECT new_value FROM audit_log WHERE action = 'settings.set' ORDER BY id")]
+
+
+def test_each_part_of_the_school_saves_alone(conn, director):
+    settings.save_identity(conn, director, " École Ennour ", "048 55 12 30", "Oran")
+    settings.save_defaults(conn, director, 1500, 3000, 10000)
+    settings.save_receipt_lines(conn, director, "Agrément n° 12", "")
+    assert (settings.get(conn, "school.name"), settings.get(conn, "school.phone"),
+            settings.get(conn, "defaults.registration_fee"),
+            settings.get(conn, "defaults.group_price"),
+            settings.get(conn, "defaults.max_debt_warning"),
+            settings.get(conn, "receipt.header")) == (
+        "École Ennour", "048 55 12 30", 1500, 3000, 10000, "Agrément n° 12")
+    # Each value that changed is in the audit log once; the name was already so.
+    assert setting_changes(conn) == [
+        "school.phone", "school.address", "defaults.group_price",
+        "defaults.registration_fee", "defaults.max_debt_warning", "receipt.header",
+        "receipt.footer"]
+
+
+@pytest.mark.parametrize("save, message", [
+    (lambda c, d: settings.save_identity(c, d, "  ", "0550", "Oran"), "auth.school_name_required"),
+    (lambda c, d: settings.save_defaults(c, d, 1500, -1, 0), "group.price_invalid"),
+    (lambda c, d: settings.save_defaults(c, d, -5, 3000, 0), "registration.fee_invalid"),
+    (lambda c, d: settings.save_defaults(c, d, 1500, 3000, -1), "school.debt_warning_invalid"),
+])
+def test_a_refused_part_saves_nothing(conn, director, save, message):
+    with pytest.raises(ValidationError) as exc:
+        save(conn, director)
+    assert exc.value.message == t[message]
+    assert setting_changes(conn) == []  # not even the valid values of the same part
+
+
+def test_a_receipt_line_has_a_maximum(conn, director):
+    with pytest.raises(ValidationError) as exc:
+        settings.save_receipt_lines(conn, director, "x" * (settings.RECEIPT_LINE_MAX + 1), "")
+    assert exc.value.message == t["school.receipt_line_too_long"].format(
+        max=settings.RECEIPT_LINE_MAX)
+
+
+def test_the_school_parts_are_for_the_director(conn, receptionist):
+    for save in (lambda: settings.save_identity(conn, receptionist, "X", "", ""),
+                 lambda: settings.save_defaults(conn, receptionist, 0, 0, 0),
+                 lambda: settings.save_receipt_lines(conn, receptionist, "", "")):
+        with pytest.raises(PermissionDenied):
+            save()
+
+
 # ----- audit -----
 
 def test_audit_serializes_dates_and_accents(conn, director):

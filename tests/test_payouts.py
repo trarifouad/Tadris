@@ -89,10 +89,17 @@ def school(conn, director):
 
 
 def rate_starts_late(conn, teacher_id: int, day: str) -> None:
-    """The teacher's rate starting after their first months, as a database from before the
-    rate checks can hold it (a teacher now takes a group only from a day with a rate)."""
-    conn.execute("UPDATE teacher_rates SET valid_from = ? WHERE teacher_id = ?",
-                 (day, teacher_id))
+    """Legacy data: the teacher's only rate starting after they took their first group, as
+    DAYDA's did (rate from 21/10, his group from 18/10). The services refuse to make it now
+    (test_academic: test_a_teacher_takes_a_group_only_from_a_day_with_a_rate); only a
+    database from before that check holds it. Nothing else is bypassed: one rate row, its
+    start moved, the overlap triggers still run."""
+    [rate] = conn.execute("SELECT id FROM teacher_rates WHERE teacher_id = ?",
+                          (teacher_id,)).fetchall()
+    conn.execute("UPDATE teacher_rates SET valid_from = ? WHERE id = ?", (day, rate[0]))
+    first_group = conn.execute("SELECT MIN(valid_from) FROM group_teachers WHERE teacher_id = ?",
+                               (teacher_id,)).fetchone()[0]
+    assert first_group < day  # the legacy shape itself, not another one
 
 
 def last_audit(conn, action):
@@ -206,12 +213,43 @@ def test_a_rate_set_to_start_too_late_is_fixed_from_the_teachers_page(conn, dire
 def test_a_rate_change_builds_the_teachers_draft_again(conn, director, school):
     school.pupils(school.a, 1)  # 01/09, 6 000 DA at 60 %
     payouts.build_draft(conn, director, school.karim, SEPT_END)
+    first = payouts.listing(conn, director)[0].id
     teachers.set_rate(conn, director, school.karim, 5000, date(2026, 9, 1))  # corrected
     [p] = payouts.listing(conn, director)
     assert (p.status, p.amount_due) == ("draft", 3000)  # at the rate now set
+    assert last_audit(conn, "payout.build")["replaced"] == first  # never silently
     teachers.set_rate(conn, director, school.karim, 0, date(2026, 9, 1))  # nothing to pay
     assert payouts.listing(conn, director) == []
     assert last_audit(conn, "payout.delete") == {"reason": "rate_changed"}
+
+
+@pytest.mark.parametrize("status", ["approved", "paid"])
+def test_approved_and_paid_payouts_never_change_with_the_rates(conn, director, school, status):
+    """What would change the months it paid is refused; the rest leaves it as it is."""
+    school.pupils(school.a, 1)  # 01/09, 6 000 DA at 60 %
+    payout_id = payouts.build_draft(conn, director, school.karim, SEPT_END)
+    payouts.approve(conn, director, payout_id)
+    if status == "paid":
+        payouts.mark_paid(conn, director, payout_id, "cash")
+
+    def kept():
+        p = payouts.get(conn, director, payout_id)
+        return (p.status, p.base_amount, p.amount_due, p.amount_paid,
+                [(x.revenue_basis, x.percentage_bp, x.amount)
+                 for x in payouts.lines(conn, director, payout_id)])
+
+    before = kept()
+    for bp, day in ((5000, date(2026, 9, 1)),  # corrected on its own start day
+                    (5000, date(2026, 8, 15))):  # another percentage from an earlier day
+        with pytest.raises(BusinessRuleError) as caught:
+            teachers.set_rate(conn, director, school.karim, bp, day)
+        assert caught.value.message == t["rate.locked"]
+    teachers.set_rate(conn, director, school.karim, 6000, date(2026, 8, 15))  # same, earlier
+    teachers.set_rate(conn, director, school.karim, 7000, date(2026, 10, 1))  # a new rate
+    assert kept() == before
+    assert [(r.percentage_bp, r.valid_from) for r in teachers.rates(conn, director,
+                                                                    school.karim)] == [
+        (7000, "2026-10-01"), (6000, "2026-08-15")]
 
 
 def test_a_rate_from_after_the_drafts_months_leaves_it(conn, director, school):

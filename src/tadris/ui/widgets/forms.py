@@ -231,6 +231,31 @@ class HeaderCard(QFrame):
         self.note.setVisible(bool(text))
 
 
+class SectionWindow(QDialog):
+    """A whole list in a window, with all its actions (the student page's sections, the
+    lists of Paramètres). Its `finished` signal tells the page to read its summary again."""
+
+    def __init__(self, title: str, section: QWidget, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(title)
+        self.section = section
+        heading = QLabel(title)
+        heading.setObjectName("dialogTitle")
+        self.close_button = QPushButton(t["action.close"])
+        self.close_button.setAutoDefault(False)
+        self.close_button.clicked.connect(self.accept)
+        actions = QHBoxLayout()
+        actions.addStretch()
+        actions.addWidget(self.close_button)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(28, 24, 28, 24)
+        layout.setSpacing(16)
+        layout.addWidget(heading)
+        layout.addWidget(section, 1)
+        layout.addLayout(actions)
+        self.resize(980, 640)
+
+
 def caption(text: str = "") -> QLabel:
     label = QLabel(text)
     label.setObjectName("caption")

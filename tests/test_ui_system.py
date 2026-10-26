@@ -1,4 +1,4 @@
-"""Paramètres tabs about the app itself: « À propos » and « Sauvegardes »."""
+"""Paramètres → Données, about the app itself: « Sauvegardes » and « À propos »."""
 
 from pathlib import Path
 
@@ -14,6 +14,7 @@ from tadris.ui.pages import system_tabs
 from tadris.ui.pages.settings import SettingsPage
 from tadris.ui.pages.system_tabs import AboutTab, BackupsTab
 from tadris.ui.theme import apply_theme, load_fonts
+from tadris.ui.widgets.forms import SectionWindow
 
 
 @pytest.fixture(autouse=True)
@@ -61,13 +62,29 @@ def test_about_an_in_memory_database(qtbot, conn, opened):
     assert not tab.open_folder.isEnabled()
 
 
-def test_about_is_the_last_settings_tab(qtbot, school):
+def test_about_is_in_the_data_section(qtbot, school):
     conn, director = school
     page = SettingsPage(conn, director)
     qtbot.addWidget(page)
-    last = page.tabs.count() - 1
-    assert page.tabs.tabText(last) == "À propos"
-    assert page.tabs.widget(last) is page.about
+    page.show_tab("about")
+    assert page.current_section() == "data"
+    assert isinstance(page.sections["data"].about, AboutTab)
+    assert page.sections["data"].about.app_version.text() == __version__
+
+
+def test_the_data_card_sums_up_the_backups_and_takes_one(qtbot, school, tmp_path):
+    conn, director = school
+    page = SettingsPage(conn, director)
+    qtbot.addWidget(page)
+    data = page.sections["data"]
+    assert data.last.text() == t["data.none"] and data.last_state.isHidden()
+    assert data.second.text() == t["data.no_second"]
+    data.take.click()  # « Sauvegarder maintenant », from the card
+    [taken] = backup.list_backups(conn)
+    assert data.last.text() == t["data.last"].format(
+        when=system_tabs.display_stamp(taken.created_at))
+    assert data.last_state.text() == t["backups.status.verified"] and data.error.isHidden()
+    assert Path(taken.file_path).parent == tmp_path / "backups"
 
 
 # ----- sauvegardes -----
@@ -254,9 +271,16 @@ def test_after_a_restore_the_window_goes_back_to_the_login(qtbot, school, tmp_pa
     window.show()
     window.nav_buttons["settings"].click()
     page = window.findChild(SettingsPage)
-    page.tabs.setCurrentWidget(page.backups)
-    select(page.backups, taken.id)
+    page.show_tab("backups")
+
+    def restore_in_the_window(backups_window):
+        """« Gérer les sauvegardes »: the copy restored from the window, which closes."""
+        tab = backups_window.section
+        select(tab, taken.id)
+        tab.restore_selected.click()
+        return backups_window.result()
+    monkeypatch.setattr(SectionWindow, "exec", restore_in_the_window)
     with qtbot.waitSignal(window.logged_out):
-        page.backups.restore_selected.click()
+        page.sections["data"].manage.click()
     assert window.restored and window.logging_out
     assert "avant-restauration" in shown[0] and "Reconnectez-vous" in shown[0]

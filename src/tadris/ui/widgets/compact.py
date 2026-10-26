@@ -196,6 +196,63 @@ def section_card() -> QFrame:
     return card
 
 
+def summary_card(title: str, action: str) -> tuple[QFrame, QVBoxLayout, QPushButton]:
+    """A card that sums something up, its one action on the title row (« Modifier »,
+    « Gérer »): the card, the layout of its summary, the action."""
+    card = section_card()
+    name = QLabel(title)
+    name.setObjectName("sectionTitle")
+    button = small(QPushButton(action))
+    button.setAutoDefault(False)
+    head = QHBoxLayout()
+    head.setSpacing(8)
+    head.addWidget(name, 1)
+    head.addWidget(button, 0, Qt.AlignmentFlag.AlignTop)
+    body = QVBoxLayout()
+    body.setSpacing(6)
+    card.layout().addLayout(head)
+    card.layout().addLayout(body)
+    return card, body, button
+
+
+class StepCard(QFrame):
+    """One step of a set-up done in order (Paramètres → Structure): its number, which
+    becomes ✓ once the step holds something, its title, « Gérer », then a summary set in
+    under the title."""
+
+    def __init__(self, number: int, title: str, action: str):
+        super().__init__()
+        self.setObjectName("card")
+        self.number = number
+        self.mark = QLabel(str(number))
+        self.mark.setObjectName("stepNumber")
+        self.mark.setFixedSize(28, 28)
+        self.mark.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.title = QLabel(title)
+        self.title.setObjectName("sectionTitle")
+        self.manage = small(QPushButton(action))
+        self.manage.setAutoDefault(False)
+        head = QHBoxLayout()
+        head.setSpacing(12)
+        head.addWidget(self.mark)
+        head.addWidget(self.title, 1)
+        head.addWidget(self.manage)
+        self.body = QVBoxLayout()
+        self.body.setContentsMargins(40, 0, 0, 0)  # under the title, past the number
+        self.body.setSpacing(8)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 16, 20, 18)
+        layout.setSpacing(10)
+        layout.addLayout(head)
+        layout.addLayout(self.body)
+
+    def set_done(self, done: bool) -> None:
+        self.mark.setText("✓" if done else str(self.number))
+        self.mark.setProperty("done", done)
+        self.mark.style().unpolish(self.mark)
+        self.mark.style().polish(self.mark)
+
+
 def rule() -> QFrame:
     line = QFrame()
     line.setObjectName("cardRule")

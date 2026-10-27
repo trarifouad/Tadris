@@ -81,6 +81,7 @@ def build_qss(t: dict, chevron: str = "", check: str = "") -> str:
         min-width: 32px; }}
     QScrollBar::add-line, QScrollBar::sub-line {{ width: 0; height: 0; }}
     QScrollBar::add-page, QScrollBar::sub-page {{ background: transparent; }}
+    QAbstractScrollArea::corner {{ background: transparent; }}
     QComboBox::drop-down {{ border: none; width: 28px; }}
     /* The stock spin arrows do not fit the Encre inputs. Collapse them here: with
        setButtonSymbols(NoButtons) the stylesheet squeezes the text field to 1 px. */
@@ -122,6 +123,8 @@ def build_qss(t: dict, chevron: str = "", check: str = "") -> str:
     QPushButton#sidebarLogout:hover {{ background: {t['sidebar_hover']}; }}
     QPushButton#sidebarLogout:pressed {{ background: {rgba(t['chalk'], 0.2)}; }}
     QPushButton#sidebarLogout:focus {{ outline: none; border: 2px solid {t['chalk']}; }}
+    QFrame#sidebar QScrollBar::handle:vertical {{ background: {rgba(t['chalk'], 0.22)}; }}
+    QFrame#sidebar QScrollBar::handle:vertical:hover {{ background: {rgba(t['chalk'], 0.36)}; }}
 
     QLabel#brandWordmark {{ font-family: "Reem Kufi"; font-size: 30px; font-weight: 700;
                             color: {t['primary']}; }}
@@ -199,6 +202,7 @@ def build_qss(t: dict, chevron: str = "", check: str = "") -> str:
     QLabel#colHead {{ font-size: 11.5px; font-weight: 500; color: {t['muted']}; }}
     QFrame#dashRow {{ background: transparent; border: none;
         border-bottom: 1px solid {t['rule']}; }}
+    QFrame#dashRow[last="true"] {{ border-bottom: none; }}
     QFrame#dashRow:hover {{ background: {t['surface_alt']}; }}
     QFrame#cardFoot {{ border: none; border-top: 1px solid {t['border']}; }}
     QLabel#rowTitle {{ font-size: 13px; font-weight: 500; }}
@@ -214,6 +218,8 @@ def build_qss(t: dict, chevron: str = "", check: str = "") -> str:
     QLabel#rowTitle[struck="true"] {{ color: {t['muted']}; }}
     QLabel#rowTime {{ font-family: "IBM Plex Mono"; font-size: 13px; font-weight: 500; }}
     QLabel#rowTime[struck="true"] {{ color: {t['faint']}; }}
+    QLabel#rowTimeEnd {{ font-family: "IBM Plex Mono"; font-size: 12px; color: {t['muted']}; }}
+    QLabel#rowTimeEnd[struck="true"] {{ color: {t['faint']}; }}
     QLabel#owed {{ font-family: "IBM Plex Mono"; font-size: 13px; font-weight: 500;
         color: {t['danger']}; }}
     QLabel#figure {{ font-family: "IBM Plex Mono"; font-size: 13px; font-weight: 500; }}

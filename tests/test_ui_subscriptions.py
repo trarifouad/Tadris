@@ -271,9 +271,9 @@ def test_page_lists_every_student_in_a_group(qtbot, conn, receptionist, school, 
     monkeypatch.setattr(dates, "today", lambda: date(2026, 10, 25))
     view = page(qtbot, conn, receptionist)
     assert section_rows(view.list) == [
-        ["Benali Amine", "2026-0001", "M1 · Maths 4AM", "du 18/10/2026 au 18/11/2026",
+        ["Benali Amine", "2026-0001", "M1 · Maths 4AM", "18 oct. → 18 nov.",
          "3 000 DA", "En cours"],
-        ["Haddad Yanis", "2026-0002", "P1 · Physique 4AM", "du 18/10/2026 au 18/11/2026",
+        ["Haddad Yanis", "2026-0002", "P1 · Physique 4AM", "18 oct. → 18 nov.",
          "2 500 DA", "En cours"]]
     assert view_counts(view) == ["Tous les états (2)", "En cours (2)", "Se terminent bientôt (0)",
                                  "Expirés (0)", "Sans abonnement (0)"]  # no money view
@@ -325,7 +325,7 @@ def test_renew_the_selected_line(qtbot, conn, receptionist, amine, in_maths, mon
     months = subscriptions.for_student(conn, receptionist, amine)
     assert [m.start_date for m in months] == ["2026-11-18", "2026-10-18"]
     # paid ahead: the same « En cours », only the end of the period moves
-    assert section_rows(view.list)[0][3:] == ["du 18/10/2026 au 18/12/2026", "6 000 DA",
+    assert section_rows(view.list)[0][3:] == ["18 oct. → 18 déc.", "6 000 DA",
                                               "En cours"]
     assert view.list.table.item(0, 5).toolTip() == t["subscription_line.tip.lined_up"].format(
         date="18/11/2026")

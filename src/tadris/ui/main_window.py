@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
@@ -75,6 +76,43 @@ class PlaceholderPage(QWidget):
         layout.addStretch()
 
 
+class PageStack(QStackedWidget):
+    """The pages, one at a time. Its minimum is the page shown, not the largest page built:
+    the scroll area around it scrolls only when that page does not fit the window."""
+
+    def __init__(self):
+        super().__init__()
+        self.currentChanged.connect(lambda _index: self.updateGeometry())
+
+    def minimumSizeHint(self) -> QSize:
+        page = self.currentWidget()
+        if page is None:
+            return super().minimumSizeHint()
+        return page.minimumSizeHint().expandedTo(page.minimumSize())
+
+    def sizeHint(self) -> QSize:
+        page = self.currentWidget()
+        return super().sizeHint() if page is None else page.sizeHint()
+
+    def heightForWidth(self, width: int) -> int:
+        # Asked by the scroll area when a page wraps text. Qt's answer is the tallest page's
+        # preferred height: a page that fits would scroll.
+        return self.minimumSizeHint().height()
+
+
+def scroller(widget: QWidget, sideways: bool = True) -> QScrollArea:
+    """`widget` filling a frameless scroll area, which scrolls only when the window is
+    smaller than its minimum: a page never makes the window larger than the screen (a
+    laptop at 125 % or 150 %)."""
+    area = QScrollArea()
+    area.setWidgetResizable(True)
+    area.setFrameShape(QFrame.Shape.NoFrame)
+    if not sideways:
+        area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    area.setWidget(widget)
+    return area
+
+
 class MainWindow(QMainWindow):
     logged_out = Signal()
 
@@ -88,7 +126,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(f"{t['app.name']} · {school}" if school else t["app.name"])
         self.resize(1280, 800)
 
-        self.pages = QStackedWidget()
+        self.pages = PageStack()
         self.nav_buttons: dict[str, QPushButton] = {}
         self._labels: dict[str, str] = {}
         # Pages opened from another page (« Voir tout », a student double-clicked) can go
@@ -123,7 +161,8 @@ class MainWindow(QMainWindow):
         main.setContentsMargins(0, 0, 0, 0)
         main.setSpacing(0)
         main.addWidget(self.back_bar)
-        main.addWidget(self.pages, 1)
+        self.page_area = scroller(self.pages)
+        main.addWidget(self.page_area, 1)
         layout.addLayout(main, 1)
         self.setCentralWidget(root)
 
@@ -235,12 +274,18 @@ class MainWindow(QMainWindow):
         brand.addStretch()
         layout.addLayout(brand)
 
+        # The items scroll when the window is too short for them all (a small screen at
+        # 125 %), between the wordmark and the user, which stay in place.
+        nav = QWidget()
+        items = QVBoxLayout(nav)
+        items.setContentsMargins(0, 0, 0, 0)
+        items.setSpacing(2)
         # Role-based items are hidden, so a heading shows only above an item the user has.
         current = None
         for key, label_key in nav_for(self.ctx):
             section = SECTION_OF.get(key)
             if section != current and section is not None:
-                layout.addWidget(self._section_heading(t[section]))
+                items.addWidget(self._section_heading(t[section]))
             current = section
             label = t[label_key]
             self._labels[key] = label
@@ -257,9 +302,9 @@ class MainWindow(QMainWindow):
             button.clicked.connect(lambda _checked, k=key, lb=label: self._show(k, lb))
             self._group.addButton(button)
             self.nav_buttons[key] = button
-            layout.addWidget(button)
-
-        layout.addStretch()
+            items.addWidget(button)
+        items.addStretch()
+        layout.addWidget(scroller(nav, sideways=False), 1)
 
         footer = QFrame()
         footer.setObjectName("sidebarFooter")

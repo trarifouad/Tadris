@@ -9,6 +9,7 @@ from PySide6.QtCore import QTimer, Signal
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget
 
 from tadris.core.context import UserContext
+from tadris.core.dates import short_period
 from tadris.core.money import format_dzd
 from tadris.core.permissions import allowed
 from tadris.core.text import fold
@@ -79,7 +80,9 @@ class SubscriptionsPage(QWidget):
             t["subscriptions_page.col.group"], t["subscriptions_page.col.period"],
             t["subscriptions_page.col.due"], t["subscriptions_page.col.state"],
         ], t["subscriptions_page.empty"], sortable=True)
-        fit_columns(self.list.table, stretch=(0, 2))
+        # The group takes the spare width: the name, number and group read as one block,
+        # the period, what is left and the state as another, on the right.
+        fit_columns(self.list.table, stretch=(2,))
         # A double-click opens the student's page, as « Voir la fiche ».
         self.list.activated.connect(lambda _enrollment_id: self._open())
         self.list.selection_changed.connect(self._update_buttons)
@@ -150,8 +153,8 @@ class SubscriptionsPage(QWidget):
             item(line.student_name, fold(line.student_name), item_id=line.enrollment_id),
             item(line.student_number, mono=True),
             item(line.group_title, fold(line.group_title)),
-            item(period_text(line.period_start, m.end_date) if m else "—",
-                 m.end_date if m else ""),
+            item(short_period(line.period_start, m.end_date) if m else "—",
+                 m.end_date if m else "", align=CENTER),
             item(format_dzd(line.owed), line.owed, align=CENTER, mono=True,
                  tone="danger" if line.owed else None),
             state,

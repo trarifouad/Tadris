@@ -165,3 +165,41 @@ def test_pages_to_come_show_one_line(window, key):
     assert isinstance(page, PlaceholderPage)
     assert [label.text() for label in page.findChildren(QLabel)] == [
         t[f"nav.{key}"], t["page.placeholder"]]
+
+
+# ----- small screens: the window never outgrows them -----
+
+def test_the_window_fits_a_small_screen(window):
+    """Every page built (one built stays in the window): the window can still be made
+    smaller than a 1080p screen at 150 % (1280 × 720), less a taskbar and a title bar."""
+    for button in window.nav_buttons.values():
+        button.click()
+    minimum = window.minimumSizeHint()
+    assert minimum.width() <= 1280 and minimum.height() <= 720 - 48 - 32
+
+
+def test_a_page_scrolls_only_when_the_window_is_smaller_than_it(window):
+    from PySide6.QtWidgets import QApplication
+
+    area = window.page_area
+    window.resize(1100, 620)
+    window.nav_buttons["payouts"].click()  # a wider page, built and left
+    window.nav_buttons["dashboard"].click()
+    QApplication.processEvents()
+    assert area.widget().size() == area.viewport().size()  # nothing to scroll
+    window.resize(600, 420)
+    QApplication.processEvents()
+    assert area.horizontalScrollBar().maximum() > 0
+    assert area.verticalScrollBar().maximum() > 0
+
+
+def test_a_window_larger_than_the_screen_opens_maximized_within_it(qtbot, conn, director):
+    from tadris.app import _fit_to_screen
+
+    w = MainWindow(conn, director)
+    qtbot.addWidget(w)
+    screen = w.screen().availableGeometry()
+    w.resize(screen.width() + 400, screen.height() + 200)
+    _fit_to_screen(w)
+    assert w.isMaximized()
+    assert screen.contains(w.normalGeometry())  # restored, it still fits

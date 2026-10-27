@@ -99,15 +99,30 @@ class RuledDelegate(QStyledItemDelegate):
 class BadgeDelegate(RuledDelegate):
     """Paints a cell's text as a status pill when the item carries a KIND_ROLE."""
 
+    @staticmethod
+    def _pill_font(option) -> QFont:
+        font = QFont(option.font)
+        font.setPixelSize(12)
+        font.setWeight(QFont.Weight.Medium)
+        return font
+
+    def sizeHint(self, option, index):
+        size = super().sizeHint(option, index)
+        if index.data(KIND_ROLE):
+            # The pill and as much room after it as before: a column fitted to its content
+            # would otherwise be measured on the plain text and clip the pill.
+            text = index.data(Qt.ItemDataRole.DisplayRole) or ""
+            pill = QFontMetrics(self._pill_font(option)).horizontalAdvance(text) + 16
+            size.setWidth(max(size.width(), pill + 2 * TEXT_INSET))
+        return size
+
     def paint_content(self, painter, option, index) -> None:
         kind = index.data(KIND_ROLE)
         if not kind:
             super().paint_content(painter, option, index)
             return
         text = index.data(Qt.ItemDataRole.DisplayRole) or ""
-        font = QFont(option.font)
-        font.setPixelSize(12)
-        font.setWeight(QFont.Weight.Medium)
+        font = self._pill_font(option)
         metrics = QFontMetrics(font)
         width = metrics.horizontalAdvance(text) + 16
         height = metrics.height() + 4

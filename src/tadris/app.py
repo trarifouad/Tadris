@@ -56,9 +56,12 @@ def _choose_scale() -> None:
 
 
 def _fit_to_screen(window) -> None:
-    """At 125 % a small screen may be smaller than the window: fill it instead."""
+    """At 125 % a small screen may be smaller than the window: fill it instead. Its size is
+    brought within the screen too, so it still fits once restored from maximized."""
     screen = window.screen().availableGeometry()
     if window.width() > screen.width() or window.height() > screen.height() * 0.95:
+        window.resize(window.size().boundedTo(screen.size() * 0.9))
+        window.move(screen.center() - window.rect().center())
         window.showMaximized()
     else:
         window.show()

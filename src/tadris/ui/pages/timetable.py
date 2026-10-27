@@ -86,6 +86,7 @@ class TimetablePage(QWidget):
         self.scroll.setFrameShape(QFrame.Shape.NoFrame)
         self.scroll.setWidget(self.grid)
         self.hint = caption()
+        self.hint.setWordWrap(True)  # one long line would set the page's minimum width
         self.error = PageBanner()
 
         layout = QVBoxLayout(self)

@@ -19,9 +19,11 @@ from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPen
 from PySide6.QtWidgets import (
     QButtonGroup,
     QFrame,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -48,6 +50,7 @@ CONTENT_MAX = 1280  # wider windows leave the rest empty: lines stay short enoug
 OWED_WIDTH = 104
 SINCE_WIDTH = 92
 ACTION_WIDTH = 176
+TIME_WIDTH = 44  # a session's start over its end
 LATE_DAYS = 14  # « Depuis » turns amber from two weeks
 
 
@@ -170,6 +173,10 @@ class ElidedLabel(QLabel):
         self.setToolTip(text)
         self._struck = struck
 
+    def setText(self, text: str) -> None:
+        super().setText(text)
+        self.setToolTip(text)
+
     def minimumSizeHint(self) -> QSize:
         return QSize(24, super().minimumSizeHint().height())
 
@@ -241,6 +248,9 @@ class Row(QFrame):
         self.setObjectName("dashRow")
         self.setAttribute(Qt.WidgetAttribute.WA_Hover)
         self.setFixedHeight(height)
+        # Fixed, not only fixed-height: a stretch inside would make the list (and its card)
+        # take the column's free room, spread out between its rows.
+        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         self._opened = opened
         self.line = QHBoxLayout(self)
         self.line.setContentsMargins(PAD, 0, PAD, 0)
@@ -269,6 +279,8 @@ class Rows(QWidget):
             old.hide()
             old.setParent(None)
             old.deleteLater()
+        if rows:
+            rows[-1].setProperty("last", True)  # unruled: the card's edge or footer ends the list
         for row in rows:
             self._layout.addWidget(row)
         self.setMinimumHeight(rows[0].height() * MIN_ROWS if rows else 0)
@@ -585,23 +597,29 @@ class SessionsCard(ListCard):
         self.set_items([lambda s=s: self._row(s, board.now) for s in board.sessions])
 
     def _row(self, s: DashboardSession, now: str) -> Row:
+        """The start over the end, the group over its room and teacher (line for line, as
+        on the sessions page), then its state."""
         row = Row(SESSION_ROW_HEIGHT)
         cancelled = s.status == "cancelled"
-        time = label(s.start_time, "rowTime")
-        time.setFixedWidth(52)
-        time.setProperty("struck", cancelled)
+        start = label(s.start_time, "rowTime")
+        end = label(s.end_time, "rowTimeEnd")
+        for time in (start, end):
+            time.setProperty("struck", cancelled)
         title = ElidedLabel(s.group_title, "rowTitle", struck=cancelled)
-        where = ElidedLabel(t["dashboard.session_line"].format(
-            start=s.start_time, end=s.end_time, room=s.room, teacher=s.teacher), "caption")
-        text = QVBoxLayout()
-        text.setSpacing(0)
-        text.addStretch()
-        text.addWidget(title)
-        text.addWidget(where)
-        text.addStretch()
+        where = ElidedLabel(t["dashboard.session_line"].format(room=s.room, teacher=s.teacher),
+                            "caption")
+        lines = QGridLayout()
+        lines.setHorizontalSpacing(12)
+        lines.setVerticalSpacing(2)
+        lines.setColumnMinimumWidth(0, TIME_WIDTH)
+        lines.setColumnStretch(1, 1)
+        lines.addWidget(start, 0, 0)
+        lines.addWidget(end, 1, 0)
+        lines.addWidget(title, 0, 1)
+        lines.addWidget(where, 1, 1)
         state, kind = session_state(s, now)
-        row.line.addWidget(time)
-        row.line.addLayout(text, 1)
+        row.line.addLayout(lines, 1)
+        row.line.setAlignment(lines, Qt.AlignmentFlag.AlignVCenter)
         row.line.addWidget(Badge(state, kind), 0, Qt.AlignmentFlag.AlignVCenter)
         return row
 
@@ -672,7 +690,7 @@ class BackupCard(QFrame):
         self.mark.setObjectName("statusIcon")
         self.mark.setFixedSize(28, 28)
         self.mark.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.text = QLabel()
+        self.text = ElidedLabel("", "backupText")
         self.more = link(t["dashboard.backup_link"])
         layout = QHBoxLayout(self)
         layout.setContentsMargins(16, 12, PAD, 12)
@@ -704,7 +722,7 @@ class DashboardPage(QWidget):
         self._board: Dashboard | None = None
         self._sort = "amount"
 
-        self.day = caption()
+        self.day = ElidedLabel("", "caption")  # the top bar's buttons keep their room
         self.hello = label("", "pageTitle")
         self.header = QWidget()
         heading = QVBoxLayout(self.header)

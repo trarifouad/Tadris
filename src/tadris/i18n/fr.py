@@ -1708,7 +1708,7 @@ t = {
     "dashboard.sessions": "Séances du jour",
     "dashboard.sessions_empty": "Aucune séance aujourd'hui.",
     "dashboard.sessions_link": "Présences",
-    "dashboard.session_line": "{start}–{end} · {room} · {teacher}",
+    "dashboard.session_line": "{room} · {teacher}",
     "dashboard.session_ongoing": "En cours",
     "dashboard.free": "Places libres",
     "dashboard.free_1": "1 libre",

@@ -121,7 +121,7 @@ def receipt_lines(conn, ctx: UserContext, payment_id: int) -> list[PaymentLine]:
 def cash_report(conn, ctx: UserContext, day: date) -> CashReport:
     """The day's payments (totals per method and per cashier count those not voided) and,
     for the director (teacher pay is theirs to see), the teachers paid that day."""
-    require(ctx, "report.view")
+    require(ctx, "cash.view")
     teachers_paid = (tuple(payouts.paid_on(conn, ctx, day)) if allowed(ctx, "payout.view")
                      else ())
     return CashReport(day=dates.iso(day),

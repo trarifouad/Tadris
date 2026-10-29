@@ -153,9 +153,9 @@ def test_a_student_opened_from_the_dashboard_can_go_back(conn, director, window)
     assert current(window) == "dashboard"
 
 
-@pytest.mark.parametrize("key", ["reports", "sms"])
+@pytest.mark.parametrize("key", ["reports"])
 def test_pages_to_come_show_one_line(window, key):
-    """Rapports (until its plan is rewritten) and SMS: the title and one sentence."""
+    """Rapports (until its plan is rewritten): the title and one sentence."""
     from PySide6.QtWidgets import QLabel
 
     from tadris.ui.main_window import PlaceholderPage

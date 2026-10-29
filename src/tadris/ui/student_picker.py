@@ -29,8 +29,9 @@ SEARCH_DELAY_MS = 150
 
 
 class StudentPicker(FormDialog):
-    def __init__(self, conn, ctx: UserContext, parent=None):
-        super().__init__(t["picker.title"], t["picker.submit"], width=640, parent=parent)
+    def __init__(self, conn, ctx: UserContext, title: str | None = None, parent=None):
+        super().__init__(title or t["picker.title"], t["picker.submit"], width=640,
+                         parent=parent)
         self._conn, self._ctx = conn, ctx
         self.student_id: int | None = None
         self._owed = {d.student_id: d.owed_now for d in debt.debtors(conn, ctx)}

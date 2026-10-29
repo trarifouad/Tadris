@@ -26,6 +26,11 @@ def normalize_phone(text: str | None) -> str | None:
     return raw
 
 
+def is_mobile(phone: str | None) -> bool:
+    """A normalized mobile number (05, 06 or 07), the only kind with WhatsApp."""
+    return bool(phone) and _MOBILE.fullmatch(phone) is not None
+
+
 def format_phone(phone: str | None) -> str:
     """'0661902547' -> '0661 90 25 47', '048551230' -> '048 55 12 30'."""
     if not phone:

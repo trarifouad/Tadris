@@ -206,6 +206,7 @@ def test_phase_1_acceptance_director_creates_receptionist_who_logs_in(qtbot, con
     qtbot.addWidget(director_window)
     assert set(director_window.nav_buttons) - set(receptionist_window.nav_buttons) == {
         "payouts",
+        "reports",
         "settings",
     }
 

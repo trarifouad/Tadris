@@ -562,6 +562,8 @@ Add a `holidays` table or a settings JSON list in this phase. Decide which and a
 
 **Goal:** automatic notifications, never blocking the desk.
 
+**Status:** replaced for now by WhatsApp « click to chat », the menu's « Contacts » (was « SMS »), permission `message.send` (both roles). The desk writes one message (`{élève}` becomes the student's first name, or « Amine et Sara » for a parent of two), for one student's contacts or every parent of a group's live students; each contact who accepts messages appears once, with their first mobile (a landline only: « Pas de mobile »). « Ouvrir WhatsApp » / « Suivant » open the chat with the message typed (`whatsapp://`, else `wa.me` in the browser); the desk presses Envoyer. A QR code of the `wa.me` link opens the same chat on a phone when this computer has no internet (links up to 600 characters). Nothing is stored or audited: Tadris sends nothing itself. The automatic queue below stays for later, if an SMS provider is chosen.
+
 **Design**
 
 - `sms_queue` is the only entry point; services enqueue, a background worker (QThread or timer) sends.

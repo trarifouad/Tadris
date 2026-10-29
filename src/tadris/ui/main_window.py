@@ -21,6 +21,7 @@ from tadris.core.permissions import nav_for
 from tadris.i18n.fr import t
 from tadris.services import auth, settings
 from tadris.ui.pages.attendance import AttendancePage
+from tadris.ui.pages.contacts_page import ContactsPage
 from tadris.ui.pages.dashboard import DashboardPage
 from tadris.ui.pages.groups import GroupsPage
 from tadris.ui.pages.payments_page import PaymentsPage
@@ -38,12 +39,12 @@ NAV_ICONS = {
     "dashboard": "house", "students": "users", "groups": "layers", "timetable": "calendar",
     "attendance": "square-check", "subscriptions": "arrow-right-left", "payments": "wallet",
     "payouts": "banknote", "reports": "chart-column", "teachers": "graduation-cap",
-    "sms": "message-square", "settings": "sliders-vertical",
+    "contacts": "message-square", "settings": "sliders-vertical",
 }
 # Headed sidebar sections; the items above the first heading are the day's work.
 NAV_SECTIONS = {
     "nav.section.money": ("subscriptions", "payments", "payouts", "reports"),
-    "nav.section.school": ("teachers", "sms", "settings"),
+    "nav.section.school": ("teachers", "contacts", "settings"),
 }
 SECTION_OF = {key: section for section, keys in NAV_SECTIONS.items() for key in keys}
 
@@ -58,8 +59,7 @@ def initials(username: str) -> str:
 
 
 class PlaceholderPage(QWidget):
-    """Page shell until the phase that builds it (SMS; Rapports, until its plan is
-    rewritten)."""
+    """Page shell until the phase that builds it (Rapports, until its plan is rewritten)."""
 
     def __init__(self, title: str):
         super().__init__()
@@ -219,6 +219,7 @@ class MainWindow(QMainWindow):
             "teachers": TeachersPage,
             "attendance": AttendancePage,
             "payouts": PayoutsPage,
+            "contacts": ContactsPage,
         }
         if key in pages:
             return pages[key](self._conn, self.ctx)

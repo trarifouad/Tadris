@@ -159,7 +159,7 @@ None of the semantic colors is close to the violet, so a status badge never read
 - Hover `sidebar_hover` with full `chalk` text.
 - Active item: a light label, `chalk` background with `sidebar` text and icon, weight 500. No edge bar.
 - Wordmark at the top: "Tadris" in Reem Kufi 700 with "تدريس" beside it.
-- Menu, in three parts. The day's work: Aujourd'hui (the Tableau de bord), Élèves, Groupes, Emploi du temps, Présences. **ARGENT**: Abonnements, Paiements, Paie enseignants, Rapports. One job each: Abonnements is for renewals (each student in each group, the month's state, renew or start a month; a line opens the student), Paiements is for money (who owes, late or not, « Encaisser », the day's cash). **ÉCOLE**: Enseignants, SMS, Paramètres. Section headings are small uppercase chalk at 50%.
+- Menu, in three parts. The day's work: Aujourd'hui (the Tableau de bord), Élèves, Groupes, Emploi du temps, Présences. **ARGENT**: Abonnements, Paiements, Paie enseignants, Rapports. One job each: Abonnements is for renewals (each student in each group, the month's state, renew or start a month; a line opens the student), Paiements is for money (who owes, late or not, « Encaisser », the day's cash). **ÉCOLE**: Enseignants, Contacts, Paramètres. Section headings are small uppercase chalk at 50%.
 - Role-based items are hidden, not disabled; a heading shows only above an item the user has.
 - Footer: a round avatar with two initials, the user name and role, and a log-out icon button on the right (its label in the tooltip).
 
@@ -176,7 +176,7 @@ Pill shape, 4 px radius, 11.5 px text weight 500, soft background plus colored t
 | Attendance | present / late / absent / excused | Success / Warning / Danger / Info |
 | Debt | 0 / above 0 / credit | Success / Danger (bold) / Info |
 | Payout | draft / approved / paid | Neutral / Info / Success |
-| SMS | pending / sent / failed | Info / Success / Danger |
+| Message (WhatsApp) | to send / opened / invited / no mobile | Info / Success / Success / Neutral |
 
 ### Stamp (cachet)
 
@@ -370,7 +370,7 @@ STATUS_STYLE = {
     "session":      {"planned": "info", "held": "success", "cancelled": "danger"},
     "attendance":   {"present": "success", "late": "warning", "absent": "danger", "excused": "info"},
     "payout":       {"draft": "neutral", "approved": "info", "paid": "success"},
-    "sms":          {"pending": "info", "sent": "success", "failed": "danger"},
+    "message":      {"to_send": "info", "opened": "success", "invited": "success", "no_mobile": "neutral"},
 }
 ```
 

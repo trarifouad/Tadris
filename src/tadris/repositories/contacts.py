@@ -132,3 +132,37 @@ def students_of(conn, contact_id: int, exclude_student_id: int | None = None) ->
         """,
         (contact_id, exclude_student_id),
     ).fetchall()
+
+
+def reachable_in_group(conn, group_id: int) -> list:
+    """The contacts who accept messages of the students live in the group (trial or
+    active): one row per student and contact, by contact then student."""
+    return conn.execute(
+        """
+        SELECT c.id AS contact_id, c.full_name, c.phone, c.phone_2, sc.relation,
+               st.first_name, st.last_name
+          FROM enrollments e
+          JOIN students st ON st.id = e.student_id
+          JOIN student_contacts sc ON sc.student_id = st.id AND sc.can_receive_sms = 1
+          JOIN contacts c ON c.id = sc.contact_id
+         WHERE e.group_id = ? AND e.status IN ('trial', 'active')
+         ORDER BY fold(c.full_name), c.id, fold(st.first_name), st.id
+        """,
+        (group_id,),
+    ).fetchall()
+
+
+def reachable_for_student(conn, student_id: int) -> list:
+    """The student's contacts who accept messages, main contact first, in the same shape."""
+    return conn.execute(
+        """
+        SELECT c.id AS contact_id, c.full_name, c.phone, c.phone_2, sc.relation,
+               st.first_name, st.last_name
+          FROM student_contacts sc
+          JOIN contacts c ON c.id = sc.contact_id
+          JOIN students st ON st.id = sc.student_id
+         WHERE sc.student_id = ? AND sc.can_receive_sms = 1
+         ORDER BY sc.is_main DESC, sc.created_at, c.id
+        """,
+        (student_id,),
+    ).fetchall()

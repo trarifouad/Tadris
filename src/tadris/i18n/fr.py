@@ -556,7 +556,7 @@ t = {
     "nav.section.money": "Argent",
     "nav.section.school": "École",
     "nav.reports": "Rapports",
-    "nav.sms": "SMS",
+    "nav.contacts": "Contacts",
     "nav.settings": "Paramètres",
     "login.title": "Connexion",
     "login.username": "Nom d'utilisateur",
@@ -1120,6 +1120,182 @@ t = {
     ),
     "cancel_registration_dialog.reason": "Motif",
     "cancel_registration_dialog.placeholder": "Ex. : erreur de saisie",
+    "contacts.intro": (
+        "Un message WhatsApp aux parents d'un élève ou de tout un groupe. Tadris ouvre "
+        "chaque discussion avec le message déjà écrit : appuyez sur Envoyer dans WhatsApp, "
+        "puis passez au parent suivant."
+    ),
+    "contacts.to_student": "Un élève",
+    "contacts.to_group": "Un groupe",
+    "contacts.choose_student": "Choisir un élève…",
+    "contacts.message_placeholder": (
+        "Votre message. Ex. : Bonjour, {élève} était absent(e) aujourd'hui au cours de maths."
+    ),
+    "contacts.insert_name": "Insérer {élève}",
+    "contacts.length": "{size} / {max} caractères",
+    "contacts.too_long": "{size} / {max} caractères : raccourcissez le message",
+    "contacts.col.students": "Élève(s)",
+    "contacts.col.state": "État",
+    "contacts.state.to_send": "À envoyer",
+    "contacts.state.opened": "Ouvert",
+    "contacts.state.no_mobile": "Pas de mobile",
+    "contacts.pick_first": "Choisissez un élève pour voir ses contacts.",
+    "contacts.none_for_student": "Aucun contact de cet élève n'accepte les messages.",
+    "contacts.none_for_group": "Aucun parent de ce groupe n'accepte les messages.",
+    "contacts.no_groups": "Aucun groupe ouvert.",
+    "contacts.count": "{opened} ouvert(s) sur {count}",
+    "contacts.open": "Ouvrir WhatsApp",
+    "contacts.open_next": "Suivant",
+    "contacts.opened": "WhatsApp ouvert : {name}",
+    "contacts.qr_title": "Depuis un téléphone",
+    "contacts.qr_caption": (
+        "Pas d'internet sur cet ordinateur ? Scannez avec l'appareil photo du téléphone "
+        "(ou Google Lens), pas avec le scanner de WhatsApp : WhatsApp s'ouvre sur la "
+        "discussion de {name}, message écrit."
+    ),
+    "contacts.qr_too_long": (
+        "Message trop long pour un QR code lisible. Utilisez « Ouvrir WhatsApp », ou "
+        "raccourcissez le message."
+    ),
+    "contacts.qr_none": "Choisissez un contact dans la liste.",
+    "contacts.qr_write_first": "Écrivez d'abord le message.",
+    "contacts.qr_no_mobile": "{name} n'a qu'un téléphone fixe : pas de WhatsApp.",
+    "contacts.template": "Modèle",
+    "contacts.about": "À propos de",
+    "contacts.state.invited": "Invité",
+    "contacts.invited_on": "Invité le {day}",
+    "contacts.col.whatsapp_group": "Groupe WhatsApp",
+    "contacts.invited_count": "{invited} invité(s) sur {count}",
+    "contacts.qr_invite_title": "Rejoindre le groupe",
+    "contacts.qr_invite_caption": (
+        "À afficher ou imprimer à l'accueil : les parents scannent ce code avec l'appareil "
+        "photo et rejoignent le groupe WhatsApp."
+    ),
+    "whatsapp_group.title": "Groupe WhatsApp",
+    "whatsapp_group.not_linked_intro": (
+        "Pas encore de groupe WhatsApp. Tadris ne peut pas le créer : dans WhatsApp, Nouveau "
+        "groupe, nommez-le « {name} », puis Infos du groupe → Inviter via lien → Copier le "
+        "lien, et collez-le ici. Une seule fois par groupe."
+    ),
+    "whatsapp_group.linked_intro": (
+        "Groupe WhatsApp lié. Une annonce y part en un seul envoi. WhatsApp ne permet pas "
+        "d'écrire dans un groupe à votre place : Tadris copie le message et ouvre le groupe, "
+        "vous le collez."
+    ),
+    "whatsapp_group.link": "Lier le groupe WhatsApp",
+    "whatsapp_group.change": "Changer le lien",
+    "whatsapp_group.unlink": "Délier",
+    "whatsapp_group.post": "Copier et ouvrir le groupe",
+    "whatsapp_group.link_title": "Lien d'invitation du groupe WhatsApp",
+    "whatsapp_group.link_label": "Lien (https://chat.whatsapp.com/…)",
+    "whatsapp_group.link_invalid": (
+        "Ce n'est pas un lien d'invitation WhatsApp. Dans WhatsApp : Infos du groupe → "
+        "Inviter via lien → Copier le lien. Il commence par https://chat.whatsapp.com/."
+    ),
+    "whatsapp_group.not_linked": "Ce groupe n'a pas encore de groupe WhatsApp lié.",
+    "whatsapp_group.linked": "Groupe WhatsApp lié",
+    "whatsapp_group.unlinked": "Groupe WhatsApp délié",
+    "whatsapp_group.unlink_confirm": (
+        "Délier le groupe WhatsApp de {group} ? Le groupe reste dans WhatsApp ; Tadris oublie "
+        "son lien et les parents déjà invités."
+    ),
+    "whatsapp_group.posted": "Message copié",
+    "whatsapp_group.paste_now": (
+        "Message copié. Dans WhatsApp, cliquez dans « Entrez un message », appuyez sur "
+        "Ctrl+V pour le coller, puis sur Envoyer."
+    ),
+    "announce.kind.free": "Message libre",
+    "announce.kind.invite": "Invitation au groupe WhatsApp",
+    "announce.kind.cancelled": "Séance annulée",
+    "announce.kind.moved": "Séance déplacée / rattrapage",
+    "announce.kind.reminder": "Rappel de séance",
+    "announce.kind.substitute": "Enseignant remplaçant",
+    "announce.kind.holiday": "Vacances / fermeture",
+    "announce.kind.timetable": "Horaires du groupe",
+    "announce.kind.payment": "Rappel de paiement du mois",
+    "announce.kind.absence": "Absence ou retard",
+    "announce.kind.debt": "Reste à payer",
+    "announce.none.cancelled": (
+        "Aucune séance annulée. Annulez d'abord la séance dans Présences (avec son motif) : "
+        "elle apparaîtra ici, puis envoyez le message."
+    ),
+    "announce.none.moved": (
+        "Aucune séance déplacée. Déplacez d'abord la séance (« Reporter » dans l'emploi du "
+        "temps, ou un rattrapage dans Présences) : elle apparaîtra ici."
+    ),
+    "announce.none.reminder": "Aucune séance prévue dans les 30 jours.",
+    "announce.none.substitute": (
+        "Aucune séance avec un remplaçant. Choisissez d'abord le remplaçant dans Présences : "
+        "la séance apparaîtra ici."
+    ),
+    "announce.none.holiday": (
+        "Aucune période de vacances à venir. Ajoutez-la d'abord dans Paramètres → Vacances : "
+        "elle apparaîtra ici."
+    ),
+    "announce.none.absence": (
+        "Aucune absence ni retard ces 30 derniers jours. Enregistrez d'abord la présence "
+        "dans Présences."
+    ),
+    "announce.none.debt": "Cet élève n'a rien à payer en ce moment.",
+    "announce.none.timetable": "Ce groupe n'a pas de créneau dans l'emploi du temps.",
+    "announce.session_choice": "{day} · {start}–{end}",
+    "announce.moved_choice": "{old} → {new}",
+    "announce.holiday_choice": "{label} · {period}",
+    "announce.absence_choice": "{day} · {group} · {status}",
+    "announce.on_day": "le {day}",
+    "announce.from_to": "du {first} au {last}",
+    "announce.timetable_line": "• {weekday} de {start} à {end}, salle {room}",
+    "announce.timetable_from": "(à partir du {day})",
+    "announce.text.invite": (
+        "Bonjour, {school} a créé un groupe WhatsApp pour le cours de {group} de {student}. "
+        "Les annonces (séances annulées, rattrapages, vacances, horaires) y seront publiées. "
+        "Pour le rejoindre : {link}"
+    ),
+    "announce.text.cancelled": (
+        "Bonjour, la séance de {group} du {day} de {start} à {end} est annulée : pas de cours "
+        "ce jour-là."
+    ),
+    "announce.text.reason": "Motif : {reason}.",
+    "announce.text.moved": (
+        "Bonjour, la séance de {group} du {day} de {start} à {end} est déplacée au {new_day} "
+        "de {new_start} à {new_end}, salle {new_room}."
+    ),
+    "announce.text.reminder": (
+        "Bonjour, rappel : la prochaine séance de {group} a lieu le {day} de {start} à {end}, "
+        "salle {room}."
+    ),
+    "announce.text.substitute": (
+        "Bonjour, la séance de {group} du {day} de {start} à {end} sera assurée par {teacher}, "
+        "en remplacement de {usual}. Le cours a bien lieu, salle {room}."
+    ),
+    "announce.text.holiday_day": (
+        "Bonjour, l'école sera fermée le {day} ({label}) : pas de cours ce jour-là."
+    ),
+    "announce.text.holiday": (
+        "Bonjour, l'école sera fermée du {first} au {last} ({label}) : pas de cours. Reprise "
+        "des cours le {back}."
+    ),
+    "announce.text.timetable": "Bonjour, voici les horaires de {group} :",
+    "announce.text.starts": "Bonjour, les cours de {group} commencent le {day}. Horaires :",
+    "announce.text.payment": (
+        "Bonjour, rappel : la mensualité de {month} pour {group} ({price}) est à régler à "
+        "l'accueil. Merci."
+    ),
+    "announce.text.payment_no_price": (
+        "Bonjour, rappel : la mensualité de {month} pour {group} est à régler à l'accueil. "
+        "Merci."
+    ),
+    "announce.text.absence.absent": (
+        "Bonjour, {student} était absent(e) au cours de {group} le {day} de {start} à {end}. "
+        "Merci de nous en indiquer la raison."
+    ),
+    "announce.text.absence.late": (
+        "Bonjour, {student} est arrivé(e) en retard au cours de {group} le {day} (séance de "
+        "{start} à {end})."
+    ),
+    "announce.text.debt": (
+        "Bonjour, il reste {amount} à régler pour {student}. Merci de passer à l'accueil."
+    ),
     "contacts.add": "Ajouter un contact",
     "contacts.make_main": "Définir comme principal",
     "contacts.unlink": "Retirer",
@@ -1128,7 +1304,7 @@ t = {
     "contacts.col.relation": "Lien",
     "contacts.col.phone": "Téléphone",
     "contacts.col.phone_2": "Téléphone 2",
-    "contacts.col.sms": "SMS",
+    "contacts.col.sms": "Messages",
     "contacts.col.main": "Principal",
     "contacts.main_badge": "Principal",
     "contacts.sms_yes": "Oui",
@@ -1150,7 +1326,7 @@ t = {
     "contact_dialog.phone_2": "Téléphone 2",
     "contact_dialog.address": "Adresse",
     "contact_dialog.is_main": "Contact principal",
-    "contact_dialog.can_receive_sms": "Peut recevoir des SMS",
+    "contact_dialog.can_receive_sms": "Reçoit les messages (WhatsApp)",
     "contact_dialog.main_locked": "Pour changer, désignez un autre contact comme principal.",
     "contact_dialog.shared": "Contact partagé avec : {names}. Les modifications s'appliquent à tous.",
     "contact_dialog.existing": (

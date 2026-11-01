@@ -184,3 +184,14 @@ def test_print_buttons(qtbot, themed, conn, desk, school, monkeypatch, tmp_path)
     qtbot.mouseClick(view.print_sheet, Qt.MouseButton.LeftButton)
     assert [p.name for p in opened] == ["presence_m1-co_2026-10-19.pdf"]
     assert len(logged(conn)) == 1
+
+
+def test_pdf_fonts_come_from_the_apps_resources_by_path():
+    """Not importlib.resources: ui/resources holds no Python, and a packaged app may not
+    find it as a package. The folder is the theme's."""
+    from tadris.documents import pdf
+    from tadris.ui.theme import FONTS_DIR
+
+    assert pdf.FONTS_DIR == FONTS_DIR
+    for name in ("ReadexPro-Regular.ttf", "ReadexPro-SemiBold.ttf", "IBMPlexMono-Medium.ttf"):
+        assert (pdf.FONTS_DIR / name).is_file()

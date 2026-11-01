@@ -2,6 +2,7 @@
 message: a database from a later version, a migration that fails (nothing changed)."""
 
 import shutil
+from datetime import datetime
 
 import pytest
 
@@ -111,3 +112,66 @@ def test_a_new_database_is_created_without_a_copy(tmp_path, shown):
         assert not (tmp_path / "backups").exists()
     finally:
         c.close()
+
+
+# ----- the computer's date, against the last operation saved -----
+
+@pytest.fixture
+def last_on(conn):
+    """A database whose last operation was saved on 30/10/2026 at 18:00."""
+    conn.execute("INSERT INTO audit_log(action, entity_name, created_at) "
+                 "VALUES ('payment.record', 'payments', '2026-10-30T18:00:00')")
+    return conn
+
+
+class Questions(list):
+    go_on = False  # the answer: « Quitter » unless set
+
+
+@pytest.fixture
+def asked(monkeypatch):
+    """The questions asked at start."""
+    questions = Questions()
+
+    def answer(text, parent=None):
+        questions.append(text)
+        return questions.go_on
+
+    monkeypatch.setattr(app, "_go_on_anyway", answer)
+    return questions
+
+
+def now_is(monkeypatch, moment: datetime):
+    class Frozen(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return moment
+    monkeypatch.setattr(app, "datetime", Frozen)
+
+
+def test_a_right_date_asks_nothing(last_on, asked, monkeypatch):
+    now_is(monkeypatch, datetime(2026, 10, 31, 8, 0))
+    assert app.clock_is_right(last_on)
+    assert asked == []
+
+
+def test_a_date_before_the_last_operation_quits_by_default(last_on, asked, monkeypatch):
+    now_is(monkeypatch, datetime(2001, 1, 1, 8, 0))
+    assert not app.clock_is_right(last_on)
+    assert "le 01/01/2001 à 08:00, avant" in asked[0] and "(30/10/2026 à 18:00)" in asked[0]
+    assert last_on.execute("SELECT COUNT(*) FROM audit_log WHERE action LIKE 'clock.%'"
+                           ).fetchone()[0] == 0
+
+
+def test_going_on_anyway_is_written_to_the_audit_log(last_on, asked, monkeypatch):
+    asked.go_on = True
+    now_is(monkeypatch, datetime(2001, 1, 1, 8, 0))
+    assert app.clock_is_right(last_on)
+    assert last_on.execute("SELECT COUNT(*) FROM audit_log WHERE action = 'clock.behind'"
+                           ).fetchone()[0] == 1
+
+
+def test_a_year_typed_wrong_is_questioned(last_on, asked, monkeypatch):
+    now_is(monkeypatch, datetime(2027, 10, 31, 8, 0))
+    assert not app.clock_is_right(last_on)
+    assert "365 jours après" in asked[0] and "Est-ce bien la date du jour ?" in asked[0]

@@ -12,7 +12,7 @@ from tadris.db.migrate import current_version
 
 @dataclass(frozen=True)
 class About:
-    app_version: str  # 0.1.0
+    app_version: str  # 1.0.0
     schema_version: int  # PRAGMA user_version of the database open
     database: Path | None  # the file open (None for an in-memory database)
 

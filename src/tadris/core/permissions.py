@@ -40,12 +40,14 @@ ACTIONS: dict[str, frozenset[str]] = {
     "cash.view": BOTH,  # the day's cash, on Paiements
     "report.view": DIRECTOR_ONLY,  # the Rapports page (to come)
     "report.finance": DIRECTOR_ONLY,  # the dashboard's money
+    "audit.view": DIRECTOR_ONLY,  # the Journal, in Paramètres → Données
     "message.send": BOTH,  # Contacts: WhatsApp messages to the parents
     "settings.view": DIRECTOR_ONLY,
     "settings.change": DIRECTOR_ONLY,
     "user.view": DIRECTOR_ONLY,
     "user.create": DIRECTOR_ONLY,
     "user.disable": DIRECTOR_ONLY,
+    "user.recovery": DIRECTOR_ONLY,  # the recovery code for a forgotten director password
     "backup.create": DIRECTOR_ONLY,
     "backup.restore": DIRECTOR_ONLY,
     "print.document": BOTH,
@@ -60,7 +62,6 @@ NAV_ITEMS: tuple[tuple[str, str, str], ...] = (
     ("subscriptions", "nav.subscriptions", "subscription.manage"),
     ("payments", "nav.payments", "payment.record"),
     ("payouts", "nav.payouts", "payout.view"),
-    ("reports", "nav.reports", "report.view"),
     ("teachers", "nav.teachers", "teacher.view"),
     ("contacts", "nav.contacts", "message.send"),
     ("settings", "nav.settings", "settings.view"),

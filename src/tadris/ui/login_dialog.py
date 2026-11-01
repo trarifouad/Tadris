@@ -1,16 +1,19 @@
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication, QDialog, QLabel, QLineEdit, QVBoxLayout
+from PySide6.QtWidgets import QApplication, QDialog, QLabel, QLineEdit, QMessageBox, QVBoxLayout
 
 from tadris.core.context import UserContext
 from tadris.core.errors import BusinessRuleError
 from tadris.i18n.fr import t
 from tadris.services import auth, settings
+from tadris.ui.user_dialog import RecoveryDialog
 from tadris.ui.widgets.common import (
     ErrorBanner,
+    ask,
     brand_row,
     fit_to_content,
     labeled,
     primary_button,
+    variant_button,
 )
 
 
@@ -39,6 +42,8 @@ class LoginDialog(QDialog):
         self.submit.setAutoDefault(False)
         self.username.returnPressed.connect(self._username_entered)
         self.password.returnPressed.connect(self._password_entered)
+        self.forgot = variant_button(t["login.forgot"], "ghost")
+        self.forgot.clicked.connect(self._forgot)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(32, 28, 32, 28)
@@ -54,6 +59,7 @@ class LoginDialog(QDialog):
         layout.addWidget(labeled(t["login.password"], self.password))
         layout.addSpacing(4)
         layout.addWidget(self.submit)
+        layout.addWidget(self.forgot, 0, Qt.AlignmentFlag.AlignHCenter)
         fit_to_content(self)
         self.username.setFocus()
 
@@ -84,4 +90,13 @@ class LoginDialog(QDialog):
         finally:
             QApplication.restoreOverrideCursor()
             self.submit.setEnabled(True)
+        self.accept()
+
+    def _forgot(self) -> None:
+        """A director's new password with the recovery code; then they are logged in."""
+        dialog = RecoveryDialog(self._conn, self.username.text(), self)
+        if not ask(dialog):
+            return
+        QMessageBox.information(self, t["recovery.done_title"], t["recovery.done"])
+        self.ctx = dialog.ctx
         self.accept()

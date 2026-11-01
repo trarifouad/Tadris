@@ -1,8 +1,9 @@
+import secrets
 import sqlite3
 import time
 
 from tadris.core.context import UserContext
-from tadris.core.errors import PermissionDenied, ValidationError
+from tadris.core.errors import NotFound, PermissionDenied, ValidationError
 from tadris.core.permissions import require
 from tadris.core.security import hash_password, verify_password
 from tadris.db.connection import transaction
@@ -13,6 +14,11 @@ from tadris.services import audit
 MIN_PASSWORD_LEN = 8
 FAILS_BEFORE_DELAY = 3
 DELAY_SECONDS = 1.5
+# The director's recovery code: only its hash is kept, in settings (not one of the keys
+# Paramètres edits). 16 characters read from paper: no 0/O nor 1/I/L.
+RECOVERY_KEY = "auth.recovery"
+RECOVERY_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
+RECOVERY_LENGTH, RECOVERY_GROUP = 16, 4
 
 _failed: dict[str, int] = {}
 _sleeper = time.sleep
@@ -142,8 +148,6 @@ def change_password(
         (user_id,),
     ).fetchone()
     if row is None:
-        from tadris.core.errors import NotFound
-
         raise NotFound(t["not_found"])
     if ctx.user_id != user_id:
         require(ctx, "user.create")
@@ -161,3 +165,104 @@ def change_password(
             (hash_password(new_password), user_id),
         )
         audit.log(conn, ctx, "user.change_password", "users", user_id)
+
+
+def disable_user(conn, ctx: UserContext, user_id: int) -> None:
+    """Someone who left: they can no longer log in; what they did stays in the history.
+    Never one's own account, so the director doing it stays active: the app always keeps
+    a director who can log in."""
+    if user_id == ctx.user_id:
+        require(ctx, "user.disable")
+        raise ValidationError(t["auth.cannot_disable_self"])
+    _set_status(conn, ctx, user_id, "disabled")
+
+
+def enable_user(conn, ctx: UserContext, user_id: int) -> None:
+    _set_status(conn, ctx, user_id, "active")
+
+
+def new_recovery_code(conn, ctx: UserContext) -> str:
+    """A code the director writes down for the day a director's password is forgotten
+    (« Mot de passe oublié ? » at login). Shown once: only its hash is kept. A new code
+    replaces the old one. 'K7QM-4XRP-9TBW-2HDN'."""
+    require(ctx, "user.recovery")
+    raw = "".join(secrets.choice(RECOVERY_ALPHABET) for _ in range(RECOVERY_LENGTH))
+    with atomic(conn):
+        conn.execute(
+            """
+            INSERT INTO settings(key, value) VALUES (?, ?)
+            ON CONFLICT(key) DO UPDATE
+               SET value = excluded.value,
+                   updated_at = strftime('%Y-%m-%dT%H:%M:%S','now','localtime')
+            """,
+            (RECOVERY_KEY, hash_password(raw)),
+        )
+        audit.log(conn, ctx, "user.recovery_code", "users", ctx.user_id)
+    return "-".join(raw[i:i + RECOVERY_GROUP] for i in range(0, RECOVERY_LENGTH, RECOVERY_GROUP))
+
+
+def recovery_code_made(conn, ctx: UserContext) -> str | None:
+    """When the current code was made ('YYYY-MM-DDTHH:MM:SS'); None when there is none."""
+    require(ctx, "user.recovery")
+    row = conn.execute("SELECT updated_at FROM settings WHERE key = ?",
+                       (RECOVERY_KEY,)).fetchone()
+    return None if row is None else row[0]
+
+
+def recover(conn, username: str, code: str, new_password: str) -> UserContext:
+    """« Mot de passe oublié ? »: an active director chooses a new password with the
+    recovery code, which is then used up (a new one is made in Paramètres). The same message
+    whatever is wrong (name, role, code), and the same delay as login after repeated
+    failures. Returns the director, logged in."""
+    username = username.strip()
+    if len(new_password) < MIN_PASSWORD_LEN:
+        raise ValidationError(t["auth.password_short"])
+    tries = f"recover:{username}"
+    if _failed.get(tries, 0) >= FAILS_BEFORE_DELAY:
+        _sleeper(DELAY_SECONDS)
+    row = conn.execute(
+        "SELECT id, username, role, status FROM users WHERE username = ?", (username,)
+    ).fetchone()
+    stored = conn.execute("SELECT value FROM settings WHERE key = ?",
+                          (RECOVERY_KEY,)).fetchone()
+    typed = "".join(ch for ch in code.upper() if ch.isalnum())  # dashes, spaces, case
+    if (row is None or row["role"] != "director" or row["status"] != "active"
+            or stored is None or not verify_password(typed, stored[0])):
+        _failed[tries] = _failed.get(tries, 0) + 1
+        raise PermissionDenied(t["auth.recovery_invalid"])
+    _failed[tries] = 0
+    ctx = _ctx_from_row(row)
+    with atomic(conn):
+        conn.execute(
+            """
+            UPDATE users
+               SET password_hash = ?,
+                   updated_at = strftime('%Y-%m-%dT%H:%M:%S','now','localtime')
+             WHERE id = ?
+            """,
+            (hash_password(new_password), ctx.user_id),
+        )
+        conn.execute("DELETE FROM settings WHERE key = ?", (RECOVERY_KEY,))
+        audit.log(conn, ctx, "user.recover", "users", ctx.user_id)
+    return ctx
+
+
+def _set_status(conn, ctx: UserContext, user_id: int, status: str) -> None:
+    require(ctx, "user.disable")
+    row = conn.execute("SELECT status FROM users WHERE id = ?", (user_id,)).fetchone()
+    if row is None:
+        raise NotFound(t["not_found"])
+    if row["status"] == status:
+        return
+    with atomic(conn):
+        conn.execute(
+            """
+            UPDATE users
+               SET status = ?,
+                   updated_at = strftime('%Y-%m-%dT%H:%M:%S','now','localtime')
+             WHERE id = ?
+            """,
+            (status, user_id),
+        )
+        audit.log(conn, ctx, "user.disable" if status == "disabled" else "user.enable",
+                  "users", user_id, old={"status": row["status"]}, new={"status": status})

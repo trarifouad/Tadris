@@ -1,4 +1,5 @@
 import json
+import re
 
 import pytest
 
@@ -210,3 +211,153 @@ def test_change_password_validation(conn, director):
         auth.change_password(conn, director, director.user_id, "short", "password1")
     with pytest.raises(NotFound):
         auth.change_password(conn, director, 999, "nouveau-pass")
+
+
+# ----- disabling an account -----
+
+def test_disabled_user_cannot_log_in_and_it_is_audited(conn, director, receptionist):
+    auth.disable_user(conn, director, receptionist.user_id)
+    with pytest.raises(PermissionDenied) as exc:
+        auth.login(conn, "accueil", "password2")
+    assert exc.value.message == t["auth.disabled"]
+    row = conn.execute(
+        "SELECT user_id, entity_id, old_value, new_value FROM audit_log "
+        "WHERE action = 'user.disable'"
+    ).fetchone()
+    assert (row["user_id"], row["entity_id"]) == (director.user_id, receptionist.user_id)
+    assert json.loads(row["old_value"]) == {"status": "active"}
+    assert json.loads(row["new_value"]) == {"status": "disabled"}
+
+
+def test_enabled_again_the_user_logs_in(conn, director, receptionist):
+    auth.disable_user(conn, director, receptionist.user_id)
+    auth.enable_user(conn, director, receptionist.user_id)
+    assert auth.login(conn, "accueil", "password2").user_id == receptionist.user_id
+    assert conn.execute("SELECT COUNT(*) FROM audit_log WHERE action = 'user.enable'"
+                        ).fetchone()[0] == 1
+
+
+def test_disabling_twice_changes_nothing_more(conn, director, receptionist):
+    auth.disable_user(conn, director, receptionist.user_id)
+    auth.disable_user(conn, director, receptionist.user_id)
+    assert conn.execute("SELECT COUNT(*) FROM audit_log WHERE action = 'user.disable'"
+                        ).fetchone()[0] == 1
+
+
+def test_a_director_cannot_disable_their_own_account(conn, director):
+    with pytest.raises(ValidationError) as exc:
+        auth.disable_user(conn, director, director.user_id)
+    assert exc.value.message == t["auth.cannot_disable_self"]
+    assert auth.login(conn, "directeur", "password1").role == "director"
+
+
+def test_another_director_can_be_disabled_one_always_stays(conn, director):
+    other = auth.create_user(conn, director, "adjoint", "password3", "director")
+    auth.disable_user(conn, director, other)
+    active = conn.execute("SELECT COUNT(*) FROM users WHERE role = 'director' "
+                          "AND status = 'active'").fetchone()[0]
+    assert active == 1
+
+
+@pytest.mark.parametrize("action", [auth.disable_user, auth.enable_user])
+def test_receptionist_cannot_change_an_account_status(conn, director, receptionist, action):
+    with pytest.raises(PermissionDenied):
+        action(conn, receptionist, director.user_id)
+    with pytest.raises(PermissionDenied):
+        action(conn, receptionist, receptionist.user_id)
+
+
+def test_disable_unknown_user(conn, director):
+    with pytest.raises(NotFound):
+        auth.disable_user(conn, director, 999)
+
+
+# ----- the recovery code: a forgotten director password -----
+
+def code_rows(conn) -> list:
+    return conn.execute("SELECT value FROM settings WHERE key = ?",
+                        (auth.RECOVERY_KEY,)).fetchall()
+
+
+def test_a_recovery_code_is_shown_once_and_only_its_hash_kept(conn, director):
+    assert auth.recovery_code_made(conn, director) is None
+    code = auth.new_recovery_code(conn, director)
+    assert re.fullmatch(r"[A-HJKMNP-Z2-9]{4}(-[A-HJKMNP-Z2-9]{4}){3}", code)
+    stored = code_rows(conn)[0][0]
+    assert stored.startswith("scrypt$") and code.replace("-", "") not in stored
+    assert auth.recovery_code_made(conn, director) is not None
+    assert conn.execute("SELECT COUNT(*) FROM audit_log WHERE action = 'user.recovery_code'"
+                        ).fetchone()[0] == 1
+
+
+def test_a_director_gets_back_in_with_the_code_which_is_then_used_up(conn, director):
+    code = auth.new_recovery_code(conn, director)
+    typed = code.replace("-", " ").lower()  # read from paper: spaces, small letters
+    ctx = auth.recover(conn, " directeur ", typed, "nouveau-pass")
+    assert (ctx.user_id, ctx.role) == (director.user_id, "director")
+    assert auth.login(conn, "directeur", "nouveau-pass").user_id == director.user_id
+    assert code_rows(conn) == []
+    row = conn.execute("SELECT user_id, entity_id FROM audit_log WHERE action = 'user.recover'"
+                       ).fetchone()
+    assert tuple(row) == (director.user_id, director.user_id)
+    with pytest.raises(PermissionDenied) as exc:
+        auth.recover(conn, "directeur", code, "autre-pass1")
+    assert exc.value.message == t["auth.recovery_invalid"]
+
+
+def test_a_new_code_replaces_the_old_one(conn, director):
+    old = auth.new_recovery_code(conn, director)
+    new = auth.new_recovery_code(conn, director)
+    with pytest.raises(PermissionDenied):
+        auth.recover(conn, "directeur", old, "nouveau-pass")
+    auth.recover(conn, "directeur", new, "nouveau-pass")
+
+
+@pytest.mark.parametrize("username, code_ok", [
+    ("directeur", False),  # a wrong code
+    ("accueil", True),  # the front desk: the director resets their password
+    ("personne", True),
+])
+def test_the_code_works_only_for_a_director_with_the_right_code(
+        conn, director, receptionist, username, code_ok):
+    code = auth.new_recovery_code(conn, director)
+    with pytest.raises(PermissionDenied) as exc:
+        auth.recover(conn, username, code if code_ok else "AAAA-AAAA-AAAA-AAAA",
+                     "nouveau-pass")
+    assert exc.value.message == t["auth.recovery_invalid"]
+    assert len(code_rows(conn)) == 1  # still there
+
+
+def test_no_code_no_way_back(conn, director):
+    with pytest.raises(PermissionDenied):
+        auth.recover(conn, "directeur", "AAAA-AAAA-AAAA-AAAA", "nouveau-pass")
+
+
+def test_a_disabled_director_cannot_use_the_code(conn, director):
+    other = auth.create_user(conn, director, "adjoint", "password3", "director")
+    auth.disable_user(conn, director, other)
+    code = auth.new_recovery_code(conn, director)
+    with pytest.raises(PermissionDenied):
+        auth.recover(conn, "adjoint", code, "nouveau-pass")
+
+
+def test_the_new_password_must_be_long_enough(conn, director):
+    code = auth.new_recovery_code(conn, director)
+    with pytest.raises(ValidationError) as exc:
+        auth.recover(conn, "directeur", code, "court")
+    assert exc.value.message == t["auth.password_short"]
+    assert len(code_rows(conn)) == 1
+
+
+def test_wrong_codes_are_slowed_down_like_logins(conn, director, sleeps):
+    auth.new_recovery_code(conn, director)
+    for _ in range(auth.FAILS_BEFORE_DELAY + 1):
+        with pytest.raises(PermissionDenied):
+            auth.recover(conn, "directeur", "AAAA-AAAA-AAAA-AAAA", "nouveau-pass")
+    assert sleeps == [auth.DELAY_SECONDS]
+
+
+def test_the_front_desk_cannot_make_or_see_a_code(conn, receptionist):
+    for call in (auth.new_recovery_code, auth.recovery_code_made):
+        with pytest.raises(PermissionDenied):
+            call(conn, receptionist)

@@ -32,7 +32,8 @@ from tadris.ui.pages.subscriptions_page import SubscriptionsPage
 from tadris.ui.pages.teachers import TeachersPage
 from tadris.ui.pages.timetable import TimetablePage
 from tadris.ui.theme import nav_icon
-from tadris.ui.widgets.common import confirm, variant_button
+from tadris.ui.user_dialog import PasswordDialog
+from tadris.ui.widgets.common import ask, confirm, toast, variant_button
 
 SIDEBAR_WIDTH = 216
 NAV_ICONS = {
@@ -310,8 +311,19 @@ class MainWindow(QMainWindow):
         footer = QFrame()
         footer.setObjectName("sidebarFooter")
         footer_layout = QHBoxLayout(footer)
-        footer_layout.setContentsMargins(6, 10, 0, 0)
-        footer_layout.setSpacing(10)
+        footer_layout.setContentsMargins(0, 10, 0, 0)
+        footer_layout.setSpacing(4)
+        # The user's name is a button: their own password, for every role (the front
+        # desk has no Paramètres).
+        self.account_button = QPushButton()
+        self.account_button.setObjectName("sidebarAccount")
+        self.account_button.setAccessibleName(t["main.password"])
+        self.account_button.setToolTip(t["main.password"])
+        self.account_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.account_button.clicked.connect(self.change_password)
+        account = QHBoxLayout(self.account_button)
+        account.setContentsMargins(6, 3, 6, 3)
+        account.setSpacing(10)
         avatar = QLabel(initials(self.ctx.username))
         avatar.setObjectName("sidebarAvatar")
         avatar.setFixedSize(30, 30)
@@ -334,8 +346,11 @@ class MainWindow(QMainWindow):
         self.logout_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.logout_button.setToolTip(f"{t['main.logout']}\n{t['main.logout_tip']}")
         self.logout_button.clicked.connect(self.logout)
-        footer_layout.addWidget(avatar)
-        footer_layout.addLayout(who, 1)
+        for label in (avatar, user, role):
+            label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        account.addWidget(avatar)
+        account.addLayout(who, 1)
+        footer_layout.addWidget(self.account_button, 1)
         footer_layout.addWidget(self.logout_button)
         layout.addWidget(footer)
         return sidebar
@@ -363,6 +378,11 @@ class MainWindow(QMainWindow):
         self.logging_out = True
         self.logged_out.emit()
         self.close()
+
+    def change_password(self) -> None:
+        dialog = PasswordDialog(self._conn, self.ctx, self.ctx.user_id, self.ctx.username, self)
+        if ask(dialog):
+            toast(self, t["main.password_changed"])
 
     def logout(self) -> bool:
         """Back to the login screen. Unsaved attendance marks ask first. True if done."""

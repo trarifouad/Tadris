@@ -118,7 +118,7 @@ def test_see_all_can_go_back_to_the_dashboard(qtbot, window):
 
 def test_links_stack_and_unwind(window):
     window.go_to("payments")
-    window.go_to("reports")
+    window.go_to("teachers")
     assert window.back_button.text() == "← Retour : Paiements"
     window.back()
     assert current(window) == "payments"
@@ -151,20 +151,6 @@ def test_a_student_opened_from_the_dashboard_can_go_back(conn, director, window)
     assert window.back_button.text() == "← Retour : Aujourd'hui"
     window.back()
     assert current(window) == "dashboard"
-
-
-@pytest.mark.parametrize("key", ["reports"])
-def test_pages_to_come_show_one_line(window, key):
-    """Rapports (until its plan is rewritten): the title and one sentence."""
-    from PySide6.QtWidgets import QLabel
-
-    from tadris.ui.main_window import PlaceholderPage
-
-    window.nav_buttons[key].click()
-    page = window.pages.currentWidget()
-    assert isinstance(page, PlaceholderPage)
-    assert [label.text() for label in page.findChildren(QLabel)] == [
-        t[f"nav.{key}"], t["page.placeholder"]]
 
 
 # ----- small screens: the window never outgrows them -----

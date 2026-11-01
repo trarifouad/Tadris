@@ -144,3 +144,36 @@ def test_nobody_logged_in(conn, director, loop):
     code, windows = loop(conn, [], [])
     assert code is None and windows == []
 
+
+
+def test_the_first_run_shows_the_recovery_code(conn, monkeypatch, qtbot):
+    class FakeFirstRun:
+        def __init__(self, conn, parent=None):
+            self.ctx = None
+            self._conn = conn
+
+        def exec(self):
+            self.ctx = auth.bootstrap_director(self._conn, "directeur", "password1", "École")
+            return QDialog.DialogCode.Accepted
+
+    shown = []
+    monkeypatch.setattr(app, "FirstRunDialog", FakeFirstRun)
+    monkeypatch.setattr(app, "show_new_recovery_code",
+                        lambda conn, ctx, parent: shown.append(ctx.username))
+    fake = FakeApp([lambda w: w.close()])
+
+    class Window(MainWindow):
+        def __init__(self, conn, ctx):
+            super().__init__(conn, ctx)
+            fake.windows.append(self)
+
+    monkeypatch.setattr(app, "MainWindow", Window)
+    assert app.run_sessions(fake, conn, None, None) == 0
+    assert shown == ["directeur"]
+
+
+def test_a_later_login_shows_no_code(conn, director, loop, monkeypatch):
+    shown = []
+    monkeypatch.setattr(app, "show_new_recovery_code", lambda *args: shown.append(args))
+    loop(conn, [director], [lambda w: w.close()])
+    assert shown == []

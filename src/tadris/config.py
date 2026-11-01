@@ -29,6 +29,13 @@ def documents_dir() -> Path:
     return p
 
 
+def log_dir() -> Path:
+    """The app's log (errors nobody caught), next to the database in use."""
+    p = db_path().parent / "logs"
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
 def backup_dir() -> Path:
     """Backups of the database in use, next to it: a test copy never mixes with the school's."""
     p = db_path().parent / "backups"

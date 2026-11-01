@@ -1,10 +1,15 @@
+import logging
 import os
 import sys
+import traceback
+from datetime import datetime
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
 
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QLockFile, QTimer
 from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
 
-from tadris.config import backup_dir, db_override, db_path, documents_dir
+from tadris.config import backup_dir, db_override, db_path, documents_dir, log_dir
 from tadris.db.connection import connect
 from tadris.db.migrate import (
     MigrationFailed,
@@ -15,11 +20,63 @@ from tadris.db.migrate import (
     migrate,
 )
 from tadris.i18n.fr import t
-from tadris.services import auth, backup, documents, sessions, subscriptions
+from tadris.services import auth, backup, clock, documents, sessions, subscriptions
 from tadris.ui.first_run import FirstRunDialog
 from tadris.ui.login_dialog import LoginDialog
 from tadris.ui.main_window import MainWindow
 from tadris.ui.theme import apply_theme, load_fonts
+from tadris.ui.user_dialog import show_new_recovery_code
+
+log = logging.getLogger("tadris")
+LOG_FILE = "tadris.log"
+LOG_BYTES, LOG_COPIES = 1_000_000, 3  # tadris.log, then .1 to .3: a few MB at most
+_said: set[tuple[str, str, int]] = set()  # the unexpected errors already shown
+
+
+def start_log(folder: Path) -> Path:
+    """The app's log, in a file: the packaged app has no console, and without it an error
+    nobody caught would leave no trace. Also on the console when there is one. Every error
+    nobody caught goes there (unexpected())."""
+    for handler in list(log.handlers):
+        log.removeHandler(handler)
+        handler.close()
+    path = folder / LOG_FILE
+    to_file = RotatingFileHandler(path, maxBytes=LOG_BYTES, backupCount=LOG_COPIES,
+                                  encoding="utf-8")
+    to_file.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    log.addHandler(to_file)
+    if sys.stderr is not None:  # None in the packaged app
+        log.addHandler(logging.StreamHandler(sys.stderr))
+    log.setLevel(logging.INFO)
+    sys.excepthook = lambda kind, error, trace: unexpected(kind, error, trace, path)
+    return path
+
+
+def unexpected(kind, error, trace, path: Path) -> None:
+    """An error nobody caught. Qt keeps the app running after it: it is written to the log
+    and the user is told once, with the file to send. Once per place in the code: an error
+    while a list is drawn comes back at every repaint."""
+    if issubclass(kind, KeyboardInterrupt):
+        sys.__excepthook__(kind, error, trace)
+        return
+    log.error("Erreur inattendue", exc_info=(kind, error, trace))
+    frames = traceback.extract_tb(trace)
+    where = (kind.__name__, frames[-1].filename, frames[-1].lineno or 0) if frames else (
+        kind.__name__, "", 0)
+    if where in _said or QApplication.instance() is None:
+        return
+    _said.add(where)
+    QMessageBox.critical(QApplication.activeWindow(), t["crash.title"],
+                         t["crash.text"].format(path=path))
+
+
+def lock_database(path: Path) -> QLockFile | None:
+    """One Tadris at a time on a database: a second one would run the start-of-day jobs and
+    the backups again beside the first. tadris.lock next to it, freed when the app closes
+    (or found stale by Qt after a crash). None when it is taken."""
+    lock = QLockFile(str(path.with_suffix(".lock")))
+    lock.setStaleLockTime(0)  # never broken for its age: only when its app is gone
+    return lock if lock.tryLock(100) else None
 
 
 def _choose_linux_platform() -> None:
@@ -50,7 +107,7 @@ def _choose_scale() -> None:
         if scale is not None and MIN_SCALE <= scale <= MAX_SCALE:
             os.environ["QT_SCALE_FACTOR"] = str(scale)
             return
-        print(f"{SCALE_ENV} : valeur ignorée ({value})", file=sys.stderr)
+        log.warning("%s : valeur ignorée (%s)", SCALE_ENV, value)
     if sys.platform.startswith("linux"):
         os.environ.setdefault("QT_SCALE_FACTOR", LINUX_SCALE)
 
@@ -87,7 +144,7 @@ def _clean_documents(conn) -> None:
     try:
         documents.clean_at_start(conn, documents_dir())
     except Exception as exc:  # noqa: BLE001 - the desk must open whatever happens here
-        print(f"Nettoyage des documents impossible : {exc}", file=sys.stderr)
+        log.warning("Nettoyage des documents impossible : %s", exc)
 
 
 def open_database(conn, folder, parent=None) -> bool:
@@ -112,6 +169,41 @@ def open_database(conn, folder, parent=None) -> bool:
     return True
 
 
+def _when(moment: datetime) -> str:
+    return t["clock.when"].format(day=moment.strftime("%d/%m/%Y"),
+                                  time=moment.strftime("%H:%M"))
+
+
+def clock_message(result: clock.ClockCheck) -> str:
+    return t[f"clock.{result.state}"].format(now=_when(result.now), last=_when(result.last),
+                                             days=(result.now - result.last).days)
+
+
+def _go_on_anyway(text: str, parent=None) -> bool:
+    """« Quitter » (the default) or « Continuer quand même »: True for the second."""
+    box = QMessageBox(parent)
+    box.setIcon(QMessageBox.Icon.Warning)
+    box.setWindowTitle(t["clock.title"])
+    box.setText(text)
+    leave = box.addButton(t["clock.quit"], QMessageBox.ButtonRole.RejectRole)
+    box.addButton(t["clock.go_on"], QMessageBox.ButtonRole.AcceptRole)
+    box.setDefaultButton(leave)
+    box.exec()
+    return box.clickedButton() is not leave
+
+
+def clock_is_right(conn, parent=None) -> bool:
+    """The computer's date against the last operation saved (services/clock), before
+    anything is dated by it. False when the user chose « Quitter »."""
+    result = clock.check(conn, datetime.now())
+    if result.state == "ok":
+        return True
+    if not _go_on_anyway(clock_message(result), parent):
+        return False
+    clock.went_on(conn, result)
+    return True
+
+
 def start_of_day(conn) -> None:
     """At start, and again after a restore (the copy may be days old)."""
     subscriptions.mark_ended(conn)  # months whose last day has passed
@@ -119,6 +211,12 @@ def start_of_day(conn) -> None:
 
 
 def main() -> int:
+    override = db_override()
+    if override is not None and not override.exists():
+        # Before the log: it would go next to a database that is not there.
+        print(f"TADRIS_DB : base introuvable ({override})", file=sys.stderr)
+        return 1
+    start_log(log_dir())
     _choose_linux_platform()
     _choose_scale()
     app = QApplication(sys.argv)
@@ -126,13 +224,15 @@ def main() -> int:
     load_fonts()
     apply_theme(app)
 
-    override = db_override()
-    if override is not None and not override.exists():
-        print(f"TADRIS_DB : base introuvable ({override})", file=sys.stderr)
+    lock = lock_database(db_path())  # held until main() returns
+    if lock is None:
+        QMessageBox.information(None, t["app.name"], t["app.already_open"])
         return 1
     conn = connect(db_path())
     folder = backup_dir()
     if not open_database(conn, folder):
+        return 1
+    if not clock_is_right(conn):
         return 1
     _backup(lambda: backup.daily(conn, folder))
     _clean_documents(conn)
@@ -148,13 +248,17 @@ def main() -> int:
 def run_sessions(app, conn, folder, override) -> int | None:
     """Login, the main window, and back to the login screen after « Se déconnecter », until
     the app is quit. None if nobody logged in at all."""
-    dialog = FirstRunDialog(conn) if auth.user_count(conn) == 0 else LoginDialog(conn)
+    first_run = auth.user_count(conn) == 0
+    dialog = FirstRunDialog(conn) if first_run else LoginDialog(conn)
     code = None
     while dialog.exec() == QDialog.DialogCode.Accepted:
         window = MainWindow(conn, dialog.ctx)
         if override is not None:  # never mistake a test copy for the real school
             window.setWindowTitle(f"{window.windowTitle()} · {override.name}")
         _fit_to_screen(window)
+        if first_run:  # the director's way back in, written down from the first day
+            first_run = False
+            show_new_recovery_code(conn, dialog.ctx, window)
         timer = QTimer(window)
         timer.timeout.connect(lambda w=window: _backup(lambda: backup.daily(conn, folder), w))
         timer.start(DAILY_CHECK_MS)

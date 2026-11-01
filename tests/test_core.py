@@ -137,11 +137,13 @@ RECEPTIONIST_DENIED = {
     "teacher.manage",
     "report.view",
     "report.finance",
+    "audit.view",
     "settings.view",
     "settings.change",
     "user.view",
     "user.create",
     "user.disable",
+    "user.recovery",
     "backup.create",
     "backup.restore",
 }

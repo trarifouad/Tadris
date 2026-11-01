@@ -1,7 +1,7 @@
 """What every printed document shares: fonts, the school header and the footer."""
 
 from dataclasses import dataclass
-from importlib.resources import files
+from pathlib import Path
 
 from reportlab.lib import colors
 from reportlab.lib.styles import ParagraphStyle
@@ -16,6 +16,9 @@ MUTED = colors.HexColor("#5A5868")
 RULE = colors.HexColor("#C9C5D6")
 SHADE = colors.HexColor("#EFEDF5")
 MARGIN = 14 * mm
+# A path from this file, as for the theme and the migrations: ui/resources holds no Python,
+# so importlib.resources cannot be relied on to find it in the packaged app.
+FONTS_DIR = Path(__file__).resolve().parents[1] / "ui" / "resources" / "fonts"
 
 _registered = False
 
@@ -25,10 +28,9 @@ def register_fonts() -> None:
     global _registered
     if _registered:
         return
-    fonts = files("tadris.ui.resources") / "fonts"
-    pdfmetrics.registerFont(TTFont(FONT, str(fonts / "ReadexPro-Regular.ttf")))
-    pdfmetrics.registerFont(TTFont(FONT_BOLD, str(fonts / "ReadexPro-SemiBold.ttf")))
-    pdfmetrics.registerFont(TTFont(MONO, str(fonts / "IBMPlexMono-Medium.ttf")))
+    pdfmetrics.registerFont(TTFont(FONT, str(FONTS_DIR / "ReadexPro-Regular.ttf")))
+    pdfmetrics.registerFont(TTFont(FONT_BOLD, str(FONTS_DIR / "ReadexPro-SemiBold.ttf")))
+    pdfmetrics.registerFont(TTFont(MONO, str(FONTS_DIR / "IBMPlexMono-Medium.ttf")))
     _registered = True
 
 

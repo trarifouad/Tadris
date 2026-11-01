@@ -1,6 +1,7 @@
 """Paramètres → Données: the backups at a glance (the latest copy, the second location,
 « Sauvegarder maintenant »; « Gérer les sauvegardes » opens every copy, the second location
-and restoring in a window) and « À propos » (versions, where the data lives).
+and restoring in a window), the Journal (« Voir le journal »: what people did, in a window)
+and « À propos » (versions, where the data lives).
 `restored(safety copy's path)` once a copy was put back: the window goes back to login."""
 
 from pathlib import Path
@@ -11,6 +12,7 @@ from PySide6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
 from tadris.core.context import UserContext
 from tadris.i18n.fr import t
 from tadris.services import backup
+from tadris.ui.pages.settings.journal import JournalView
 from tadris.ui.pages.system_tabs import (
     AboutTab,
     BackupsTab,
@@ -57,6 +59,13 @@ class DataSection(QWidget):
         body.addLayout(take_row)
         self.manage.clicked.connect(self.open_backups)
 
+        journal_card, journal_body, self.journal = summary_card(t["data.journal"],
+                                                               t["data.journal_open"])
+        journal_note = caption(t["data.journal_caption"])
+        journal_note.setWordWrap(True)
+        journal_body.addWidget(journal_note)
+        self.journal.clicked.connect(self.open_journal)
+
         about_card = section_card()
         about_title = QLabel(t["data.about"])
         about_title.setObjectName("sectionTitle")
@@ -69,6 +78,7 @@ class DataSection(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(12)
         layout.addWidget(backups)
+        layout.addWidget(journal_card)
         layout.addWidget(about_card)
         self.refresh()
 
@@ -95,6 +105,12 @@ class DataSection(QWidget):
             return
         self.error.clear_error()
         toast(self, t["backups.taken"].format(name=Path(taken.file_path).name))
+
+    def open_journal(self) -> SectionWindow:
+        """What people did, in a window (read only)."""
+        window = SectionWindow(t["journal.title"], JournalView(self._conn, self._ctx), self)
+        window.exec()
+        return window
 
     def open_backups(self) -> SectionWindow:
         """Every copy, the second location and restoring, in a window. A copy put back

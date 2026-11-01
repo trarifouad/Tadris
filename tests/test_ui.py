@@ -3,6 +3,7 @@ from PySide6.QtCore import QEvent, QPointF, Qt
 from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import QApplication, QLabel
 
+from tadris.core.errors import PermissionDenied
 from tadris.core.permissions import NAV_ITEMS
 from tadris.i18n.fr import t
 from tadris.services import auth
@@ -11,7 +12,7 @@ from tadris.ui.login_dialog import LoginDialog
 from tadris.ui.main_window import MainWindow
 from tadris.ui.pages.settings import SettingsPage
 from tadris.ui.theme import ICONS_DIR, apply_theme, load_fonts, tokens
-from tadris.ui.user_dialog import UserDialog
+from tadris.ui.user_dialog import PasswordDialog, UserDialog
 from tadris.ui.widgets.tables import CENTER, RIGHT, fill, item, ruled_table
 
 
@@ -206,7 +207,6 @@ def test_phase_1_acceptance_director_creates_receptionist_who_logs_in(qtbot, con
     qtbot.addWidget(director_window)
     assert set(director_window.nav_buttons) - set(receptionist_window.nav_buttons) == {
         "payouts",
-        "reports",
         "settings",
     }
 
@@ -319,3 +319,152 @@ def test_headers_line_up_with_their_cells(qtbot):
     by_cell.setItem(0, 0, item("Benali"))
     by_cell.setItem(0, 1, item("12/08/2016", align=CENTER))
     qtbot.waitUntil(lambda: headers(by_cell) == [left, center])
+
+
+# ----- accounts: passwords and disabling -----
+
+def users_section(qtbot, conn, ctx):
+    window = MainWindow(conn, ctx)
+    qtbot.addWidget(window)
+    click(qtbot, window.nav_buttons["settings"])
+    page = window.pages.currentWidget()
+    page.show_section("users")
+    return page.sections["users"]
+
+
+def test_director_disables_then_enables_a_receptionist(qtbot, monkeypatch, conn, director,
+                                                       receptionist):
+    from tadris.ui.pages.settings import users as users_page
+
+    monkeypatch.setattr(users_page, "confirm", lambda *args: True)
+    section = users_section(qtbot, conn, director)
+    assert not section.status.isEnabled()  # nothing selected
+    section.select("accueil")
+    assert section.status.text() == t["users.disable"]
+    click(qtbot, section.status)
+    with pytest.raises(PermissionDenied):
+        auth.login(conn, "accueil", "password2")
+    assert section.table.item(0, 2).text() == t["user_status.disabled"]
+    assert section.status.text() == t["users.enable"]  # still selected after the refresh
+    click(qtbot, section.status)
+    assert auth.login(conn, "accueil", "password2").role == "receptionist"
+
+
+def test_the_director_cannot_disable_their_own_row(qtbot, conn, director, receptionist):
+    section = users_section(qtbot, conn, director)
+    section.select("directeur")
+    assert section.password.isEnabled()
+    assert not section.status.isEnabled()
+    assert section.status.toolTip() == t["users.self_tip"]
+
+
+def test_director_resets_a_forgotten_password(qtbot, conn, director, receptionist):
+    dialog = PasswordDialog(conn, director, receptionist.user_id, "accueil")
+    qtbot.addWidget(dialog)
+    assert dialog.current is None  # nobody asks the director for the forgotten one
+    dialog.password.setText("nouveau-pass")
+    dialog.password_confirm.setText("nouveau-pass")
+    click(qtbot, dialog.submit)
+    assert dialog.result() == dialog.DialogCode.Accepted
+    assert auth.login(conn, "accueil", "nouveau-pass").user_id == receptionist.user_id
+
+
+def test_own_password_needs_the_current_one(qtbot, conn, receptionist):
+    dialog = PasswordDialog(conn, receptionist, receptionist.user_id, "accueil")
+    qtbot.addWidget(dialog)
+    dialog.current.setText("wrong-pass")
+    dialog.password.setText("nouveau-pass")
+    dialog.password_confirm.setText("nouveau-pass")
+    click(qtbot, dialog.submit)
+    assert dialog.banner.text() == t["auth.wrong_current_password"]
+    dialog.current.setText("password2")
+    click(qtbot, dialog.submit)
+    assert auth.login(conn, "accueil", "nouveau-pass").user_id == receptionist.user_id
+
+
+def test_the_name_in_the_sidebar_opens_ones_own_password(qtbot, monkeypatch, conn,
+                                                         receptionist):
+    from tadris.ui import main_window
+
+    opened = []
+    monkeypatch.setattr(main_window, "ask", lambda dialog: opened.append(dialog) or False)
+    window = MainWindow(conn, receptionist)
+    qtbot.addWidget(window)
+    click(qtbot, window.account_button)
+    assert isinstance(opened[0], PasswordDialog)
+    assert opened[0].current is not None
+    assert opened[0].windowTitle() == t["password_dialog.own"]
+
+
+# ----- the recovery code -----
+
+def test_forgot_password_on_the_login_screen_logs_the_director_in(qtbot, monkeypatch, conn,
+                                                                  director):
+    from tadris.ui import login_dialog
+
+    code = auth.new_recovery_code(conn, director)
+    told = []
+    monkeypatch.setattr(login_dialog.QMessageBox, "information",
+                        lambda parent, title, text: told.append(title))
+
+    def fill_and_send(dialog):
+        assert dialog.username.text() == "directeur"  # taken from the login form
+        dialog.code.setText(code.lower())
+        dialog.password.setText("nouveau-pass")
+        dialog.password_confirm.setText("nouveau-pass")
+        click(qtbot, dialog.submit)
+        return dialog.result() == dialog.DialogCode.Accepted
+
+    monkeypatch.setattr(login_dialog, "ask", fill_and_send)
+    login = LoginDialog(conn)
+    qtbot.addWidget(login)
+    login.username.setText("directeur")
+    assert login.forgot.text() == t["login.forgot"]
+    click(qtbot, login.forgot)
+    assert login.ctx.user_id == director.user_id
+    assert told == [t["recovery.done_title"]]
+    assert auth.login(conn, "directeur", "nouveau-pass").role == "director"
+
+
+def test_a_wrong_recovery_code_says_so(qtbot, conn, director):
+    from tadris.ui.user_dialog import RecoveryDialog
+
+    auth.new_recovery_code(conn, director)
+    dialog = RecoveryDialog(conn, "directeur")
+    qtbot.addWidget(dialog)
+    dialog.code.setText("AAAA-AAAA-AAAA-AAAA")
+    dialog.password.setText("nouveau-pass")
+    dialog.password_confirm.setText("nouveau-pass")
+    click(qtbot, dialog.submit)
+    assert dialog.banner.text() == t["auth.recovery_invalid"]
+    assert dialog.ctx is None
+
+
+def test_the_users_section_makes_and_replaces_the_code(qtbot, monkeypatch, conn, director):
+    from tadris.ui import user_dialog
+    from tadris.ui.pages.settings import users as users_page
+
+    shown = []
+    monkeypatch.setattr(user_dialog, "ask", lambda dialog: shown.append(dialog.code.text()))
+    asked = []
+    monkeypatch.setattr(users_page, "confirm", lambda *args: asked.append(args[1]) or True)
+    section = users_section(qtbot, conn, director)
+    assert section.recovery_text.text() == t["users.recovery_none"]
+    assert not section.recovery_todo.isHidden()
+    click(qtbot, section.recovery)
+    assert len(shown) == 1 and asked == []  # nothing to replace yet
+    assert section.recovery_text.text().startswith("Code créé le ")
+    assert section.recovery_todo.isHidden()
+    assert section.recovery.text() == t["users.recovery_again"]
+    click(qtbot, section.recovery)
+    assert asked == [t["users.recovery_replace_title"]] and shown[0] != shown[1]
+    auth.recover(conn, "directeur", shown[1], "nouveau-pass")  # the last one works
+
+
+def test_the_recovery_code_window_shows_the_code(qtbot):
+    from tadris.ui.user_dialog import RecoveryCodeDialog
+
+    dialog = RecoveryCodeDialog("K7QM-4XRP-9TBW-2HDN")
+    qtbot.addWidget(dialog)
+    assert dialog.code.text() == "K7QM-4XRP-9TBW-2HDN"
+    assert dialog.done.text() == t["recovery_code.done"]

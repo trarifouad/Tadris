@@ -118,6 +118,11 @@ def build_qss(t: dict, chevron: str = "", check: str = "") -> str:
         border-radius: 15px; font-size: 11px; font-weight: 600; }}
     QLabel#sidebarUser {{ color: {t['chalk']}; font-size: 13px; font-weight: 500; }}
     QLabel#sidebarRole {{ color: {chalk_dim}; font-size: 11.5px; }}
+    QPushButton#sidebarAccount {{ background: transparent; border: none; border-radius: 6px;
+        padding: 0; text-align: left; }}
+    QPushButton#sidebarAccount:hover {{ background: {t['sidebar_hover']}; }}
+    QPushButton#sidebarAccount:pressed {{ background: {rgba(t['chalk'], 0.2)}; }}
+    QPushButton#sidebarAccount:focus {{ outline: none; border: 2px solid {t['chalk']}; }}
     QPushButton#sidebarLogout {{ background: transparent; border: none; border-radius: 6px;
         min-height: 30px; max-height: 30px; min-width: 30px; max-width: 30px; padding: 0; }}
     QPushButton#sidebarLogout:hover {{ background: {t['sidebar_hover']}; }}
@@ -224,6 +229,9 @@ def build_qss(t: dict, chevron: str = "", check: str = "") -> str:
         color: {t['danger']}; }}
     QLabel#figure {{ font-family: "IBM Plex Mono"; font-size: 13px; font-weight: 500; }}
     QLabel#readout {{ font-family: "IBM Plex Mono"; font-size: 17px; font-weight: 500; }}
+    QLabel#recoveryCode {{ font-family: "IBM Plex Mono"; font-size: 22px; font-weight: 500;
+        background: {t['surface_alt']}; border: 1px solid {t['border']}; border-radius: 8px;
+        padding: 14px; qproperty-alignment: AlignCenter; }}
     QLabel#statusIcon {{ border-radius: 14px; }}
 {status_icons}
     QFrame#datePopup {{ background: {t['surface']}; border: 1px solid {t['border']};

@@ -52,10 +52,10 @@ def test_the_cleanup_at_start_is_recorded_by_the_app(conn, tmp_path):
                         ).fetchone()[0] == 1
 
 
-def test_a_failing_cleanup_never_stops_the_app(conn, monkeypatch, capsys):
+def test_a_failing_cleanup_never_stops_the_app(conn, monkeypatch, caplog):
     def broken(conn, folder):
         raise PermissionError("denied")
 
     monkeypatch.setattr(app.documents, "clean_at_start", broken)
     app._clean_documents(conn)
-    assert "Nettoyage des documents impossible" in capsys.readouterr().err
+    assert "Nettoyage des documents impossible" in caplog.text

@@ -168,11 +168,12 @@ class RecoveryCodeDialog(QDialog):
         self.code.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         note = caption(t["recovery_code.text"])
         note.setWordWrap(True)
-        self.done = primary_button(t["recovery_code.done"])
-        self.done.clicked.connect(self.accept)
+        # Not self.done: that is QDialog.done(), which accept() calls.
+        self.noted = primary_button(t["recovery_code.done"])
+        self.noted.clicked.connect(self.accept)
         actions = QHBoxLayout()
         actions.addStretch()
-        actions.addWidget(self.done)
+        actions.addWidget(self.noted)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(28, 24, 28, 24)

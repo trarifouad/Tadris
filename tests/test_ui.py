@@ -467,4 +467,6 @@ def test_the_recovery_code_window_shows_the_code(qtbot):
     dialog = RecoveryCodeDialog("K7QM-4XRP-9TBW-2HDN")
     qtbot.addWidget(dialog)
     assert dialog.code.text() == "K7QM-4XRP-9TBW-2HDN"
-    assert dialog.done.text() == t["recovery_code.done"]
+    assert dialog.noted.text() == t["recovery_code.done"]
+    click(qtbot, dialog.noted)
+    assert dialog.result() == dialog.DialogCode.Accepted

@@ -26,6 +26,7 @@ Tadris runs on a single computer with no internet connection. It replaces paper 
 - Dashboard: today's sessions, money received, late payers, free places, the day's backup
 - WhatsApp messages to parents (click to chat: Tadris itself sends nothing)
 - Director and receptionist roles; passwords changed, reset and accounts disabled in the app; a recovery code for a forgotten director password
+- Rapports: recettes, présences, enseignants, élèves, with key figures and charts, in PDF and Excel (the desk sees présences and élèves)
 - Journal: who did what and when (director, read only)
 - Verified backups (daily, on close, before a migration), a second location (USB drive or synced folder), restore with a safety copy
 - A safe start: one Tadris at a time per database, a check of the computer's date, unexpected errors written to a log
@@ -37,7 +38,7 @@ Tadris runs on a single computer with no internet connection. It replaces paper 
 | Language | Python 3.12+ |
 | UI | PySide6 (Qt) |
 | Database | SQLite (WAL mode, foreign keys on) |
-| Documents | ReportLab (PDF: receipts, sheets, slips) |
+| Documents | ReportLab (PDF: receipts, sheets, slips, reports), openpyxl (Excel) |
 | Packaging | PyInstaller |
 
 ## Getting started
@@ -109,7 +110,7 @@ The UI never touches the database. Services open `BEGIN IMMEDIATE` transactions 
 See `PLAN.md` for phases and `DESIGN.md` for the UI system.
 
 - **V1:** single-computer desktop app, French UI, monthly subscriptions
-- **Later:** reports with PDF and Excel exports, refunds, Arabic (RTL), multi-machine sync, parent portal
+- **Later:** refunds, debt by age, Arabic (RTL), multi-machine sync, parent portal
 
 ## License
 

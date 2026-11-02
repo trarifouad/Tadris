@@ -135,7 +135,6 @@ RECEPTIONIST_DENIED = {
     "payout.view",
     "payout.manage",
     "teacher.manage",
-    "report.view",
     "report.finance",
     "audit.view",
     "settings.view",
@@ -183,7 +182,7 @@ def test_nav_differs_by_role():
     assert director_keys == [key for key, _, _ in permissions.NAV_ITEMS]
     assert "payouts" not in receptionist_keys
     assert "settings" not in receptionist_keys
-    assert "reports" not in receptionist_keys
+    assert "reports" in receptionist_keys  # Présences and Élèves
     assert "students" in receptionist_keys
     assert "payments" in receptionist_keys and "contacts" in receptionist_keys
 

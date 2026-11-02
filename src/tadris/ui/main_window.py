@@ -26,6 +26,7 @@ from tadris.ui.pages.dashboard import DashboardPage
 from tadris.ui.pages.groups import GroupsPage
 from tadris.ui.pages.payments_page import PaymentsPage
 from tadris.ui.pages.payouts_page import PayoutsPage
+from tadris.ui.pages.reports import ReportsPage
 from tadris.ui.pages.settings import SettingsPage
 from tadris.ui.pages.students import StudentsPage
 from tadris.ui.pages.subscriptions_page import SubscriptionsPage
@@ -60,7 +61,7 @@ def initials(username: str) -> str:
 
 
 class PlaceholderPage(QWidget):
-    """Page shell until the phase that builds it (Rapports, until its plan is rewritten)."""
+    """A sidebar entry whose page is not built yet: its title and one sentence."""
 
     def __init__(self, title: str):
         super().__init__()
@@ -224,6 +225,10 @@ class MainWindow(QMainWindow):
         }
         if key in pages:
             return pages[key](self._conn, self.ctx)
+        if key == "reports":
+            page = ReportsPage(self._conn, self.ctx)
+            page.open_item.connect(self.open_item)
+            return page
         if key == "settings":
             page = SettingsPage(self._conn, self.ctx)
             page.restored.connect(self._restored)
@@ -255,6 +260,15 @@ class MainWindow(QMainWindow):
         self._move = "link"
         self.nav_buttons["students"].click()
         self.pages.widget(self._slots["students"]).open_student(student_id)
+
+    def open_item(self, key: str, item_id: int) -> None:
+        """Show a student, a group or a teacher from another page (a report's line), if the
+        user has that page."""
+        if key not in self.nav_buttons:
+            return
+        self._move = "link"
+        self.nav_buttons[key].click()
+        self.pages.widget(self._slots[key]).open(item_id)
 
     def _build_sidebar(self) -> QFrame:
         sidebar = QFrame()

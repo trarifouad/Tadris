@@ -38,8 +38,8 @@ ACTIONS: dict[str, frozenset[str]] = {
     "teacher.view": BOTH,
     "teacher.manage": DIRECTOR_ONLY,
     "cash.view": BOTH,  # the day's cash, on Paiements
-    "report.view": DIRECTOR_ONLY,  # the Rapports page (to come)
-    "report.finance": DIRECTOR_ONLY,  # the dashboard's money
+    "report.view": BOTH,  # Rapports: Présences and Élèves for the desk
+    "report.finance": DIRECTOR_ONLY,  # the dashboard's money, Recettes, Enseignants
     "audit.view": DIRECTOR_ONLY,  # the Journal, in Paramètres → Données
     "message.send": BOTH,  # Contacts: WhatsApp messages to the parents
     "settings.view": DIRECTOR_ONLY,
@@ -62,6 +62,7 @@ NAV_ITEMS: tuple[tuple[str, str, str], ...] = (
     ("subscriptions", "nav.subscriptions", "subscription.manage"),
     ("payments", "nav.payments", "payment.record"),
     ("payouts", "nav.payouts", "payout.view"),
+    ("reports", "nav.reports", "report.view"),
     ("teachers", "nav.teachers", "teacher.view"),
     ("contacts", "nav.contacts", "message.send"),
     ("settings", "nav.settings", "settings.view"),

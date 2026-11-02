@@ -47,7 +47,7 @@ PAYOUT_SLIP = "payout"
 LETTERS = {"present": "P", "late": "R", "absent": "A", "excused": "E"}
 
 
-def _school(conn) -> School:
+def school_of(conn) -> School:
     return School(name=settings.get(conn, "school.name", "") or t["app.name"],
                   address=settings.get(conn, "school.address", "") or "",
                   phone=settings.get(conn, "school.phone", "") or "",
@@ -58,7 +58,7 @@ def _receipt_note(conn) -> str:
     return settings.get(conn, "receipt.footer", "") or ""
 
 
-def _footer(ctx: UserContext) -> Footer:
+def footer_for(ctx: UserContext) -> Footer:
     now = datetime.now()
     return Footer(t["print.footer"].format(date=dates.display_date(dates.iso(dates.today())),
                                            time=f"{now:%H:%M}", user=ctx.username))
@@ -104,13 +104,13 @@ def session_sheet_content(conn, ctx: UserContext, session_id: int) -> SessionShe
                     + [TICK if line.status == status else "" for status in ATTENDANCE_STATUSES]
                     + [""])
     return SessionSheet(
-        school=_school(conn), title=t["print.session_title"], heading=s.group_title,
+        school=school_of(conn), title=t["print.session_title"], heading=s.group_title,
         details=details,
         columns=[escape(c) for c in [t["print.col.number"], t["print.col.student"],
                                      t["print.col.note"]]
                  + [t[f"attendance_status.{status}"] for status in ATTENDANCE_STATUSES]
                  + [t["print.col.observation"]]],
-        rows=rows, footer=_footer(ctx), empty=t["attendance_view.empty"])
+        rows=rows, footer=footer_for(ctx), empty=t["attendance_view.empty"])
 
 
 def week_sheet(conn, ctx: UserContext, group_id: int, first: date,
@@ -154,11 +154,11 @@ def week_sheet_content(conn, ctx: UserContext, group_id: int, first: date) -> We
                 cells.append(LETTERS.get(line.status, ""))
         rows.append([number, name] + cells)
     return WeekSheet(
-        school=_school(conn), title=t["print.week_title"], heading=g.title,
+        school=school_of(conn), title=t["print.week_title"], heading=g.title,
         details=[t["print.week_when"].format(first=dates.display_date(dates.iso(first)),
                                              last=dates.display_date(dates.iso(last))),
                  t["print.week_teacher"].format(teacher=g.teacher or "—")],
-        columns=columns, rows=rows, footer=_footer(ctx), legend=t["print.week_legend"],
+        columns=columns, rows=rows, footer=footer_for(ctx), legend=t["print.week_legend"],
         empty=t["print.week_empty"], cancelled_columns=cancelled)
 
 
@@ -211,13 +211,13 @@ def receipt_content(conn, ctx: UserContext, receipt_id: int) -> ReceiptDoc:
         voided_note = t["receipt.voided"].format(date=dates.display_date(p.voided_at),
                                                  reason=p.void_reason)
     return ReceiptDoc(
-        school=_school(conn), title=t["receipt.title"], number=row["number"],
+        school=school_of(conn), title=t["receipt.title"], number=row["number"],
         copy_mark=t["receipt.duplicate"] if print_log.count(conn, RECEIPT, receipt_id) else "",
         details=details, columns=(t["receipt.col.item"], t["receipt.col.amount"]),
         lines=lines, totals=totals,
         stamp=t["receipt.stamp_voided"] if p.voided else t["receipt.stamp_paid"],
         stamp_date=paid_on, voided_note=voided_note, thanks=t["receipt.thanks"],
-        signature=t["receipt.signature"], footer=_footer(ctx), note=_receipt_note(conn))
+        signature=t["receipt.signature"], footer=footer_for(ctx), note=_receipt_note(conn))
 
 
 # ----- teacher payout slips -----
@@ -258,7 +258,7 @@ def payout_slip_content(conn, ctx: UserContext, payout_id: int) -> PayoutSlip:
                    for m in payouts.months(conn, ctx, payout_id)]
     stamp_day = p.paid_at or p.approved_at or p.created_at
     return PayoutSlip(
-        school=_school(conn), title=t["payout_slip.title"],
+        school=school_of(conn), title=t["payout_slip.title"],
         number=p.receipt_number or t[f"payout_status.{p.status}"].upper(),
         copy_mark=(t["receipt.duplicate"] if print_log.count(conn, PAYOUT_SLIP, payout_id)
                    else ""),
@@ -273,5 +273,5 @@ def payout_slip_content(conn, ctx: UserContext, payout_id: int) -> PayoutSlip:
                         t["payout_slip.col.rate"], t["payout_slip.col.share"]],
         detail_rows=detail_rows, note=t["payout_slip.note"],
         stamp=t[f"payout_stamp.{p.status}"], stamp_date=dates.display_date(stamp_day),
-        signature=t["payout_slip.signature"], footer=_footer(ctx))
+        signature=t["payout_slip.signature"], footer=footer_for(ctx))
 

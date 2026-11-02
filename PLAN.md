@@ -3,7 +3,7 @@
 Offline-first desktop application for a private tutoring school (soutien scolaire) in Algeria.
 Stack: Python 3.12+, PySide6, SQLite (WAL), reportlab, platformdirs, PyInstaller. UI language: French (Arabic later).
 
-**Where things stand (2026-11-02):** version 1.0.0. Phases 0 to 12 are done, then the v1 readiness work (see « Before the first install » after phase 12). Left before the pilot: a warning until a second backup location is set, a last review of the migrations, and phase 13.
+**Where things stand (2026-11-02):** version 1.0.0. Phases 0 to 12 are done, then the v1 readiness work (« Before the first install », after phase 12) and the rebuilt Rapports page (« Rapports, rebuilt »). Left before the pilot: a last review of the migrations, and phase 13.
 
 Estimated effort: 3 to 4 months part-time (about 10 to 15 hours per week).
 
@@ -530,7 +530,7 @@ Add a `holidays` table or a settings JSON list in this phase. Decide which and a
 - Teacher summary: groups and students today; paid during the school year; waiting (drafts and approved); « À préparer » is what a draft built today would pay (same rate rule as the payout).
 - The audit log viewer shows at most 1 000 entries, latest first, and says so when the limit is reached.
 
-**Removed after phase 12 (2296563).** The Rapports page (revenue, debt by age, attendance, teacher summary, student list), its PDF and Excel exports (`report_pdf.py`, `report_xlsx.py`, openpyxl) and the Journal went; the dashboard stayed and grew (money received by day, the day's backup). Rapports is hidden from the sidebar in v1 and waits in the parking lot. The Journal came back, simpler, before the first install (see below).
+**Removed after phase 12 (2296563).** The Rapports page (revenue, debt by age, attendance, teacher summary, student list), its PDF and Excel exports (`report_pdf.py`, `report_xlsx.py`, openpyxl) and the Journal went; the dashboard stayed and grew (money received by day, the day's backup). The Journal came back, simpler, before the first install, and Rapports came back redesigned (« Rapports, rebuilt », below).
 
 **Goal:** the director sees the school's state at a glance.
 
@@ -640,14 +640,36 @@ Add a `holidays` table or a settings JSON list in this phase. Decide which and a
 - The computer's date, checked at start against the last audit entry (the computer is offline: nothing corrects its clock): earlier by more than 10 minutes, or more than 120 days later (longer than the summer break), asks « Quitter » (the default) or « Continuer quand même », audited as `clock.behind` / `clock.ahead`.
 - One Tadris at a time per database: a lock file next to it (`tadris.lock`, Qt's `QLockFile`), freed when the app closes and found stale after a crash. A second launch says Tadris is already open.
 - The Journal is back, simpler than phase 10's: Paramètres → Données → « Voir le journal » (`audit.view`, director), latest first, by dates (the last week at first) and user, 100 entries at a time as the list is scrolled, each in French (action, item by name, what it recorded on one line). It shows what people did, plus a failed backup or copy to the second location and a date accepted at start. No export, no filter by action or item.
-- « Rapports » is out of the sidebar for v1 (its permission and the placeholder page stay for when it returns).
+- « Rapports » went out of the sidebar (a placeholder since 2296563), until its rebuild below.
 - PDF fonts are found by path from `documents/pdf.py`, as the theme and the migrations do, not with `importlib.resources`: `ui/resources` holds no Python, and a packaged app may not find it as a package.
+
+- No lasting warning while no second backup location is set (decided 2026-11-02, not built): the release checklist has it set at the install instead.
 
 **Still to do before the pilot**
 
-1. A lasting warning until a second backup location is set: today the copies stay on the computer's own disk unless the director chooses one.
-2. A last review of migrations 0001 to 0017: once the school's data is in, they are never edited again, only followed by new ones.
-3. Phase 13.
+1. A last review of migrations 0001 to 0017: once the school's data is in, they are never edited again, only followed by new ones.
+2. Phase 13.
+
+---
+
+## Rapports, rebuilt
+
+**Goal:** the director (and the desk, for what is theirs) reads the school's figures on one page and hands them on as PDF or Excel.
+
+**Status:** done on 2026-11-02, branch `feat/reports`. No schema change; openpyxl is a dependency again. Built anew, not the phase 10 page; its money and attendance rules are kept. 1286 tests green: every figure against a hand count (`test_reports.py`), the page (`test_ui_reports.py`), the Excel file read back; also driven in the real app (Xvfb).
+
+**Decisions taken**
+
+- Four reports, each with four key figures, an optional chart, and a table whose total stays pinned under it in a strip of its own (sortable; a row double-clicked or Enter opens the student, group or teacher, « ← Retour : Rapports »):
+  - **Recettes** (school year, director): Facturé, Encaissé, Reste dû and **Part école**; billed against received by month (bars); « Par mois » (facturé, réglé, reste dû, encaissé, part enseignants, part école) or « Par groupe » (teacher, months, the same money, the rate, the registration fees on a line of their own).
+  - **Présences** (this week, this month, last month, the year or chosen dates; a group): rate, sessions held, absences, lates; the rate by group (bars, green, amber under 85 %, red under 75 %); « Par groupe » or « Par élève », the lowest rate first, red under 75 %.
+  - **Enseignants** (school year, director): groups and students now, current rate, the year's revenue of their months and their share, paid in the year, waiting (drafts and approved), to prepare.
+  - **Élèves** (status, level, group, a search): number, name, level, groups, main contact and phone, registered on, what is late after the credit; figures: active, registered this year, in a trial, without a month running today.
+- Who sees it: `report.view` is both roles now; Recettes and Enseignants need `report.finance` (director). The desk sees Présences and Élèves.
+- Money as in phase 10: a month counts in the month it starts, the fee on the registration day, cancelled ones left out; « Réglé » is what payments not voided paid on them, whenever; « Encaissé » the money received in the month. The teachers' share is the month's price at the rate of the group's teacher on its first day (as payouts count it), rounded down once per month, group and rate: a payout rounds once per line, so the two can be a few dinars apart.
+- One `Report` (raw values: DA, basis points, ISO dates) feeds the screen, the PDF and the Excel file, so the three agree. PDF: A4, landscape when the table is wide; school header, title, period and filters, the four figures in boxes, the table with its header on every page and the total in bold, the note. Excel: the same rows as numbers, rates and dates; header frozen and filtered; the totals are `SUBTOTAL` formulas (they follow Excel's filters); typed text never becomes a formula; an « Infos » sheet. « PDF » and « Excel » write to the documents folder (`rapport_<report>_<moment>`, cleaned after 30 days) and open the file; « Enregistrer sous… » keeps a file where chosen. Each export is in the Journal (`report.export`).
+- Layout: the reports in a switch in the top bar rather than a side list, so the tables have the window's width. Each column is as wide as its content except the text column with the longest values, which takes the room left; short of room it shortens itself (« … », the tooltip says it whole, not under 160 px) and only then does the table scroll sideways, its total with it.
+- Debt by age and the Journal's filters by action and item were not rebuilt (parking lot).
 
 ---
 
@@ -738,4 +760,4 @@ Add a `holidays` table or a settings JSON list in this phase. Decide which and a
 - Remises (discounts) and corrections: built then dropped in phase 8 by decision; the school charges the full price.
 - Refunds (built in phase 8, removed from V1 after phase 12, rows archived): request, director approval and payout with allocation to the original payments, numbered slip, cash and reports. Decisions already taken for V2: the suggestion counts the sessions held up to the departure (from the timetable, absences count as used); a month starts at the first session attended (moved only within the original month, renewals moved with it); the fee is refundable through the normal request only before any attendance, otherwise by director exception; a departure date changed after a request means reject and ask again; an impossible makeup is decided by the director; refunds do not lower teacher pay; credit beyond what is owed may be refunded; a paid refund is corrected by a numbered reversal (director, full or part).
 - Refund a student's credit (money paid and allocated to no charge), e.g. paid in advance and gone before the next month was created.
-- Rapports (built in phase 10, removed in 2296563, hidden in v1): revenue by month and by group, debt by age, attendance by group and by student, teacher summary, student list, each in PDF and Excel; and the Journal's filters by action and by item, with its exports.
+- Debt by age (0–30, 31–60, 61–90, over 90 days), built in phase 10 and not in the rebuilt Rapports; the Journal's filters by action and by item, with its exports.

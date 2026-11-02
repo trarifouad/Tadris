@@ -829,3 +829,52 @@ class Dashboard:
     @property
     def enrolled(self) -> int:
         return sum(g.enrolled for g in self.groups)
+
+
+# ----- reports -----
+
+@dataclass(frozen=True)
+class ReportColumn:
+    title: str
+    kind: str = "text"  # text, number, money (DA), percent (basis points), date (ISO)
+
+
+@dataclass(frozen=True)
+class ReportTile:
+    """One of the figures above a report: « Facturé · 412 500 DA »."""
+
+    label: str
+    value: int | None  # None: nothing to show (« — »)
+    kind: str = "money"  # money, number, percent (basis points)
+    note: str = ""  # the small line under the figure
+
+
+@dataclass(frozen=True)
+class ReportChart:
+    """bars: a group of bars per label, one per series (« Facturé », « Encaissé »);
+    rates: one horizontal bar per label, in basis points."""
+
+    kind: str
+    title: str
+    labels: tuple[str, ...]
+    series: tuple[tuple[str, tuple[int, ...]], ...]
+
+
+@dataclass(frozen=True)
+class Report:
+    """A report as the screen, the PDF and the Excel file all show it, in raw values
+    (amounts in DA, rates in basis points, ISO dates): the three always agree."""
+
+    key: str  # names its files: 'recettes-par-mois'
+    title: str
+    period: str  # « Année 2026-2027 », « Du 01/10/2026 au 31/10/2026 »
+    columns: tuple[ReportColumn, ...]
+    rows: tuple[tuple, ...]
+    total: tuple | None = None
+    tiles: tuple[ReportTile, ...] = ()
+    chart: ReportChart | None = None
+    filters: tuple[tuple[str, str], ...] = ()  # (label, value) printed with the report
+    note: str = ""  # how it is counted
+    row_ids: tuple[int | None, ...] = ()  # what a double-click opens, row by row
+    opens: str | None = None  # the page a row opens: 'students', 'groups' or 'teachers'
+    tones: tuple[str | None, ...] = ()  # a row to look at: 'danger' (low attendance)

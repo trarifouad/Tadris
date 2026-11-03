@@ -12,7 +12,9 @@ def test_charge_needs_exactly_one_parent(seeded):
                        "VALUES(1,1,'x',100,'2026-09-01','2026-09-01')")
 
 
-def test_allocation_unique_per_payment_charge(seeded):
+def test_allocation_unique_per_payment_charge_and_recording(seeded):
+    """Rows from before 0016 have no recording: still one per payment and charge (a later
+    recording may add one, test_triggers_money)."""
     seeded.execute("INSERT INTO payment_allocations(payment_id,charge_id,amount) VALUES(1,1,1000)")
     with pytest.raises(sqlite3.IntegrityError):
         seeded.execute("INSERT INTO payment_allocations(payment_id,charge_id,amount) VALUES(1,1,500)")

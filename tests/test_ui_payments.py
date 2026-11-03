@@ -558,6 +558,22 @@ def test_cash_report(qtbot, conn, director, receptionist, desk):
                                                  "Virement", "directeur", "Encaissé"]
 
 
+def test_cash_report_of_a_payment_voided_on_a_later_day(qtbot, conn, director, desk):
+    """Sara's 3 000 of 18/10 voided on 02/11: 18/10 still counts it, 02/11 takes it off."""
+    [sara] = payments.for_student(conn, director, desk["sara"])
+    payments.void(conn, director, sara.id, "Mauvais élève")
+    page = make_page(qtbot, conn, director)
+    assert page.cash.total.text() == t["cash.total"].format(date="02/11/2026",
+                                                            total="-3 000 DA", count=0)
+    assert page.cash.voided_earlier.text() == t["cash.voided_earlier"].format(
+        count=1, total="3 000 DA", receipts="R2026-00001 du 18/10/2026")
+    page.cash.day.set_value(TODAY)
+    assert page.cash.total.text() == t["cash.total"].format(date="18/10/2026",
+                                                            total="3 000 DA", count=1)
+    assert not shown(page.cash.voided_earlier)
+    assert rows(page.cash.list.table)[0][-1] == "Compté, annulé le 02/11/2026"
+
+
 def test_the_page_in_the_sidebar(qtbot, conn, receptionist, desk):
     from tadris.ui.main_window import MainWindow
 

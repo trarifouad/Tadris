@@ -1,6 +1,8 @@
 from dataclasses import dataclass, field, replace
 from datetime import date
 
+from tadris.core.percent import ratio_bp
+
 # ----- inputs (what a form sends to a service) -----
 
 
@@ -486,10 +488,10 @@ class AttendanceSummary:
 
     @property
     def rate_bp(self) -> int | None:
-        """(present + late) / (present + late + absent), in basis points; an excused
-        absence is left out. None before any mark counts."""
+        """(present + late) / (present + late + absent), in basis points to the nearest; an
+        excused absence is left out. None before any mark counts."""
         counted = self.present + self.late + self.absent
-        return None if counted == 0 else (self.present + self.late) * 10000 // counted
+        return None if counted == 0 else ratio_bp(self.present + self.late, counted)
 
 
 # ----- payments and debt -----
@@ -619,32 +621,45 @@ class Debtor:
 
 @dataclass(frozen=True)
 class CashReport:
-    """Money received on one day: payments not voided count; voided ones are listed apart."""
+    """Money received on one day, as the drawer saw it, so a day already counted never
+    changes: its payments count unless voided that same day (listed apart); a payment voided
+    on a later day still counts on its own day, and is taken off the day of its void."""
 
     day: str
     payments: tuple[Payment, ...]  # every payment of the day, voided ones included
     payouts: tuple["Payout", ...] = ()  # teachers paid that day (the director's view only)
+    voided_earlier: tuple[Payment, ...] = ()  # payments of earlier days voided on this day
+
+    def voided_here(self, p: Payment) -> bool:
+        return p.voided and p.voided_at[:10] == self.day
 
     @property
     def kept(self) -> tuple[Payment, ...]:
-        return tuple(p for p in self.payments if not p.voided)
+        """The day's payments it counts: all but those voided the same day."""
+        return tuple(p for p in self.payments if not self.voided_here(p))
 
     @property
     def total(self) -> int:
-        return sum(p.amount for p in self.kept)
+        return (sum(p.amount for p in self.kept)
+                - sum(p.amount for p in self.voided_earlier))
 
     @property
     def voided(self) -> tuple[Payment, ...]:
-        return tuple(p for p in self.payments if p.voided)
+        """The day's payments voided the same day: never counted."""
+        return tuple(p for p in self.payments if self.voided_here(p))
 
     def by_method(self) -> dict[str, int]:
-        """Every method, 0 included, in PAYMENT_METHODS order."""
+        """Every method, 0 included, in PAYMENT_METHODS order; the earlier payments voided
+        on this day taken off their method."""
         totals = dict.fromkeys(PAYMENT_METHODS, 0)
         for p in self.kept:
             totals[p.method] += p.amount
+        for p in self.voided_earlier:
+            totals[p.method] -= p.amount
         return totals
 
     def by_cashier(self) -> dict[str, int]:
+        """Who took the day's money (the voids of earlier days are apart)."""
         totals: dict[str, int] = {}
         for p in self.kept:
             totals[p.cashier] = totals.get(p.cashier, 0) + p.amount

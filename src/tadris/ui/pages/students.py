@@ -1,6 +1,18 @@
+"""Élèves: the list, and a student's detail page in place of it.
+
+The list: the page's title with « Enregistrer sous… », « PDF », « Excel » (the list as
+filtered, through the Rapports exports) and « Nouvel élève »; the filters, each in an
+input's box with its name inside (« Statut  Actifs ▾ »): the search first, then status,
+level and group, « Réinitialiser » once one is moved; the school's students in four
+figures (active, registered this year, on trial, with no month running); then the list,
+read a page at a time, sorted by the database."""
+
+from pathlib import Path
+
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QComboBox,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -15,12 +27,19 @@ from tadris.core.phones import format_phone
 from tadris.core.text import fold
 from tadris.domain.models import StudentListItem
 from tadris.i18n.fr import t
-from tadris.services import students
+from tadris.services import catalog, reports, students
+from tadris.ui.pages.dashboard import link
+from tadris.ui.pages.reports.exporting import ask_path, export_button, write_report
+from tadris.ui.pages.reports.panels import group_items
+from tadris.ui.pages.reports.view import Tile
 from tadris.ui.pages.student_detail import StudentDetailView
 from tadris.ui.student_dialog import StudentDialog
 from tadris.ui.theme.status import kind_for
-from tadris.ui.widgets.common import ask, primary_button, toast
+from tadris.ui.widgets.chips import Chip
+from tadris.ui.widgets.common import PageBanner, ask, primary_button, toast
+from tadris.ui.widgets.flow import FlowLayout
 from tadris.ui.widgets.forms import ListDetailPage
+from tadris.ui.widgets.inputs import fill_combo
 from tadris.ui.widgets.tables import (
     CENTER,
     ID_ROLE,
@@ -39,6 +58,8 @@ COLUMN_ORDERS = ("number", "last_name", "first_name", "birth_date", "contact", "
 STATUS_FILTERS = (("students.filter.active", "active"),
                   ("students.filter.inactive", "inactive"),
                   ("students.filter.all", None))
+SEARCH_WIDTH = 300
+FILTER_GAP = 8
 
 
 class StudentsPage(ListDetailPage):
@@ -52,6 +73,7 @@ class StudentsPage(ListDetailPage):
         self.open(student_id)
 
     def refresh(self) -> None:
+        self.list.reload_lists()  # a group or a level added elsewhere
         super().refresh()
         if self.detail is not None:
             self.detail.contacts.refresh()  # contacts are shared with siblings
@@ -72,14 +94,29 @@ class StudentListView(QWidget):
         self.new_student.setDefault(False)
         self.new_student.clicked.connect(self._create)
         self.new_student.setVisible(allowed(ctx, "student.create"))
+        self.save_as = link(t["reports.save_as"])
+        self.save_as.clicked.connect(self._save_as)
+        self.pdf = export_button(t["reports.export_pdf"], "file-text")
+        self.pdf.clicked.connect(lambda: self.export("pdf"))
+        self.excel = export_button(t["reports.export_xlsx"], "sheet")
+        self.excel.clicked.connect(lambda: self.export("xlsx"))
+        exports = allowed(ctx, "report.view")
         head = QHBoxLayout()
+        head.setSpacing(8)
         head.addWidget(heading)
         head.addStretch()
+        for widget in (self.save_as, self.pdf, self.excel):
+            widget.setVisible(exports)
+            head.addWidget(widget, 0, Qt.AlignmentFlag.AlignVCenter)
+        head.addSpacing(8)
         head.addWidget(self.new_student)
+        self.banner = PageBanner()
 
         self.search = QLineEdit()
-        self.search.setPlaceholderText(t["students.search"])
+        self.search.setPlaceholderText(t["students.search_short"])
         self.search.setClearButtonEnabled(True)
+        self.search.setMinimumWidth(SEARCH_WIDTH)
+        self.search.setAccessibleName(t["students.search"])
         self._debounce = QTimer(self)
         self._debounce.setSingleShot(True)
         self._debounce.setInterval(SEARCH_DELAY_MS)
@@ -89,12 +126,36 @@ class StudentListView(QWidget):
         self.status = QComboBox()
         for label_key, value in STATUS_FILTERS:
             self.status.addItem(t[label_key], value)
-        self.status.currentIndexChanged.connect(self.refresh)
-        filters = QHBoxLayout()
-        filters.setSpacing(12)
-        filters.addWidget(self.search, 3)
-        filters.addWidget(self.status, 1)
-        filters.addStretch(2)
+        self.level, self.group = QComboBox(), QComboBox()
+        self.reload_lists()
+        for combo in (self.status, self.level, self.group):
+            combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
+            combo.currentIndexChanged.connect(self.refresh)
+        self.chips = [Chip("", self.search, "search", shape="field"),
+                      Chip(t["students.filter.status"], self.status, shape="field"),
+                      Chip(t["students.filter.level"], self.level, shape="field"),
+                      Chip(t["students.filter.group"], self.group, shape="field")]
+        self.reset = link(t["reports.reset"])
+        self.reset.setToolTip(t["reports.reset_filters"])
+        self.reset.clicked.connect(self.reset_filters)
+        reset_box = QWidget()
+        reset_box.setMinimumHeight(36)
+        reset_line = QHBoxLayout(reset_box)
+        reset_line.setContentsMargins(6, 0, 0, 0)
+        reset_line.addWidget(self.reset, 0, Qt.AlignmentFlag.AlignVCenter)
+        self._reset_box = reset_box
+        filters = QWidget()
+        flow = FlowLayout(filters, spacing=FILTER_GAP)
+        for chip in self.chips:
+            flow.addWidget(chip)
+        flow.addWidget(reset_box)
+
+        self.tiles = [Tile(card=True) for _ in range(4)]
+        figures = QGridLayout()
+        figures.setSpacing(16)
+        for i, tile in enumerate(self.tiles):
+            figures.addWidget(tile, 0, i)
+            figures.setColumnStretch(i, 1)
 
         self.table = ruled_table([
             t["students.col.number"],
@@ -125,23 +186,58 @@ class StudentListView(QWidget):
         layout.setContentsMargins(24, 22, 24, 24)
         layout.setSpacing(16)
         layout.addLayout(head)
-        layout.addLayout(filters)
+        layout.addWidget(self.banner)
+        layout.addWidget(filters)
+        layout.addLayout(figures)
         layout.addWidget(self.table, 1)
         layout.addWidget(self.empty)
         layout.addStretch(0)
         layout.addWidget(self.count)
         self.refresh()
 
+    def reload_lists(self) -> None:
+        """The levels and the open year's groups, keeping what is chosen."""
+        fill_combo(self.level, [(t["reports.all_levels"], None)] + [
+            (item.name, item.id) for item in catalog.list_items(self._conn, self._ctx,
+                                                                "level")],
+                   self.level.currentData())
+        fill_combo(self.group, group_items(self._conn, self._ctx), self.group.currentData())
+
+    def _moved(self) -> list[bool]:
+        """Each filter, chip by chip: moved off what the page opens with?"""
+        return [bool(self.search.text().strip()), self.status.currentIndex() != 0,
+                self.level.currentData() is not None, self.group.currentData() is not None]
+
+    def reset_filters(self) -> None:
+        for widget in (self.search, self.status, self.level, self.group):
+            widget.blockSignals(True)
+        self.search.clear()
+        for combo in (self.status, self.level, self.group):
+            combo.setCurrentIndex(0)
+        for widget in (self.search, self.status, self.level, self.group):
+            widget.blockSignals(False)
+        self.refresh()
+
+    def _filter_values(self) -> dict:
+        return {"query": self.search.text(), "status": self.status.currentData(),
+                "level_id": self.level.currentData(), "group_id": self.group.currentData()}
+
     def refresh(self) -> None:
-        """The first page of what the search and the status match, in the column's order;
-        the next pages come as the list is scrolled."""
+        """The first page of what the filters match, in the column's order; the next pages
+        come as the list is scrolled. The figures are the whole school's."""
         self._debounce.stop()
-        self._total = students.count(self._conn, self._ctx, self.search.text(),
-                                     self.status.currentData())
+        for tile, figure in zip(self.tiles, reports.student_tiles(self._conn, self._ctx),
+                                strict=True):
+            tile.show_tile(figure)
+        moved = self._moved()
+        for chip, on in zip(self.chips, moved, strict=True):
+            chip.set_active(on)
+        filtered = any(moved)
+        self._reset_box.setVisible(filtered)
+        self._total = students.count(self._conn, self._ctx, **self._filter_values())
         found = self._page(0)
         self._shown = len(found)
         fill(self.table, [self._cells(s) for s in found])
-        filtered = bool(self.search.text().strip()) or self.status.currentIndex() != 0
         self.empty.setText(t["students.no_match" if filtered else "students.empty"])
         self.empty.setVisible(not found)
         self.table.setVisible(bool(found))
@@ -151,7 +247,7 @@ class StudentListView(QWidget):
     def _page(self, offset: int) -> list[StudentListItem]:
         header = self.table.horizontalHeader()
         return students.search(
-            self._conn, self._ctx, self.search.text(), self.status.currentData(),
+            self._conn, self._ctx, **self._filter_values(),
             order=COLUMN_ORDERS[header.sortIndicatorSection()],
             descending=header.sortIndicatorOrder() == Qt.SortOrder.DescendingOrder,
             limit=PAGE_SIZE, offset=offset)
@@ -194,6 +290,21 @@ class StudentListView(QWidget):
 
     def _open_row(self, index) -> None:
         self.opened.emit(self.table.item(index.row(), 0).data(ID_ROLE))
+
+    # ----- the list as a file -----
+
+    def export(self, fmt: str, path: Path | None = None) -> Path | None:
+        """The list as filtered on screen (« Liste des élèves »), in a PDF or Excel file."""
+        values = self._filter_values()
+        report = reports.student_list(self._conn, self._ctx, values["status"],
+                                      values["level_id"], values["group_id"],
+                                      values["query"])
+        return write_report(self, self._conn, self._ctx, report, fmt, self.banner, path)
+
+    def _save_as(self) -> None:
+        chosen = ask_path(self, reports.STUDENT_LIST_KEY)
+        if chosen is not None:
+            self.export(*chosen)
 
     def _create(self) -> None:
         dialog = StudentDialog(self._conn, self._ctx, parent=self)

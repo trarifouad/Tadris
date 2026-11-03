@@ -6,10 +6,21 @@ def rgba(hex_color: str, alpha: float) -> str:
     return f"rgba({r}, {g}, {b}, {alpha})"
 
 
+def mix(top: str, under: str, alpha: float) -> str:
+    """`top` laid over `under` at `alpha`, as a solid hex."""
+    a = [int(top[i:i + 2], 16) for i in (1, 3, 5)]
+    b = [int(under[i:i + 2], 16) for i in (1, 3, 5)]
+    return "#" + "".join(f"{round(x * alpha + y * (1 - alpha)):02x}" for x, y in zip(a, b))
+
+
 def build_qss(t: dict, chevron: str = "", check: str = "") -> str:
     """chevron, check: absolute paths (forward slashes) of the combo-box arrow and the
     check-box tick for this theme."""
     chalk_dim = rgba(t["chalk"], 0.74)
+    # A soft fill on a sheet: the ink, faint. Lighter than the sheet in the dark theme,
+    # darker in the light one (the page's `bg` would be a hole in the dark). Solid: a
+    # header section painted in rgba shows what is under it, black.
+    tint = mix(t["text"], t["surface"], 0.045)
     badges = "\n".join(
         f'    QLabel#badge[kind="{kind}"] {{ background: {t[kind + "_bg"]}; color: {t[kind]}; }}'
         for kind in BADGE_KINDS
@@ -45,6 +56,49 @@ def build_qss(t: dict, chevron: str = "", check: str = "") -> str:
                                   background: {t['primary_soft']}; }}
     QFrame#filterPanel {{ background: {t['surface']}; border: 1px solid {t['border']};
                           border-radius: 10px; }}
+    /* Rapports: the report as one sheet (ui/pages/reports). */
+    QFrame#sheet {{ background: {t['surface']}; border: 1px solid {t['border']};
+                    border-radius: 14px; }}
+    QLabel#sheetTitle {{ font-family: "Reem Kufi"; font-size: 22px; font-weight: 600; }}
+    QLabel#sheetPeriod {{ font-size: 13px; color: {t['muted']}; }}
+    QPushButton#sheetAction {{ min-height: 32px; max-height: 32px; padding: 0 14px 0 10px;
+        font-size: 13px; border-radius: 16px; }}
+    QFrame#chip {{ background: {t['surface']}; border: 1px solid {t['border_strong']};
+                   border-radius: 18px; min-height: 34px; }}
+    QFrame#chip:hover {{ border-color: {t['faint']}; }}
+    QFrame#chip[active="true"] {{ background: {t['primary_soft']};
+                                  border-color: {t['primary']}; }}
+    QFrame#chip[focused="true"] {{ border: 1px solid {t['focus']};
+                                   background: {t['primary_soft']}; }}
+    QFrame#chip QLabel {{ background: transparent; }}
+    QLabel#chipLabel {{ font-size: 12.5px; font-weight: 500; color: {t['muted']}; }}
+    QFrame#chip[active="true"] QLabel#chipLabel {{ color: {t['primary']}; }}
+    QFrame#chip QComboBox, QFrame#chip QLineEdit {{ border: none; background: transparent;
+        min-height: 32px; padding: 0 2px; font-size: 13.5px; font-weight: 500; }}
+    QFrame#chip QComboBox:focus, QFrame#chip QLineEdit:focus {{ border: none;
+        padding: 0 2px; }}
+    QFrame#chip QComboBox::drop-down {{ width: 22px; }}
+    /* The same filter in the box of an ordinary input (a list page): 6 px corners, the
+       inputs' height; changed, only its border and name turn violet. */
+    QFrame#chip[shape="field"] {{ border-radius: 6px; min-height: 36px; }}
+    QFrame#chip[shape="field"][active="true"] {{ background: {t['surface']};
+        border-color: {t['primary']}; }}
+    QFrame#chip[shape="field"][focused="true"] {{ background: {t['surface']}; }}
+    QFrame#kpi {{ background: {tint}; border: none; border-radius: 12px; }}
+    QFrame#kpi QLabel {{ background: transparent; }}
+    QLabel#kpiLabel {{ font-size: 12.5px; font-weight: 500; color: {t['muted']}; }}
+    QLabel#kpiValue {{ font-family: "Reem Kufi"; font-size: 24px; font-weight: 600; }}
+    QLabel#blockTitle {{ font-size: 14px; font-weight: 600; }}
+    QLabel#readoutMonth {{ font-size: 12px; font-weight: 600; color: {t['primary']}; }}
+    QLabel#tableCount {{ font-weight: 600; color: {t['text']}; }}
+    QTableView#reportTable {{ border: none; border-radius: 0; }}
+    QTableView#reportTable QHeaderView::section {{ background: {tint}; }}
+    QTableView#totalBar {{ background: transparent; border: none; border-radius: 0;
+        border-top: 1px solid {t['rule_strong']}; }}
+    QFrame#sheetFoot {{ background: {tint}; border: none; border-top: 1px solid {t['border']};
+        border-bottom-left-radius: 13px; border-bottom-right-radius: 13px; }}
+    QFrame#sheetFoot QLabel {{ background: transparent; }}
+    QLabel#noteText {{ font-size: 12.5px; color: {t['muted']}; }}
     QPushButton#backLink {{ border: none; background: transparent; color: {t['primary']};
         font-weight: 600; padding: 0 10px; min-height: 30px; border-radius: 6px; }}
     QPushButton#backLink:hover {{ background: {t['primary_soft']}; }}

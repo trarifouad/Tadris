@@ -3,7 +3,9 @@ charges they pay.
 
 A charge belongs to a student through its registration (the fee) or its subscription's
 enrollment (a month). What was paid on a charge is the sum of its allocations from payments
-not voided. Rows here are never updated or deleted (triggers): a void is a new row.
+not voided. Rows here are never updated or deleted (triggers): a void is a new row. A payment
+may pay one charge in several rows, one per recording (its own, then a later one using its
+credit), so its allocations are always summed.
 """
 
 # The student of a charge, whatever its parent.
@@ -146,6 +148,15 @@ def on_day(conn, day: str) -> list:
     ).fetchall()
 
 
+def voided_on(conn, day: str) -> list:
+    """Payments received before one day ('YYYY-MM-DD') and voided on it, in order."""
+    return conn.execute(
+        f"SELECT {_PAYMENT_COLUMNS} {_PAYMENT_FROM} WHERE substr(v.voided_at, 1, 10) = ? "
+        "AND substr(p.paid_at, 1, 10) < ? ORDER BY v.voided_at, p.id",
+        (day, day),
+    ).fetchall()
+
+
 def with_credit(conn, student_id: int | None = None) -> list:
     """Payments not voided with an amount left to allocate, oldest first (rows: id,
     student_id, amount, allocated)."""
@@ -166,13 +177,17 @@ def with_credit(conn, student_id: int | None = None) -> list:
 
 
 def allocations(conn, payment_id: int) -> list:
-    """What a payment paid, in the order of the charges' due dates."""
+    """What a payment paid, charge by charge, in the order of the charges' due dates. A charge
+    it paid twice (its credit used again after a void made the charge owed again, 0018) is one
+    line with the sum."""
     return conn.execute(
         """
-        SELECT pa.id, pa.charge_id, pa.amount, c.description, c.due_date, c.amount AS charge_amount
+        SELECT pa.charge_id, SUM(pa.amount) AS amount, c.description, c.due_date,
+               c.amount AS charge_amount
           FROM payment_allocations pa
           JOIN charges c ON c.id = pa.charge_id
          WHERE pa.payment_id = ?
+         GROUP BY pa.charge_id
          ORDER BY c.due_date, c.id
         """,
         (payment_id,),

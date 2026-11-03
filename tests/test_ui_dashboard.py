@@ -120,6 +120,20 @@ def test_dashboard_for_the_director_on_the_school(qtbot, conn, director, school)
     assert page.backup.text.text() == "Pas encore de sauvegarde aujourd'hui"
 
 
+def test_the_cash_chart_has_room_for_the_whole_month(qtbot, conn, director, school):
+    """October the 18th: 31 places, the days still to come pick none."""
+    page = DashboardPage(conn, director)
+    qtbot.addWidget(page)
+    page.show()
+    chart = page.cash.chart
+    plot = chart._plot()
+
+    def at(day: int) -> int:
+        return chart._index_at(plot.left() + plot.width() / 31 * (day - 0.5))
+
+    assert (at(1), at(3), at(18), at(19), at(31)) == (0, 2, 17, -1, -1)
+
+
 def test_receptionist_sees_no_money_and_no_backup(qtbot, conn, desk, school):
     page = DashboardPage(conn, desk)
     qtbot.addWidget(page)

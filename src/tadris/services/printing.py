@@ -253,9 +253,16 @@ def payout_slip_content(conn, ctx: UserContext, payout_id: int) -> PayoutSlip:
     group_rows = [[line.group_title, str(line.students), str(line.months),
                    format_dzd(line.revenue_basis), format_percent(line.percentage_bp),
                    format_dzd(line.amount)] for line in payouts.lines(conn, ctx, payout_id)]
+    counted = payouts.months(conn, ctx, payout_id)
     detail_rows = [[m.student_name, m.group_title, dates.display_date(m.accrual_date),
                     format_dzd(m.amount), format_percent(m.percentage_bp), format_dzd(m.share)]
-                   for m in payouts.months(conn, ctx, payout_id)]
+                   for m in counted]
+    note = t["payout_slip.note"]
+    # Each month's share is rounded down alone, each line once: the months may add up to a
+    # few dinars less than the total, which is what is paid.
+    gap = p.amount_due - sum(m.share for m in counted)
+    if gap:
+        note += " " + t["payout_slip.rounding"].format(gap=format_dzd(gap))
     stamp_day = p.paid_at or p.approved_at or p.created_at
     return PayoutSlip(
         school=school_of(conn), title=t["payout_slip.title"],
@@ -271,7 +278,7 @@ def payout_slip_content(conn, ctx: UserContext, payout_id: int) -> PayoutSlip:
         detail_columns=[t["payout_slip.col.student"], t["payout_slip.col.group"],
                         t["payout_slip.col.from"], t["payout_slip.col.price"],
                         t["payout_slip.col.rate"], t["payout_slip.col.share"]],
-        detail_rows=detail_rows, note=t["payout_slip.note"],
+        detail_rows=detail_rows, note=note,
         stamp=t[f"payout_stamp.{p.status}"], stamp_date=dates.display_date(stamp_day),
         signature=t["payout_slip.signature"], footer=footer_for(ctx))
 

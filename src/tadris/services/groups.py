@@ -9,11 +9,13 @@ from tadris.db.errors import atomic
 from tadris.domain.models import Group, GroupInput, TeacherPeriod
 from tadris.i18n.fr import t
 from tadris.repositories import groups as repo
+from tadris.repositories import teachers as teachers_repo
 from tadris.repositories import timetable as timetable_repo
 from tadris.repositories.students import like_pattern
 from tadris.services import (
     audit,
     catalog,
+    payouts,
     school_years,
     sessions,
     settings,
@@ -25,7 +27,9 @@ from tadris.services import (
 # subscription when it is created, so a price change only affects later subscriptions.
 # The teacher is kept as history in group_teachers, half-open [valid_from, valid_to): a change
 # closes the current period and opens a new one; a change on the current period's own start
-# date corrects it, unless that teacher was already paid for the group. A change can be
+# date corrects it, unless that teacher was already paid for the group. A later change never
+# starts on or before a month already paid to the current teacher (an approved or paid
+# payout counts it), and the teachers' drafts follow it. A change can be
 # planned for a later date; until then the group shows its current teacher. A teacher takes
 # a group only from a day they have a rate (each month is paid at the rate of its first day).
 
@@ -204,11 +208,21 @@ def change_teacher(conn, ctx: UserContext, group_id: int, teacher_id: int,
                 raise BusinessRuleError(t["group.teacher_locked"])
             repo.correct_teacher_row(conn, current["id"], teacher_id)
         else:
+            paid_until = repo.last_month_paid_to(conn, group_id, current["teacher_id"])
+            if paid_until is not None and start <= paid_until:
+                raise BusinessRuleError(t["group.teacher_paid_until"].format(
+                    teacher=teachers_repo.get(conn, current["teacher_id"], _today())["full_name"],
+                    date=dates.display_date(paid_until)))
             repo.close_teacher_row(conn, current["id"], start)
             repo.insert_teacher_row(conn, group_id, teacher_id, start)
         audit.log(conn, ctx, "group.change_teacher", "class_groups", group_id,
                   old={"teacher_id": None if current is None else current["teacher_id"]},
                   new={"teacher_id": teacher_id, "valid_from": start})
+        # Each month is paid to the teacher of its first day: the drafts counting months from
+        # `start` are built again, the old teacher's letting them go, the new one's taking them.
+        if current is not None:
+            payouts.refresh_draft(conn, ctx, current["teacher_id"], start)
+        payouts.refresh_draft(conn, ctx, teacher_id, start)
         sessions.generate_in(conn)
 
 

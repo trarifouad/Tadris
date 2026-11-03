@@ -95,13 +95,20 @@ def attendance_by_student(conn, first: str, last: str, group_id: int | None) -> 
     ).fetchall()
 
 
+def previous_year_end(conn, start: str) -> str | None:
+    """The last day of the latest school year that ends before `start`."""
+    return conn.execute("SELECT MAX(end_date) FROM school_years WHERE end_date < ?",
+                        (start,)).fetchone()[0]
+
+
 def payouts_by_teacher(conn, first: str, last: str) -> list:
-    """Per teacher: paid in [first, last] (by the payout's date), and waiting (draft or
+    """Per teacher: paid for the months of [first, last] (the payout's period ends in it,
+    whenever it was handed over: June's pay given in July is June's), and waiting (draft or
     approved, whatever their dates)."""
     return conn.execute(
         """
         SELECT teacher_id,
-               SUM(CASE WHEN status = 'paid' AND substr(paid_at, 1, 10) BETWEEN :first AND :last
+               SUM(CASE WHEN status = 'paid' AND period_end BETWEEN :first AND :last
                         THEN amount_paid ELSE 0 END) AS paid,
                SUM(CASE WHEN status IN ('draft', 'approved') THEN amount_due ELSE 0 END)
                    AS waiting

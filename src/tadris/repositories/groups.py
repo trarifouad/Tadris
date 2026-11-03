@@ -179,6 +179,21 @@ def move_teacher_row_start(conn, row_id: int, valid_from: str) -> None:
     conn.execute("UPDATE group_teachers SET valid_from = ? WHERE id = ?", (valid_from, row_id))
 
 
+def last_month_paid_to(conn, group_id: int, teacher_id: int) -> str | None:
+    """The first day of the group's latest month that an approved or paid payout of the
+    teacher counts; None when none does."""
+    return conn.execute(
+        """
+        SELECT MAX(c.accrual_date) FROM payout_line_charges plc
+          JOIN payout_lines l ON l.id = plc.payout_line_id
+          JOIN teacher_payouts p ON p.id = l.payout_id
+          JOIN charges c ON c.id = plc.charge_id
+         WHERE l.group_id = ? AND p.teacher_id = ? AND p.status <> 'draft'
+        """,
+        (group_id, teacher_id),
+    ).fetchone()[0]
+
+
 def teacher_paid_for_group(conn, group_id: int, teacher_id: int) -> bool:
     """The teacher has payout lines for this group in an approved or paid payout."""
     row = conn.execute(

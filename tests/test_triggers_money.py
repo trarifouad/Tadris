@@ -58,3 +58,59 @@ def test_void_after_teacher_payout(seeded):
 def test_charge_amount_cannot_change(seeded):
     with pytest.raises(sqlite3.IntegrityError):
         seeded.execute("UPDATE charges SET amount=1 WHERE id=1")
+
+
+def alloc_with(c, payment, charge, amount, recorded_with):
+    c.execute("INSERT INTO payment_allocations(payment_id,charge_id,amount,recorded_with) "
+              "VALUES(?,?,?,?)", (payment, charge, amount, recorded_with))
+
+
+def test_a_payment_pays_a_charge_again_in_a_later_recording(seeded):
+    """0018: its own recording, then a later one using its credit; never twice in one."""
+    seeded.execute("INSERT INTO payments(student_id,amount,method,paid_at,received_by) "
+                   "VALUES(1,100,'cash','2026-09-03T10:00:00',1)")
+    alloc_with(seeded, 1, 1, 1000, 1)
+    alloc_with(seeded, 1, 1, 1000, 2)
+    with pytest.raises(sqlite3.IntegrityError, match="UNIQUE"):
+        alloc_with(seeded, 1, 1, 500, 2)
+    with pytest.raises(sqlite3.IntegrityError, match="exceed payment"):
+        alloc_with(seeded, 1, 1, 1001, None)  # 3 000 at most, whatever the rows
+
+
+def test_0018_keeps_every_allocation_and_its_id():
+    """A version 17 database: the rows, their ids and the next id are kept; the same payment
+    can then pay its charge again."""
+    from tadris.db.connection import connect
+    from tadris.db.migrate import _files, migrate
+
+    c = connect(":memory:")
+    for version, file in _files():
+        if version > 17:
+            break
+        c.executescript(f"BEGIN IMMEDIATE;\n{file.read_text(encoding='utf-8')}\n"
+                        f"PRAGMA user_version = {version};\nCOMMIT;")
+    c.executescript("""
+    INSERT INTO school_years(label,start_date,end_date) VALUES('2026-2027','2026-09-01','2027-06-30');
+    INSERT INTO levels(name) VALUES('3AM');
+    INSERT INTO users(username,password_hash,role) VALUES('u','x','director');
+    INSERT INTO students(student_number,first_name,last_name) VALUES('2026-0001','A','B');
+    INSERT INTO registrations(student_id,school_year_id,level_id,fee_amount) VALUES(1,1,1,2000);
+    INSERT INTO charges(registration_id,description,amount,due_date,accrual_date)
+      VALUES(1,'Frais',2000,'2026-09-01','2026-09-01');
+    INSERT INTO charges(registration_id,description,amount,due_date,accrual_date)
+      VALUES(1,'Frais bis',500,'2026-09-01','2026-09-01');
+    INSERT INTO payments(student_id,amount,method,paid_at,received_by)
+      VALUES(1,3000,'cash','2026-09-02T10:00:00',1);
+    INSERT INTO payment_allocations(payment_id,charge_id,amount,recorded_with) VALUES(1,1,500,1);
+    INSERT INTO payment_allocations(payment_id,charge_id,amount) VALUES(1,2,500);  -- before 0016
+    """)
+    before = [tuple(r) for r in c.execute("SELECT * FROM payment_allocations ORDER BY id")]
+    assert migrate(c) == 18
+    assert [tuple(r) for r in c.execute("SELECT * FROM payment_allocations ORDER BY id")] == before
+    c.execute("INSERT INTO payments(student_id,amount,method,paid_at,received_by) "
+              "VALUES(1,100,'cash','2026-09-03T10:00:00',1)")
+    alloc_with(c, 1, 1, 500, 2)  # refused by the old UNIQUE (payment, charge)
+    assert c.execute("SELECT MAX(id) FROM payment_allocations").fetchone()[0] == 3
+    assert c.execute("PRAGMA foreign_key_check").fetchall() == []
+    with pytest.raises(sqlite3.IntegrityError, match="immutable"):
+        c.execute("DELETE FROM payment_allocations")

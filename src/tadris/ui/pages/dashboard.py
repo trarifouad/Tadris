@@ -9,6 +9,7 @@ card's link opens the page that handles the whole list.
 It is read at a glance, so the page never scrolls: each list shows as many rows as the window
 leaves room for (the lists of a column share it)."""
 
+import calendar
 import html
 import math
 from collections.abc import Callable
@@ -344,8 +345,10 @@ class ListCard(Card):
 # ----- the money of the month -----
 
 class CashChart(QWidget):
-    """A bar a day: what was received. A closed day is a stub on the axis; the dashed line is
-    the average of the days open. The mouse picks a day (`hovered`, -1 when it leaves)."""
+    """A bar a day: what was received. The whole month has its place from the 1st (the days
+    come from the 1st to today): the days still to come are only their number, faint, and the
+    mouse picks none. A closed day is a stub on the axis; the dashed line is the average of
+    the days open. The mouse picks a day (`hovered`, -1 when it leaves)."""
 
     hovered = Signal(int)
     GUTTER = 48  # the scale's figures
@@ -356,11 +359,14 @@ class CashChart(QWidget):
         self.setMouseTracking(True)
         self.setMinimumHeight(180)
         self._days: tuple[DayCash, ...] = ()
+        self._slots = 0  # the days of the month
         self._average = 0
         self.hover = -1
 
     def set_days(self, days: tuple[DayCash, ...], average: int) -> None:
         self._days, self._average, self.hover = days, average, -1
+        self._slots = calendar.monthrange(int(days[0].day[:4]),
+                                          int(days[0].day[5:7]))[1] if days else 0
         self.update()
 
     def _plot(self) -> QRectF:
@@ -371,8 +377,8 @@ class CashChart(QWidget):
         plot = self._plot()
         if not self._days or not plot.left() <= x < plot.right():
             return -1
-        return min(int((x - plot.left()) / (plot.width() / len(self._days))),
-                   len(self._days) - 1)
+        index = int((x - plot.left()) / (plot.width() / self._slots))
+        return index if index < len(self._days) else -1
 
     def mouseMoveEvent(self, event) -> None:
         index = self._index_at(event.position().x())
@@ -412,28 +418,30 @@ class CashChart(QWidget):
                              figure(k * step))
         if not self._days:
             return
-        slot = plot.width() / len(self._days)
+        slot = plot.width() / self._slots
         bar = min(slot * 0.72, 28)
         every = 1 if slot >= 18 else 2
         soft = QColor(blend(tk["primary"], tk["surface"], 0.45))
-        for i, day in enumerate(self._days):
+        for i in range(self._slots):
             middle = plot.left() + slot * (i + 0.5)
+            day = self._days[i] if i < len(self._days) else None  # None: still to come
             picked = i == self.hover
             painter.setPen(Qt.PenStyle.NoPen)
-            if day.amount > 0:
+            if day is not None and day.amount > 0:
                 height = max(day.amount / top * plot.height(), 2)
                 painter.setBrush(QColor(tk["primary"]) if picked else soft)
                 painter.drawRoundedRect(QRectF(middle - bar / 2, plot.bottom() - height, bar,
                                                height), 2, 2)
-            elif not day.open:
+            elif day is not None and not day.open:
                 painter.setBrush(QColor(tk["border_strong"]))
                 painter.drawRect(QRectF(middle - bar / 2, plot.bottom() - 2, bar, 2))
             if i % every == 0 or picked:
-                color = tk["text"] if picked else (tk["muted"] if day.open else tk["faint"])
+                color = tk["text"] if picked else (
+                    tk["muted"] if day is not None and day.open else tk["faint"])
                 painter.setPen(QColor(color))
                 painter.drawText(QRectF(middle - slot, plot.bottom() + 4, slot * 2,
                                         self.LABELS - 4), Qt.AlignmentFlag.AlignCenter,
-                                 str(int(day.day[8:])))
+                                 str(i + 1))
         if self._average > 0:
             pen = QPen(QColor(tk["primary"]), 1, Qt.PenStyle.CustomDashLine)
             pen.setDashPattern([4, 3])

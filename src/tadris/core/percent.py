@@ -28,6 +28,12 @@ def format_percent(bp: int) -> str:
     return f"{whole},{rest:02d}".rstrip("0") + " %"
 
 
+def ratio_bp(part: int, whole: int) -> int:
+    """part / whole in basis points, to the nearest (a half up): 4,347 % -> 435 (4,35 %).
+    For a rate shown (what is left to pay, attendance); money uses apply_rate. whole > 0."""
+    return (part * 20000 + whole) // (2 * whole)
+
+
 def apply_rate(amount: int, bp: int) -> int:
     """Whole-DZD share of an amount at a rate, rounded down (payouts never overpay)."""
     return amount * bp // 10000

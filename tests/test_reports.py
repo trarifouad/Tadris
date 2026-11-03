@@ -109,8 +109,8 @@ def tiles(report) -> list:
 # ----- who sees what -----
 
 def test_the_desk_sees_attendance_and_students(desk, director):
-    assert reports.available(director) == ["revenue", "attendance", "teachers", "students"]
-    assert reports.available(desk) == ["attendance", "students"]
+    assert reports.available(director) == ["revenue", "attendance", "teachers"]
+    assert reports.available(desk) == ["attendance"]  # the students' list: the Élèves page
 
 
 def test_money_reports_are_the_directors(conn, desk, school):
@@ -161,6 +161,40 @@ def test_a_cancelled_month_does_not_count(conn, director, school):
     assert report.tiles[0].value == 31000
 
 
+def test_the_summer_before_the_year_is_its(conn, director, monkeypatch):
+    """Registered and paid on 25/08, before the year's first day: the fee and the money
+    count in the year, in an August row; the summer after the previous year too, never
+    before it."""
+    monkeypatch.setattr(dates, "today", lambda: date(2026, 8, 25))
+    old = school_years.create(conn, director, "2025-2026", date(2025, 9, 1),
+                              date(2026, 6, 30))
+    school_years.close(conn, director, old)
+    year = school_years.create(conn, director, "2026-2027", date(2026, 9, 1),
+                               date(2027, 6, 30))
+    level = catalog.create(conn, director, "level", "4AM")
+    student = students.create(conn, director, StudentInput("Amine", "Test"))
+    registrations.register(conn, director, student, level, 1500)
+    payments.record(conn, director, student, 1500, "cash")
+    monkeypatch.setattr(dates, "today", lambda: TODAY)
+    report = reports.revenue(conn, director, year)
+    assert tiles(report) == [("Facturé", 1500), ("Encaissé", 1500), ("Reste dû", 0),
+                             ("Part école", 1500)]
+    assert report.rows[0] == ("Août 2026", 1500, 1500, 0, 1500, 0, 1500)
+    assert len(report.rows) == 11  # August, then September to June
+    assert tiles(reports.revenue(conn, director, old))[:2] == [("Facturé", 0), ("Encaissé", 0)]
+
+
+def test_june_paid_in_july_is_the_years(conn, director, school, monkeypatch):
+    """A June payout handed over on 02/07: paid for the year, not waiting."""
+    monkeypatch.setattr(dates, "today", lambda: date(2027, 7, 2))
+    payout = payouts.build_draft(conn, director, school.karim, date(2027, 6, 30))
+    payouts.approve(conn, director, payout)
+    payouts.mark_paid(conn, director, payout, "cash")
+    karim = next(row for row in reports.teacher_summary(conn, director, school.year).rows
+                 if row[0] == "Karim Haddad")
+    assert (karim[5], karim[6], karim[7]) == (18000, 18000, 0)  # share due, paid, waiting
+
+
 def test_the_teachers_share_follows_the_rate_of_the_months_first_day(conn, director, school):
     teachers.set_rate(conn, director, school.karim, 5000, date(2026, 10, 1))
     by_month = {row[0]: row for row in reports.revenue(conn, director, school.year).rows}
@@ -187,13 +221,15 @@ def marked(conn, director, school, monkeypatch):
 
 def test_attendance_by_group(conn, desk, marked):
     report = reports.attendance(conn, desk, date(2026, 10, 1), date(2026, 10, 31))
-    assert tiles(report) == [("Taux de présence", 6666), ("Séances tenues", 2),
-                             ("Absences", 1), ("Retards", 1)]
+    assert tiles(report) == [("Taux de présence", 6667), ("Séances tenues", 2),  # 2 of 3, rounded
+                             ("Présences", 2), ("Absences", 1)]
+    # Two marks only: Dalia, late, came (Présent); no « Retard » nor « Excusé » column.
+    assert [c.title for c in report.columns][-3:] == ["Présent", "Absent", "Taux de présence"]
     assert report.rows == (
-        ("A · Maths 4AM", "Karim Haddad", 1, 2, 1, 0, 1, 0, 5000),
-        ("C · Arabe 4AM", "Samia Rahmani", 1, 1, 0, 1, 0, 0, 10000))
+        ("A · Maths 4AM", "Karim Haddad", 1, 2, 1, 1, 5000),
+        ("C · Arabe 4AM", "Samia Rahmani", 1, 1, 1, 0, 10000))
     assert report.tones == ("danger", None)  # under 75 %
-    assert report.total == ("Total", None, 2, None, 1, 1, 1, 0, 6666)
+    assert report.total == ("Total", None, 2, None, 2, 1, 6667)
     assert report.chart.labels == ("C · Arabe 4AM", "A · Maths 4AM")  # best first
     assert report.period == "Du 01/10/2026 au 31/10/2026"
 

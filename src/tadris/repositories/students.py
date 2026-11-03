@@ -74,9 +74,13 @@ ORDERS = {
 }
 
 
-def _where(terms: list[tuple[str, str | None]], status: str | None) -> tuple[str, list]:
+def _where(terms: list[tuple[str, str | None]], status: str | None,
+           level: tuple[int, int] | None = None,
+           group_id: int | None = None) -> tuple[str, list]:
     """Each term is (folded text, digits or None). A student matches when every term matches
-    its first name, last name or number, or one of its contacts' phones (digits)."""
+    its first name, last name or number, or one of its contacts' phones (digits).
+    level: (school year, level): registered at that level that year. group_id: in that
+    group now (trial or active)."""
     where: list[str] = []
     params: list = []
     for text, digit_text in terms:
@@ -98,14 +102,25 @@ def _where(terms: list[tuple[str, str | None]], status: str | None) -> tuple[str
     if status is not None:
         where.append("s.status = ?")
         params.append(status)
+    if level is not None:
+        where.append("""EXISTS (SELECT 1 FROM registrations r
+                                 WHERE r.student_id = s.id AND r.school_year_id = ?
+                                   AND r.status = 'active' AND r.level_id = ?)""")
+        params += list(level)
+    if group_id is not None:
+        where.append("""EXISTS (SELECT 1 FROM enrollments e
+                                 WHERE e.student_id = s.id AND e.group_id = ?
+                                   AND e.status IN ('trial', 'active'))""")
+        params.append(group_id)
     return (f"WHERE {' AND '.join(where)}" if where else ""), params
 
 
 def search(conn, terms: list[tuple[str, str | None]], status: str | None,
            order: str = "last_name", descending: bool = False, limit: int | None = None,
-           offset: int = 0) -> list:
+           offset: int = 0, level: tuple[int, int] | None = None,
+           group_id: int | None = None) -> list:
     """Students matching every term, in `order` (a key of ORDERS); limit/offset: one page."""
-    clause, params = _where(terms, status)
+    clause, params = _where(terms, status, level, group_id)
     direction = " DESC" if descending else ""
     order_by = ", ".join(part + direction for part in ORDERS[order])
     page = "" if limit is None else f"LIMIT {int(limit)} OFFSET {int(offset)}"
@@ -121,8 +136,9 @@ def search(conn, terms: list[tuple[str, str | None]], status: str | None,
     ).fetchall()
 
 
-def count(conn, terms: list[tuple[str, str | None]], status: str | None) -> int:
-    clause, params = _where(terms, status)
+def count(conn, terms: list[tuple[str, str | None]], status: str | None,
+          level: tuple[int, int] | None = None, group_id: int | None = None) -> int:
+    clause, params = _where(terms, status, level, group_id)
     return conn.execute(f"SELECT COUNT(*) {_LIST_FROM} {clause}", params).fetchone()[0]
 
 

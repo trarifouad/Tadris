@@ -1,16 +1,28 @@
-"""What every report shows, in the same frame: four figures, a chart when the report has one,
-then the table in a card (its views on the right of its title, « Par mois | Par groupe »),
-sortable, the total in a strip under it that stays in place, and how it is counted.
+"""The body of a report, on the sheet, from top to bottom:
+
+- The figures as four soft blocks (label, figure, one small line). With a chart they stand
+  two by two on the left and the chart takes the rest of the line; without one, in a row.
+- The chart: bars by month, one month read out on the right (the hovered one, else the
+  latest with figures), its dot-coloured figures standing in for a legend; or the groups'
+  attendance, the lowest first, eight of them until « Voir les N groupes ».
+- A rule, then the table, flat on the sheet: how many lines and what a double-click opens
+  above it, sortable, the total as its last line (it stays there whatever the order).
+  Figures in the UI font with tabular digits; a zero or a « — » faint. Nothing to show:
+  an empty state that offers to reset the filters.
+- At the foot of the sheet, how it is counted, its lines kept short enough to read.
+
 `opened(page, id)`: a row was double-clicked or Enter pressed on it (a student, a
-group, a teacher)."""
+group, a teacher). `reset_requested`: the empty state's « Réinitialiser les filtres »."""
 
 from PySide6.QtCore import QEvent, Qt, Signal
+from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QFrame,
     QGridLayout,
     QHBoxLayout,
     QHeaderView,
+    QLabel,
     QSizePolicy,
     QTableWidget,
     QVBoxLayout,
@@ -19,11 +31,15 @@ from PySide6.QtWidgets import (
 
 from tadris.core.cells import NUMERIC, display, tile_text
 from tadris.core.money import format_dzd
+from tadris.core.percent import format_percent
 from tadris.domain.models import Report, ReportColumn, ReportTile
 from tadris.i18n.fr import t
-from tadris.ui.pages.dashboard import PAD, Card, label
-from tadris.ui.pages.reports.charts import BarsChart, RatesChart, series_colors
-from tadris.ui.widgets.compact import Segments
+from tadris.ui.pages.dashboard import capitalized, label, plural
+from tadris.ui.pages.dues_view import tabular
+from tadris.ui.pages.reports.charts import BarsChart, RatesBars, rate_tone, series_colors
+from tadris.ui.pages.student_overview import EmptyState
+from tadris.ui.theme import tokens
+from tadris.ui.widgets.compact import heading, rule
 from tadris.ui.widgets.forms import caption
 from tadris.ui.widgets.tables import (
     ID_ROLE,
@@ -35,25 +51,31 @@ from tadris.ui.widgets.tables import (
     ruled_table,
 )
 
-MAX_TABLE_ROWS = 14  # taller than this, the table scrolls inside its card
+SHEET_PAD = 28  # the sheet's side margin
+MAX_TABLE_ROWS = 14  # taller than this, the table scrolls inside the sheet
 WIDE_MIN, WIDE_MAX = 160, 260  # the widest text column when the window is short of room
+NOTE_WIDTH = 860  # « how it is counted »: about 120 characters a line, no more
+KPI_GAP = 12
 
 
 class Tile(QFrame):
-    def __init__(self):
+    """One figure: its label, the figure, one small line. On the report's sheet a soft
+    block; card=True, on a page's background (Élèves), an ordinary card with its border."""
+
+    def __init__(self, card: bool = False):
         super().__init__()
-        self.setObjectName("card")
-        self.name = caption()
-        self.value = label("", "bigNumber")
+        self.setObjectName("card" if card else "kpi")
+        self.name = label("", "kpiLabel")
+        self.value = label("", "kpiValue")
         self.note = caption()
         self.note.setWordWrap(True)
         box = QVBoxLayout(self)
-        box.setContentsMargins(PAD, 14, PAD, 14)
+        box.setContentsMargins(16, 12, 16, 12)
         box.setSpacing(2)
         box.addWidget(self.name)
         box.addWidget(self.value)
         box.addWidget(self.note)
-        box.setAlignment(Qt.AlignmentFlag.AlignTop)  # a short note: the figure stays level
+        box.addStretch()
 
     def show_tile(self, tile: ReportTile) -> None:
         self.name.setText(tile.label)
@@ -62,7 +84,7 @@ class Tile(QFrame):
 
 
 class TotalBar(QTableWidget):
-    """The report's total, one row under the table, column for column (it follows the
+    """The report's total, one line under the table, column for column (it follows the
     table's widths); it stays at the bottom whatever the table's order."""
 
     def __init__(self, table: QTableWidget):
@@ -73,6 +95,7 @@ class TotalBar(QTableWidget):
         self.verticalHeader().hide()
         self.verticalHeader().setDefaultSectionSize(ROW_HEIGHT)
         self.setShowGrid(False)
+        self.setWordWrap(False)
         self.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -95,48 +118,108 @@ class TotalBar(QTableWidget):
             self.setSpan(0, 0, 1, span)
         for c, cell in enumerate(cells):
             font = cell.font()
-            font.setWeight(font.Weight.DemiBold)
+            font.setWeight(QFont.Weight.DemiBold)
             cell.setFont(font)
             self.setItem(0, c, cell)
             self.setColumnWidth(c, self._table.columnWidth(c))
 
 
+class NoteText(QLabel):
+    """Wrapped text no wider than NOTE_WIDTH, its height measured at that width: the layout
+    asks for the height at the whole sheet's width, and a second line was cut off."""
+
+    def heightForWidth(self, width: int) -> int:
+        return super().heightForWidth(min(width, self.maximumWidth()))
+
+
+class NoteBlock(QFrame):
+    """How a report is counted, at the foot of the sheet."""
+
+    def __init__(self):
+        super().__init__()
+        self.setObjectName("sheetFoot")
+        self.text = NoteText()
+        self.text.setObjectName("noteText")
+        self.text.setWordWrap(True)
+        self.text.setMaximumWidth(NOTE_WIDTH)
+        self.text.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        box = QVBoxLayout(self)
+        box.setContentsMargins(SHEET_PAD, 14, SHEET_PAD, 18)
+        box.setSpacing(4)
+        box.addWidget(heading(t["reports.note_title"]))
+        box.addWidget(self.text)
+
+    def setText(self, text: str) -> None:  # a QLabel's name: the view sets it as before
+        self.text.setText(text)
+
+
+class ChartBlock(QWidget):
+    """The chart beside the figures: its title and one line under it on the left, the
+    readout on the right: the month picked (bars) or the group picked (rates)."""
+
+    def __init__(self):
+        super().__init__()
+        self.title = label("", "blockTitle")
+        self.subtitle = caption()
+        names = QVBoxLayout()
+        names.setSpacing(1)
+        names.addWidget(self.title)
+        names.addWidget(self.subtitle)
+        self.readout_month = label("", "readoutMonth", Qt.AlignmentFlag.AlignRight)
+        self.readout = QLabel()
+        self.readout.setTextFormat(Qt.TextFormat.RichText)
+        self.readout.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self.readout.setFont(tabular(size=13))
+        readout = QVBoxLayout()
+        readout.setSpacing(1)
+        readout.addWidget(self.readout_month)
+        readout.addWidget(self.readout)
+        head = QHBoxLayout()
+        head.setSpacing(12)
+        head.addLayout(names, 1)
+        head.addLayout(readout)
+        self.bars = BarsChart()
+        self.rates = RatesBars()
+        box = QVBoxLayout(self)
+        box.setContentsMargins(0, 0, 0, 0)
+        box.setSpacing(10)
+        box.addLayout(head)
+        box.addWidget(self.bars, 1)
+        box.addWidget(self.rates, 1)
+
+
 class ReportView(QWidget):
     opened = Signal(str, int)
-    view_changed = Signal(int)
+    reset_requested = Signal()
 
-    def __init__(self, views: list[str] | None = None):
+    def __init__(self, views: QWidget | None = None):
+        """views: the report's switch (« Par mois | Par groupe »), set above the table."""
         super().__init__()
         self.report: Report | None = None
         self._natural: list[int] = []  # each column's width for its content
         self._height = 0  # the table's rows and header, without a sideways scroll bar
         self._wide: int | None = None  # the column that takes the room left
+        self._filtered = False  # filters other than the first ones: the empty state resets
+
         self.tiles = [Tile() for _ in range(4)]
-        grid = QGridLayout()
-        grid.setSpacing(16)
-        for i, tile in enumerate(self.tiles):
-            grid.addWidget(tile, 0, i)
-            grid.setColumnStretch(i, 1)
+        self._kpis = QGridLayout()
+        self._kpis.setSpacing(KPI_GAP)
+        self._kpis.setContentsMargins(0, 0, 0, 0)
+        kpi_box = QWidget()
+        kpi_box.setLayout(self._kpis)
+        self.chart = ChartBlock()
+        self.chart.bars.hovered.connect(self._show_month)
+        self.chart.rates.hovered.connect(self._show_group)
+        summary = QHBoxLayout()
+        summary.setContentsMargins(SHEET_PAD, 4, SHEET_PAD, 24)
+        summary.setSpacing(28)
+        # At the top, as tall as they need: beside a long chart they do not stretch.
+        summary.addWidget(kpi_box, 2, Qt.AlignmentFlag.AlignTop)
+        summary.addWidget(self.chart, 3)
+        self._summary = summary
 
-        self.chart_card = Card("")
-        self.readout = caption()
-        self.readout.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        self.chart_card.side.addWidget(self.readout)
-        self.bars = BarsChart()
-        self.bars.hovered.connect(self._show_month)
-        self.rates = RatesChart()
-        chart_box = QVBoxLayout()
-        chart_box.setContentsMargins(PAD, 0, PAD, 16)
-        chart_box.addWidget(self.bars)
-        chart_box.addWidget(self.rates)
-        self.chart_card.body.addLayout(chart_box)
-
-        self.table_card = Card("")
-        self.views = Segments(views) if views else None
-        if self.views is not None:
-            self.views.changed.connect(self.view_changed.emit)
-            self.table_card.side.addWidget(self.views)
         self.table = ruled_table([], sortable=True)
+        self.table.setObjectName("reportTable")
         self.table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.table.activated.connect(self._open)  # a double-click, or Enter
         # The viewport, not the table: it also widens when the table's own scroll bar goes.
@@ -144,26 +227,53 @@ class ReportView(QWidget):
         self._viewport = self.table.viewport()
         self._viewport.installEventFilter(self)
         self.total = TotalBar(self.table)
-        self.empty = caption(t["reports.empty"])
-        self.note = caption()
-        self.note.setWordWrap(True)
+        self.count = caption()
+        self.count.setObjectName("tableCount")
+        self.hint = caption()
+        counts = QHBoxLayout()
+        counts.setSpacing(14)
+        if views is not None:
+            counts.addWidget(views)
+        counts.addWidget(self.count)
+        counts.addStretch()
+        counts.addWidget(self.hint)
+        self.empty = EmptyState("funnel")
+        self.empty.setMinimumHeight(220)
+        self.empty.action.clicked.connect(self.reset_requested.emit)
         table_box = QVBoxLayout()
-        table_box.setContentsMargins(PAD, 0, PAD, 16)
-        table_box.setSpacing(6)
+        table_box.setContentsMargins(SHEET_PAD, 16, SHEET_PAD, 24)
+        table_box.setSpacing(0)
+        table_box.addLayout(counts)
+        table_box.addSpacing(10)
         table_box.addWidget(self.empty)
         table_box.addWidget(self.table)
         table_box.addWidget(self.total)
-        table_box.addSpacing(4)
-        table_box.addWidget(self.note)
-        self.table_card.body.addLayout(table_box)
+        self.note = NoteBlock()
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(16)
-        layout.addLayout(grid)
-        layout.addWidget(self.chart_card)
-        layout.addWidget(self.table_card)
-        layout.addStretch()
+        layout.setSpacing(0)
+        layout.addLayout(summary)
+        layout.addWidget(rule())
+        layout.addLayout(table_box)
+        layout.addWidget(self.note)
+
+    # the parts as the tests and the page know them
+    @property
+    def bars(self) -> BarsChart:
+        return self.chart.bars
+
+    @property
+    def rates(self) -> RatesBars:
+        return self.chart.rates
+
+    @property
+    def readout(self) -> QLabel:
+        return self.chart.readout
+
+    @property
+    def readout_month(self) -> QLabel:
+        return self.chart.readout_month
 
     # ----- showing a report -----
 
@@ -173,57 +283,103 @@ class ReportView(QWidget):
             widget.show_tile(tile)
         for i, widget in enumerate(self.tiles):
             widget.setVisible(i < len(report.tiles))
-        self._show_chart(report)
-        self.table_card.title.setText(report.title)
-        money = any(column.kind == "money" for column in report.columns)
-        self.table_card.set_subtitle(t["reports.amounts_in_da"].format(period=report.period)
-                                     if money else report.period)
+        charted = self._show_chart(report)
+        self._place_tiles(charted)
         self._show_table(report)
         self.note.setText(report.note)
         self.note.setVisible(bool(report.note))
 
-    def _show_chart(self, report: Report) -> None:
+    def _place_tiles(self, charted: bool) -> None:
+        """Two by two beside a chart; four in a row without one."""
+        columns = 2 if charted else 4
+        for i, tile in enumerate(self.tiles):
+            self._kpis.addWidget(tile, i // columns, i % columns)
+        for c in range(4):
+            self._kpis.setColumnStretch(c, 1 if c < columns else 0)
+        self._summary.setStretch(0, 2 if charted else 1)
+        self._summary.setStretch(1, 3 if charted else 0)
+
+    def set_filtered(self, filtered: bool) -> None:
+        """Filters other than the first ones: an empty report offers to reset them."""
+        self._filtered = filtered
+        self._show_empty()
+
+    def _show_empty(self) -> None:
+        self.empty.set_message(
+            t["reports.empty"],
+            t["reports.empty_filtered" if self._filtered else "reports.empty_hint"],
+            t["reports.reset_filters"] if self._filtered else "")
+
+    def _show_chart(self, report: Report) -> bool:
         chart = report.chart
         has_values = chart is not None and any(v for _n, values in chart.series for v in values)
-        self.chart_card.setVisible(has_values)
+        self.chart.setVisible(has_values)
         if not has_values:
-            return
-        self.chart_card.title.setText(chart.title)
-        self.bars.setVisible(chart.kind == "bars")
-        self.rates.setVisible(chart.kind == "rates")
-        if chart.kind == "bars":
-            self.bars.set_data(chart.labels, chart.series)
-            self._legend(chart)
+            return False
+        block = self.chart
+        block.title.setText(chart.title)
+        bars = chart.kind == "bars"
+        block.bars.setVisible(bars)
+        block.rates.setVisible(not bars)
+        if bars:
+            block.bars.set_data(chart.labels, chart.series, self._latest(chart))
+            block.subtitle.setText(t["reports.chart.hover"])
+            self._show_month(-1)
         else:
-            self.rates.set_data(chart.labels, chart.series[0][1])
-            self.chart_card.set_subtitle("")
+            block.rates.set_data(chart.labels, chart.series[0][1])
+            count = len(chart.labels)
+            block.subtitle.setText(
+                t["reports.rates.lowest"].format(shown=RatesBars.LIMIT, count=count)
+                if count > RatesBars.LIMIT else t["reports.rates.hover"])
+            self._show_group(-1)
+        return True
+
+    @staticmethod
+    def _latest(chart) -> int:
+        """The last label with a figure: the month the readout shows by default."""
+        for i in reversed(range(len(chart.labels))):
+            if any(values[i] for _name, values in chart.series):
+                return i
+        return -1
+
+    def _show_group(self, _index: int) -> None:
+        """The group picked on the chart (under the mouse, else the lowest): its whole
+        title, its rate in its band's colour."""
+        rates = self.rates
+        index = rates.picked()
+        if index < 0:
+            self.readout_month.clear()
             self.readout.clear()
-
-    def _legend(self, chart) -> None:
-        """The series' names in their colours, under the chart's title."""
-        dots = " &nbsp; ".join(
-            f'<span style="color:{color.name()}">●</span> {name}'
-            for color, (name, _values) in zip(series_colors(), chart.series, strict=False))
-        self.chart_card.set_subtitle(dots)
-        self._show_month(-1)
-
-    def _show_month(self, index: int) -> None:
-        """The month under the mouse, its figures on the chart's right."""
-        chart = self.report.chart if self.report else None
-        if chart is None or index < 0:
-            self.readout.setText(t["reports.chart.hover"])
             return
-        values = " · ".join(f"{name} {format_dzd(values[index])}"
-                            for name, values in chart.series)
-        self.readout.setText(f"<b>{chart.labels[index]}</b> &nbsp; {values}")
+        value = rates.values[index]
+        tone = rate_tone(value)
+        color = tokens()["text" if tone == "success" else tone]
+        self.readout_month.setText(rates.labels[index])
+        self.readout.setText(f'<b style="color:{color}">{format_percent(value)}</b>')
+
+    def _show_month(self, _index: int) -> None:
+        """The month picked on the chart (under the mouse, else the latest), each series'
+        figure after a dot in its colour."""
+        chart = self.report.chart if self.report else None
+        index = self.bars.picked()
+        if chart is None or index < 0:
+            self.readout_month.clear()
+            self.readout.clear()
+            return
+        muted = tokens()["muted"]
+        self.readout_month.setText(capitalized(chart.labels[index]))
+        self.readout.setText(" &nbsp;&nbsp; ".join(
+            f'<span style="color:{color.name()}">●</span>'
+            f' <span style="color:{muted}">{name}</span> &nbsp;<b>{format_dzd(values[index])}</b>'
+            for color, (name, values) in zip(series_colors(), chart.series, strict=False)))
 
     def _show_table(self, report: Report) -> None:
         columns = report.columns
         table = self.table
         table.setSortingEnabled(False)
         table.setColumnCount(len(columns))
-        # The amounts' columns say « DA » once, by the period: the PDF and Excel say it in
-        # each title, where there is room.
+        # The amounts' columns say « DA » once, under the sheet's title: the PDF and Excel
+        # say it in each title, where there is room.
         table.setHorizontalHeaderLabels([c.title for c in columns])
         for c, column in enumerate(columns):
             table.horizontalHeaderItem(c).setTextAlignment(
@@ -238,16 +394,22 @@ class ReportView(QWidget):
         fill(table, rows)
         table.horizontalHeader().setSortIndicator(-1, Qt.SortOrder.AscendingOrder)
         table.setSortingEnabled(True)
+        # The total first: its bold figures are wider, the columns are measured with them.
+        self.total.setVisible(report.total is not None and bool(report.rows))
+        if report.total is not None:
+            self.total.show_total([self._cell(value, column) for value, column
+                                   in zip(report.total, columns, strict=True)], report.total)
         self._fit(report)
         shown = min(max(len(report.rows), 1), MAX_TABLE_ROWS)
         self._height = table.horizontalHeader().sizeHint().height() + 2 + shown * ROW_HEIGHT
         table.setFixedHeight(self._height)
         table.setVisible(bool(report.rows))
         self.empty.setVisible(not report.rows)
-        self.total.setVisible(report.total is not None)
-        if report.total is not None:
-            self.total.show_total([self._cell(value, column) for value, column
-                                   in zip(report.total, columns, strict=True)], report.total)
+        self.count.setText(plural("reports.rows", len(report.rows)))
+        self.hint.setText(t[f"reports.open_hint.{report.opens}"]
+                          if report.opens and report.rows else "")
+        if not report.rows:
+            self._show_empty()
 
     def _fit(self, report: Report) -> None:
         """Each column measured once for its content; the text column with the longest
@@ -257,13 +419,27 @@ class ReportView(QWidget):
         header.setStretchLastSection(False)
         for c in range(len(report.columns)):
             header.setSectionResizeMode(c, QHeaderView.ResizeMode.Interactive)
-        table.resizeColumnsToContents()
-        self._natural = [table.columnWidth(c) for c in range(len(report.columns))]
+        # Qt keeps a square as tall as the header for the sort arrow, on every column: a
+        # column of short figures came out some 20 px wider than its title, and the table
+        # scrolled sideways. The arrow needs half of it (Qt draws it half the height wide).
+        arrow_square = header.sizeHint().height() // 2
+        total = report.total is not None
+        self._natural = [max(table.sizeHintForColumn(c),
+                             header.sectionSizeFromContents(c).width() - arrow_square,
+                             self._total_width(c) if total else 0)
+                         for c in range(len(report.columns))]
         longest = {c: max((len(str(row[c])) for row in report.rows if row[c] is not None),
                           default=0)
                    for c, column in enumerate(report.columns) if column.kind == "text"}
         self._wide = max(longest, key=longest.get) if longest else None
         self._spread()
+
+    def _total_width(self, c: int) -> int:
+        """The total's cell in column c, bold; the label spanning the first columns counts
+        in none of them (the names under it are wider)."""
+        if self.total.columnSpan(0, c) > 1 or (c > 0 and self.total.columnSpan(0, 0) > c):
+            return 0
+        return self.total.sizeHintForColumn(c)
 
     def _spread(self) -> None:
         """The columns on the table's width: the wide one takes what is left; short of
@@ -294,11 +470,17 @@ class ReportView(QWidget):
     def _cell(value, column: ReportColumn, tone: str | None = None,
               row_id: int | None = None):
         number = column.kind in NUMERIC
-        return item(display(column.kind, value),
+        quiet = number and not value  # 0, or nothing: faint, the figures that count stand out
+        cell = item(display(column.kind, value),
                     sort_key=(value if value is not None else -1) if number or
                     column.kind == "date" else None,
-                    align=RIGHT if number else LEFT, mono=number, tone=tone,
+                    align=RIGHT if number else LEFT, tone=tone or ("faint" if quiet else None),
                     item_id=row_id)
+        if number or column.kind == "date":
+            cell.setFont(tabular())
+        if value is None and not number:
+            cell.setForeground(QColor(tokens()["faint"]))  # « — »
+        return cell
 
     def _open(self, index) -> None:
         if self.report is None or self.report.opens is None:
@@ -306,18 +488,3 @@ class ReportView(QWidget):
         row_id = self.table.item(index.row(), 0).data(ID_ROLE)
         if row_id is not None:
             self.opened.emit(self.report.opens, row_id)
-
-    def select_view(self, index: int) -> None:
-        if self.views is not None:
-            self.views.buttons[index].setChecked(True)
-
-
-def grid_row(*widgets: QWidget) -> QHBoxLayout:
-    """Filters in a line, from the left."""
-    line = QHBoxLayout()
-    line.setSpacing(12)
-    for widget in widgets:
-        line.addWidget(widget, 0, Qt.AlignmentFlag.AlignBottom)
-    line.addStretch()
-    return line
-

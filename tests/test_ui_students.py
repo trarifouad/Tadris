@@ -8,16 +8,18 @@ from shiboken6 import isValid
 from tadris.core import dates
 from tadris.domain.models import ContactInput, ContactLink, StudentInput
 from tadris.i18n.fr import t
-from tadris.services import auth, contacts, students
+from tadris.services import auth, catalog, contacts, registrations, students
 from tadris.ui.contact_dialog import ContactDialog
 from tadris.ui.main_window import MainWindow
 from tadris.ui.pages import student_detail
+from tadris.ui.pages.reports import exporting
 from tadris.ui.pages.student_detail import StudentDetailView, StudentInfoDialog
 from tadris.ui.pages.students import StudentsPage
 from tadris.ui.student_dialog import StudentDialog
 from tadris.ui.theme import apply_theme, load_fonts
 from tadris.ui.widgets.date_edit import DateLineEdit, format_date_typing
 from tadris.ui.widgets.tables import ID_ROLE
+from test_reports import School
 
 
 @pytest.fixture(autouse=True)
@@ -109,6 +111,46 @@ def test_search_and_status_filter(qtbot, conn, director, amine):
     page.refresh()
     assert page.student_ids() == []
     assert page.empty.text() == t["students.no_match"]
+
+
+def test_level_and_group_filters_the_figures_and_reset(qtbot, conn, director):
+    school = School(conn, director)
+    other = catalog.create(conn, director, "level", "3AS")
+    yanis = students.create(conn, director, StudentInput("Yanis", "Haddad"))
+    registrations.register(conn, director, yanis, other, 0)
+    page = list_view(qtbot, conn, director)
+    assert [(tile.name.text(), tile.value.text()) for tile in page.tiles][:2] == [
+        ("Élèves actifs", "6"), ("Inscrits cette année", "6")]
+    assert len(page.student_ids()) == 6 and not page._reset_box.isVisibleTo(page)
+    page.group.setCurrentIndex(page.group.findData(school.a))
+    assert sorted(page.student_ids()) == sorted([school.amine, school.badis])
+    assert page.chips[3].property("active") and page._reset_box.isVisibleTo(page)
+    page.group.setCurrentIndex(0)
+    page.level.setCurrentIndex(page.level.findData(other))
+    assert page.student_ids() == [yanis]
+    page.search.setText("zzz")
+    page.reset.click()
+    assert page.search.text() == "" and page.level.currentData() is None
+    assert len(page.student_ids()) == 6 and not page._reset_box.isVisibleTo(page)
+    assert not any(chip.property("active") for chip in page.chips)
+
+
+def test_the_list_prints_as_filtered(qtbot, conn, director, tmp_path, monkeypatch):
+    from openpyxl import load_workbook
+
+    from tadris import config
+
+    school = School(conn, director)
+    opened = []
+    monkeypatch.setattr(config, "documents_dir", lambda: tmp_path)
+    monkeypatch.setattr(exporting, "open_document", opened.append)
+    page = list_view(qtbot, conn, director)
+    page.group.setCurrentIndex(page.group.findData(school.a))
+    path = page.export("xlsx")
+    assert path.parent == tmp_path and opened == [path]
+    cells = {str(cell.value) for row in load_workbook(path).active.iter_rows()
+             for cell in row if cell.value is not None}
+    assert {"Test Amine", "Test Badis"} <= cells and "Test Chems" not in cells
 
 
 def test_columns_sort_by_date_not_text(qtbot, conn, director):

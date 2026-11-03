@@ -15,7 +15,7 @@ from tadris.core.dates import (
 )
 from tadris.core.errors import PermissionDenied, ValidationError
 from tadris.core.money import format_dzd, parse_dzd
-from tadris.core.percent import apply_rate, format_percent, parse_percent
+from tadris.core.percent import apply_rate, format_percent, parse_percent, ratio_bp
 from tadris.core.phones import format_phone, normalize_phone
 from tadris.core.text import clean, fold
 from tadris.i18n.fr import t
@@ -295,6 +295,14 @@ def test_format_percent(bp, text):
 def test_apply_rate_rounds_down():
     assert apply_rate(60000, 6000) + apply_rate(120000, 6000) == 108000  # the plan's example
     assert apply_rate(3333, 5000) == 1666
+
+
+def test_a_rate_shown_is_rounded_to_the_nearest():
+    """Money rounds down (apply_rate); a rate shown does not: 6 000 of 138 000 is 4,347 %."""
+    assert format_percent(ratio_bp(6000, 138000)) == "4,35 %"
+    assert (ratio_bp(1, 3), ratio_bp(2, 3), ratio_bp(1, 8), ratio_bp(0, 5), ratio_bp(5, 5)) == (
+        3333, 6667, 1250, 0, 10000)
+    assert ratio_bp(1, 20000) == 1  # 0,005 %: a half goes up
 
 
 # ----- times -----

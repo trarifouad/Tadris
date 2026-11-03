@@ -177,6 +177,10 @@ t = {
         "complet du mois, payé ou non par l'élève. Chaque ligne est arrondie au dinar "
         "inférieur."
     ),
+    "payout_slip.rounding": (
+        "Le détail arrondit chaque mois au dinar inférieur : ses parts font {gap} de moins "
+        "que le total, qui est la somme versée."
+    ),
     "payout_slip.signature": "Signature de l'enseignant",
     "payout.not_found": "Paiement enseignant introuvable.",
     "payouts.caption": (
@@ -432,6 +436,10 @@ t = {
     "group.teacher_locked": (
         "Cet enseignant a déjà été payé pour ce groupe. Choisissez une date plus récente."
     ),
+    "group.teacher_paid_until": (
+        "{teacher} a déjà été payé pour les mois de ce groupe commençant jusqu'au {date} : "
+        "le changement doit commencer après cette date."
+    ),
     "weekday.1": "lundi",
     "weekday.2": "mardi",
     "weekday.3": "mercredi",
@@ -676,9 +684,13 @@ t = {
     "student_status.inactive": "Inactif",
     "students.new": "Nouvel élève",
     "students.search": "Rechercher par nom, numéro ou téléphone",
+    "students.search_short": "Nom, numéro ou téléphone",  # after the search icon
     "students.filter.active": "Actifs",
     "students.filter.inactive": "Inactifs",
     "students.filter.all": "Tous",
+    "students.filter.status": "Statut",
+    "students.filter.level": "Niveau",
+    "students.filter.group": "Groupe",
     "students.col.number": "N°",
     "students.col.last_name": "Nom",
     "students.col.first_name": "Prénom",
@@ -962,6 +974,12 @@ t = {
     "cash.by_method": "Par mode : {parts}",
     "cash.by_cashier": "Par caissier : {parts}",
     "cash.voided": "Annulés (non comptés) : {count} paiement(s), {total}",
+    "cash.voided_earlier": (
+        "Annulés ce jour, reçus un autre jour (déduits de ce jour) : {count} paiement(s), "
+        "{total} · {receipts}"
+    ),
+    "cash.receipt_of": "{number} du {date}",
+    "cash.voided_later": "Compté, annulé le {date}",
     "cash.teachers_paid": (
         "Enseignants payés : {count}, {total}. Espèces à avoir en caisse pour la journée : "
         "{drawer}."
@@ -2037,7 +2055,6 @@ t = {
     "reports.nav.revenue": "Recettes",
     "reports.nav.attendance": "Présences",
     "reports.nav.teachers": "Enseignants",
-    "reports.nav.students": "Élèves",
     "reports.period": "Du {first} au {last}",
     "reports.dates_order": "La date de fin doit être le même jour ou après la date de début.",
     "reports.year": "Année {label}",
@@ -2054,24 +2071,29 @@ t = {
         "Un mois compte dans le mois où il commence, les frais d'inscription le jour de "
         "l'inscription ; les mois annulés ne comptent pas. Réglé : ce que les paiements non "
         "annulés ont payé sur eux. Encaissé : l'argent reçu dans le mois. Part enseignants : "
-        "le prix du mois au taux de l'enseignant du groupe ce jour-là, comme la paie."
+        "le prix du mois au taux de l'enseignant du groupe ce jour-là, comme la paie. "
+        "L'année compte aussi l'argent reçu l'été d'avant (inscriptions avant la rentrée)."
     ),
     "reports.attendance_group.title": "Présences par groupe",
     "reports.attendance_student.title": "Présences par élève",
     "reports.attendance.note": (
-        "Taux = (présents + retards) / (présents + retards + absents) ; les absences "
-        "excusées et les séances annulées ne comptent pas. En rouge : moins de 75 %."
+        "Présent : l'élève est venu, même en retard. Taux = présents / (présents + absents) ; "
+        "les absences excusées et les séances annulées ne comptent pas. En rouge : moins "
+        "de 75 %."
     ),
     "reports.teachers.title": "Synthèse enseignants",
     "reports.teachers.note": (
-        "Recettes et part due : les mois de l'année de leurs groupes. Payé : versé pendant "
-        "l'année. En attente : brouillons et paiements approuvés. À préparer : ce qu'un "
+        "Recettes et part due : les mois de l'année de leurs groupes. Payé : les paies des "
+        "mois de l'année, même versées après sa fin. En attente : brouillons et paiements "
+        "approuvés. À préparer : ce qu'un "
         "brouillon fait aujourd'hui paierait."
     ),
     "reports.students.title": "Liste des élèves",
     "reports.students.note": "En retard : ce qui reste à payer sur l'échu, après l'avoir.",
     "reports.chart.revenue": "Facturé et encaissé par mois",
     "reports.chart.attendance": "Taux de présence par groupe",
+    "reports.rates.hover": "Survolez une barre pour voir le groupe",
+    "reports.rates.lowest": "Les {shown} plus bas sur {count} groupes · survolez une barre",
     "reports.col.month": "Mois",
     "reports.col.charged": "Facturé",
     "reports.col.settled": "Réglé",
@@ -2084,9 +2106,7 @@ t = {
     "reports.col.months": "Mois facturés",
     "reports.col.rate": "Taux",
     "reports.col.present": "Présent",
-    "reports.col.late": "Retard",
     "reports.col.absent": "Absent",
-    "reports.col.excused": "Excusé",
     "reports.col.attendance_rate": "Taux de présence",
     "reports.col.sessions": "Séances",
     "reports.col.students": "Élèves",
@@ -2118,14 +2138,14 @@ t = {
     "reports.tile.sessions_note": "Dans {groups} groupe(s)",
     "reports.tile.absent": "Absences",
     "reports.tile.absent_note": "Plus {excused} excusée(s)",
-    "reports.tile.late": "Retards",
-    "reports.tile.late_note": "Comptés présents",
+    "reports.tile.present": "Présences",
+    "reports.tile.present_note": "Élèves venus aux séances",
     "reports.tile.teachers": "Enseignants actifs",
     "reports.tile.teachers_note": "{count} dans le rapport",
     "reports.tile.groups": "Groupes en cours",
     "reports.tile.groups_note": "{students} élève(s) inscrits",
     "reports.tile.paid": "Payé cette année",
-    "reports.tile.paid_note": "Paies versées en {label}",
+    "reports.tile.paid_note": "Paies des mois de {label}",
     "reports.tile.to_pay": "Reste à payer",
     "reports.tile.to_pay_note": "{waiting} en attente · {prepare} à préparer",
     "reports.tile.active": "Élèves actifs",
@@ -2147,6 +2167,19 @@ t = {
     "reports.status.all": "Tous",
     "reports.no_year": "Aucune année scolaire : créez-la dans Paramètres → Structure.",
     "reports.empty": "Rien à montrer pour ces filtres.",
+    "reports.empty_hint": "Le rapport se remplira avec les inscriptions, les séances et "
+                          "les paiements.",
+    "reports.empty_filtered": "Élargissez la période ou changez un filtre, ou revenez à "
+                              "ceux de départ.",
+    "reports.reset_filters": "Réinitialiser les filtres",
+    "reports.reset": "Réinitialiser",
+    "reports.note_title": "Comment c'est compté",
+    "reports.rows_0": "Aucune ligne",
+    "reports.rows_1": "1 ligne",
+    "reports.rows_n": "{count} lignes",
+    "reports.open_hint.students": "Double-cliquez sur un élève pour ouvrir sa fiche",
+    "reports.open_hint.groups": "Double-cliquez sur un groupe pour l'ouvrir",
+    "reports.open_hint.teachers": "Double-cliquez sur un enseignant pour l'ouvrir",
     "reports.col_money": "{title} (DA)",
     "reports.amounts_in_da": "{period} · montants en DA",
     "reports.chart.hover": "Survolez un mois pour voir ses montants",
@@ -2161,7 +2194,6 @@ t = {
     "reports.preset.custom": "Dates choisies",
     "reports.filter.from": "Du",
     "reports.filter.to": "Au",
-    "reports.search_hint": "Nom, numéro ou téléphone",
     "reports.export_pdf": "PDF",
     "reports.export_xlsx": "Excel",
     "reports.export_tip": "Le rapport affiché, tel quel, ouvert aussitôt.",

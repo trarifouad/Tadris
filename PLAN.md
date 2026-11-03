@@ -647,7 +647,7 @@ Add a `holidays` table or a settings JSON list in this phase. Decide which and a
 
 **Still to do before the pilot**
 
-1. A last review of migrations 0001 to 0017: once the school's data is in, they are never edited again, only followed by new ones.
+1. A last review of migrations 0001 to 0018: once the school's data is in, they are never edited again, only followed by new ones. 0018 (2026-11-03, from a review of the money code): a payment's credit can pay a charge it already paid in part, once a void made that charge owed again (or the desk had put only part of the payment on it); the old UNIQUE (payment, charge) refused it, and from then on every payment of that student.
 2. Phase 13.
 
 ---

@@ -377,6 +377,45 @@ def test_void_removes_the_credit(conn, director, amine):
     assert (d.credit, d.balance) == (0, 4000)
 
 
+def test_credit_pays_again_what_a_void_made_owed(conn, director, amine):
+    """C pays the fee and half the month; A the other half and keeps 3 000 of credit. C
+    voided, the fee and half the month are owed again: the next payment's recording spends
+    A's credit on them, the month a second time (0018: refused before, and with it every
+    payment of the student)."""
+    fee = fee_charge(conn, amine)
+    [month] = month_charges(conn, amine)
+    mistake = payments.record(conn, director, amine, 2500, "cash")  # 1 000 + 1 500
+    kept = payments.record(conn, director, amine, 4500, "cash")  # 1 500 + 3 000 credit
+    payments.void(conn, director, mistake, "Saisie en double")
+    assert (debt.for_student(conn, director, amine).due,
+            debt.for_student(conn, director, amine).credit) == (2500, 3000)
+    later = payments.record(conn, director, amine, 500, "cash")
+    assert allocations_of(conn, kept) == [(month["id"], 1500), (fee["id"], 1000),
+                                          (month["id"], 1500)]
+    d = debt.for_student(conn, director, amine)
+    assert (d.due, d.credit) == (0, 1000)  # 500 left of A's credit, P's 500
+    # What A paid, a month once with its sum; its receipt still shows what it paid then.
+    assert [(line.description, line.amount) for line in payments.lines(conn, director, kept)] \
+        == [("Frais d'inscription 2026-2027", 1000),
+            ("Abonnement M1 du 18/10/2026 au 18/11/2026", 3000)]
+    assert [(line.amount, line.from_credit)
+            for line in payments.receipt_lines(conn, director, kept)] == [(1500, 0)]
+    assert [(line.charge_id, line.amount, line.from_credit)
+            for line in payments.receipt_lines(conn, director, later)] == [
+        (fee["id"], 1000, 1000), (month["id"], 1500, 1500)]
+
+
+def test_credit_finishes_a_month_its_payment_chose_in_part(conn, director, amine):
+    """The desk put 1 000 of 4 000 on the month: 3 000 credit. The next payment's recording
+    spends it on the fee, then on the rest of that same month."""
+    [month] = month_charges(conn, amine)
+    first = payments.record(conn, director, amine, 4000, "cash", chosen=[(month["id"], 1000)])
+    payments.record(conn, director, amine, 500, "cash")
+    assert [amount for _c, amount in allocations_of(conn, first)] == [1000, 1000, 2000]
+    d = debt.for_student(conn, director, amine)
+    assert (d.due, d.credit) == (0, 500)
+
+
 def test_void_is_for_the_director_only(conn, director, receptionist, amine):
     payment_id = payments.record(conn, receptionist, amine, 1000, "cash")
     with pytest.raises(PermissionDenied):
@@ -554,6 +593,23 @@ def test_cash_report_totals_per_method_and_cashier(conn, director, receptionist,
     assert report.by_cashier() == {"accueil": 2000, "directeur": 7000}
     assert [p.amount for p in report.voided] == [1000]
     assert payments.cash_report(conn, receptionist, date(2026, 10, 17)).payments == ()
+
+
+def test_a_day_counted_never_changes_when_a_payment_is_voided_later(conn, director, amine,
+                                                                    monkeypatch):
+    """4 000 received on 18/10 for the wrong student, voided on 20/10 and recorded again:
+    18/10 keeps its 4 000 (the drawer had them), 20/10 takes them off and adds the new
+    4 000, so it matches its drawer too."""
+    wrong = payments.record(conn, director, amine, 4000, "cash")
+    move_to(monkeypatch, date(2026, 10, 20))
+    payments.void(conn, director, wrong, "Mauvais élève")
+    payments.record(conn, director, amine, 4000, "cash")
+    first = payments.cash_report(conn, director, TODAY)
+    assert (first.total, first.by_method()["cash"], first.voided) == (4000, 4000, ())
+    later = payments.cash_report(conn, director, date(2026, 10, 20))
+    assert [p.id for p in later.voided_earlier] == [wrong]
+    assert (later.total, later.by_method()["cash"], later.cash_in_drawer) == (0, 0, 0)
+    assert later.by_cashier() == {"directeur": 4000}  # who took the day's money
 
 
 # ----- debt warning -----

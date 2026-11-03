@@ -1,16 +1,20 @@
-"""Rapports: four reports, each a Report of raw values (amounts in DA, rates in basis points,
-ISO dates) that the screen, the PDF and the Excel file show alike.
+"""Rapports: three reports (Recettes, Présences, Enseignants), and the students' list the
+Élèves page prints; each a Report of raw values (amounts in DA, rates in basis points, ISO
+dates) that the screen, the PDF and the Excel file show alike.
 
 Money (Recettes, Enseignants: the director's). « Facturé » is the months and fees starting in
 the period (accrual date), cancelled ones left out; « Réglé » is what payments not voided paid
 on them, whenever; « Reste dû » the difference; « Encaissé » the money received in the period
-(payments not voided), whatever it paid. A teacher's share of a month is its full price at the
+(payments not voided), whatever it paid. A school year's money runs from the day after the
+previous year's last day to its own (year_window): fees and payments taken in the summer
+before it are its. A teacher's share of a month is its full price at the
 rate of the group's teacher on its first day, as payouts count it, rounded down to the dinar
 per month, group and rate (a payout rounds once per line: a few dinars apart at most); the
 school keeps the rest, and the registration fees.
 
-Attendance: the rate is (present + late) / (present + late + absent): an excused absence is
-left out; cancelled sessions do not count. A row under LOW_RATE_BP is flagged.
+Attendance shows two marks: present (on time or late: the student came) and absent. The rate
+is present / (present + absent): an excused absence is left out, of the rate and of the
+columns; cancelled sessions do not count. A row under LOW_RATE_BP is flagged.
 """
 
 import calendar
@@ -22,7 +26,7 @@ from tadris.core import dates
 from tadris.core.context import UserContext
 from tadris.core.errors import NotFound, ValidationError
 from tadris.core.money import format_dzd
-from tadris.core.percent import apply_rate, format_percent
+from tadris.core.percent import apply_rate, format_percent, ratio_bp
 from tadris.core.permissions import allowed, require
 from tadris.core.phones import format_phone
 from tadris.core.text import fold
@@ -41,9 +45,10 @@ from tadris.repositories import reports as repo
 from tadris.repositories import school_years as years_repo
 from tadris.services import audit, catalog, debt, groups, payouts, printing, teachers
 
-# Each report and what it takes to see it; the page lists the ones the user has.
+# Each report and what it takes to see it; the page lists the ones the user has. The
+# students' list (student_list) is not one of them: the Élèves page prints it.
 REPORTS = {"revenue": "report.finance", "attendance": "session.view",
-           "teachers": "report.finance", "students": "student.view"}
+           "teachers": "report.finance"}
 LOW_RATE_BP = 7500  # attendance under 75 %: the row is flagged
 PERIODS = ("week", "month", "last_month", "year", "custom")  # Présences
 
@@ -96,7 +101,7 @@ def period_range(conn, key: str, today: date, year_id: int | None = None) -> tup
 
 
 def rate_bp(part: int, whole: int) -> int | None:
-    return part * 10000 // whole if whole else None
+    return ratio_bp(part, whole) if whole else None
 
 
 def _year(conn, year_id: int | None):
@@ -151,13 +156,25 @@ def _shares(charges) -> dict[tuple[str, int, int], int]:
     return shares
 
 
+def year_window(conn, year) -> tuple[date, date]:
+    """The days whose money belongs to the school year: from the day after the previous
+    year's last day (every day before, for the first year), so the fees and payments taken in
+    the summer before it count in it, to its last day."""
+    before = repo.previous_year_end(conn, year["start_date"])
+    first = date.fromisoformat(before) + timedelta(days=1) if before else date.min
+    return first, date.fromisoformat(year["end_date"])
+
+
 def _year_charges(conn, year) -> tuple[list[date], list, dict[str, int]]:
-    start = date.fromisoformat(year["start_date"])
-    end = date.fromisoformat(year["end_date"])
-    months = year_months(start, end)
-    first, last = dates.iso(months[0]), dates.iso(month_end(months[-1]))
-    return (months, repo.charges_between(conn, first, last),
-            repo.collected_by_month(conn, first, last))
+    """The year's months (from September, or the summer month money first came in), its
+    charges and the money received, by month."""
+    first, last = (dates.iso(day) for day in year_window(conn, year))
+    charges = repo.charges_between(conn, first, last)
+    collected = repo.collected_by_month(conn, first, last)
+    earliest = min([date.fromisoformat(year["start_date"])]
+                   + [date.fromisoformat(c["accrual_date"]) for c in charges]
+                   + [date.fromisoformat(f"{month}-01") for month in collected])
+    return year_months(earliest, date.fromisoformat(year["end_date"])), charges, collected
 
 
 def revenue(conn, ctx: UserContext, year_id: int, view: str = "month") -> Report:
@@ -272,9 +289,14 @@ def _percent(bp: int | None) -> str:
 
 # ----- Présences -----
 
+def _marks(counts) -> tuple[int, int]:
+    """(Présent, Absent): a late student came; an excused absence counts in neither."""
+    return (counts["present"] or 0) + (counts["late"] or 0), counts["absent"] or 0
+
+
 def _rate(counts) -> int | None:
-    came = counts["present"] + counts["late"]
-    return rate_bp(came, came + counts["absent"])
+    came, absent = _marks(counts)
+    return rate_bp(came, came + absent)
 
 
 def _tone(rate: int | None) -> str | None:
@@ -294,17 +316,15 @@ def attendance(conn, ctx: UserContext, first: date, last: date, group_id: int | 
               for status in ATTENDANCE_STATUSES}
     held = sum(row["sessions"] for row in by_group)
     overall = _rate(counts)
+    came, absent = _marks(counts)
     tiles = (
         ReportTile(t["reports.tile.rate"], overall, "percent",
-                   t["reports.tile.rate_note"].format(
-                       came=counts["present"] + counts["late"],
-                       marks=counts["present"] + counts["late"] + counts["absent"])),
+                   t["reports.tile.rate_note"].format(came=came, marks=came + absent)),
         ReportTile(t["reports.tile.sessions"], held, "number",
                    t["reports.tile.sessions_note"].format(groups=len(by_group))),
-        ReportTile(t["reports.tile.absent"], counts["absent"], "number",
+        ReportTile(t["reports.tile.present"], came, "number", t["reports.tile.present_note"]),
+        ReportTile(t["reports.tile.absent"], absent, "number",
                    t["reports.tile.absent_note"].format(excused=counts["excused"])),
-        ReportTile(t["reports.tile.late"], counts["late"], "number",
-                   t["reports.tile.late_note"]),
     )
     title_of = {key: (found[key].title if key in found else "—") for key in
                 (row["group_id"] for row in by_group)}
@@ -317,24 +337,22 @@ def attendance(conn, ctx: UserContext, first: date, last: date, group_id: int | 
               "period": period_text(first, last),
               "filters": ((t["reports.filter.period"], period_text(first, last)),
                           (t["reports.filter.group"], group_name))}
-    marks = tuple(ReportColumn(t[f"reports.col.{status}"], "number")
-                  for status in ATTENDANCE_STATUSES) + (
-        ReportColumn(t["reports.col.attendance_rate"], "percent"),)
+    marks = (ReportColumn(t["reports.col.present"], "number"),
+             ReportColumn(t["reports.col.absent"], "number"),
+             ReportColumn(t["reports.col.attendance_rate"], "percent"))
     if view == "group":
         ordered = sorted(by_group, key=lambda row: title_of[row["group_id"]].casefold())
         rows = tuple(
             (title_of[row["group_id"]],
              found[row["group_id"]].teacher if row["group_id"] in found else None,
-             row["sessions"], row["students"],
-             *(row[status] for status in ATTENDANCE_STATUSES), _rate(row))
+             row["sessions"], row["students"], *_marks(row), _rate(row))
             for row in ordered)
         columns = (ReportColumn(t["reports.col.group"]), ReportColumn(t["reports.col.teacher"]),
                    ReportColumn(t["reports.col.sessions"], "number"),
                    ReportColumn(t["reports.col.students"], "number")) + marks
         total = None
         if rows:
-            total = (t["reports.total"], None, held, None,
-                     *(counts[status] for status in ATTENDANCE_STATUSES), overall)
+            total = (t["reports.total"], None, held, None, came, absent, overall)
         return Report(key="presences-par-groupe", title=t["reports.attendance_group.title"],
                       columns=columns, rows=rows, total=total,
                       row_ids=tuple(row["group_id"] for row in ordered), opens="groups",
@@ -345,8 +363,7 @@ def attendance(conn, ctx: UserContext, first: date, last: date, group_id: int | 
         fold(f"{row['last_name']} {row['first_name']}"), title_of.get(row["group_id"], "")))
     rows = tuple(
         (f"{row['last_name']} {row['first_name']}", row["student_number"],
-         title_of.get(row["group_id"], "—"),
-         *(row[status] for status in ATTENDANCE_STATUSES), _rate(row))
+         title_of.get(row["group_id"], "—"), *_marks(row), _rate(row))
         for row in ordered)
     columns = (ReportColumn(t["reports.col.student"]), ReportColumn(t["reports.col.number"]),
                ReportColumn(t["reports.col.group"])) + marks
@@ -354,7 +371,7 @@ def attendance(conn, ctx: UserContext, first: date, last: date, group_id: int | 
     if rows:
         total = (t["reports.students_count"].format(
                      count=len({row["student_id"] for row in ordered})), None, None,
-                 *(counts[status] for status in ATTENDANCE_STATUSES), overall)
+                 came, absent, overall)
     return Report(key="presences-par-eleve", title=t["reports.attendance_student.title"],
                   columns=columns, rows=rows, total=total,
                   row_ids=tuple(row["student_id"] for row in ordered), opens="students",
@@ -385,8 +402,8 @@ def teacher_summary(conn, ctx: UserContext, year_id: int) -> Report:
     share_of: dict[int, int] = {}
     for (_month, _group, teacher_id), value in _shares(charges).items():
         share_of[teacher_id] = share_of.get(teacher_id, 0) + value
-    paid_rows = {row["teacher_id"]: row
-                 for row in repo.payouts_by_teacher(conn, year["start_date"], year["end_date"])}
+    paid_rows = {row["teacher_id"]: row for row in repo.payouts_by_teacher(
+        conn, *(dates.iso(day) for day in year_window(conn, year)))}
     prepare = payouts.not_prepared(conn, today)
     rows, ids = [], []
     active = 0
@@ -436,6 +453,27 @@ def teacher_summary(conn, ctx: UserContext, year_id: int) -> Report:
 # ----- Élèves -----
 
 STUDENT_STATUSES = ("active", "inactive", None)
+STUDENT_LIST_KEY = "liste-eleves"  # names its files
+
+
+def student_tiles(conn, ctx: UserContext) -> tuple[ReportTile, ...]:
+    """The school's students in four figures (the Élèves page, the list's PDF): active;
+    registered in the open year; in a trial now; in a group but with no month running."""
+    require(ctx, "student.view")
+    year = years_repo.open_year(conn)
+    counts = repo.student_counts(conn, None if year is None else year["id"],
+                                 dates.iso(dates.today()))
+    return (
+        ReportTile(t["reports.tile.active"], counts["active"], "number",
+                   t["reports.tile.active_note"]),
+        ReportTile(t["reports.tile.registered"], counts["registered"], "number",
+                   t["reports.tile.registered_note"].format(
+                       label=year["label"] if year else "—")),
+        ReportTile(t["reports.tile.trial"], counts["trial"], "number",
+                   t["reports.tile.trial_note"]),
+        ReportTile(t["reports.tile.no_month"], counts["no_month"], "number",
+                   t["reports.tile.no_month_note"]),
+    )
 
 
 def student_list(conn, ctx: UserContext, status: str | None = "active",
@@ -462,18 +500,7 @@ def student_list(conn, ctx: UserContext, status: str | None = "active",
                      row["registered_at"][:10] if row["registered_at"] else None,
                      owing.get(row["id"], 0)))
         ids.append(row["id"])
-    counts = repo.student_counts(conn, year_id, dates.iso(dates.today()))
-    tiles = (
-        ReportTile(t["reports.tile.active"], counts["active"], "number",
-                   t["reports.tile.active_note"]),
-        ReportTile(t["reports.tile.registered"], counts["registered"], "number",
-                   t["reports.tile.registered_note"].format(
-                       label=year["label"] if year else "—")),
-        ReportTile(t["reports.tile.trial"], counts["trial"], "number",
-                   t["reports.tile.trial_note"]),
-        ReportTile(t["reports.tile.no_month"], counts["no_month"], "number",
-                   t["reports.tile.no_month_note"]),
-    )
+    tiles = student_tiles(conn, ctx)
     columns = (ReportColumn(t["reports.col.number"]), ReportColumn(t["reports.col.student"]),
                ReportColumn(t["reports.col.level"]), ReportColumn(t["reports.col.groups_now"]),
                ReportColumn(t["reports.col.contact"]), ReportColumn(t["reports.col.phone"]),
@@ -493,7 +520,7 @@ def student_list(conn, ctx: UserContext, status: str | None = "active",
     if query.strip():
         filters += ((t["reports.filter.search"], query.strip()),)
     on = dates.display_date(dates.iso(dates.today()))
-    return Report(key="liste-eleves", title=t["reports.students.title"],
+    return Report(key=STUDENT_LIST_KEY, title=t["reports.students.title"],
                   period=t["reports.on"].format(date=on), columns=columns, rows=tuple(rows),
                   total=total, tiles=tiles, filters=filters, note=t["reports.students.note"],
                   row_ids=tuple(ids), opens="students")

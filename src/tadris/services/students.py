@@ -16,6 +16,7 @@ from tadris.domain.models import (
     StudentListItem,
 )
 from tadris.i18n.fr import t
+from tadris.repositories import school_years as years_repo
 from tadris.repositories import students as repo
 from tadris.services import audit, counters
 from tadris.services import contacts as contacts_service
@@ -166,25 +167,37 @@ def _terms(query: str) -> list[tuple[str, str | None]]:
 def search(
     conn, ctx: UserContext, query: str = "", status: str | None = "active",
     order: str = "last_name", descending: bool = False, limit: int | None = None,
-    offset: int = 0,
+    offset: int = 0, level_id: int | None = None, group_id: int | None = None,
 ) -> list[StudentListItem]:
     """Find students by name, number or contact phone. status=None returns every status.
-    order: a column of the list (repo.ORDERS); limit/offset read one page of it."""
+    order: a column of the list (repo.ORDERS); limit/offset read one page of it.
+    level_id: registered at that level in the open school year; group_id: in that group now."""
     require(ctx, "student.view")
     if status is not None and status not in STATUSES:
         raise ValidationError(t["validation.generic"])
     if order not in repo.ORDERS:
         raise ValidationError(t["validation.generic"])
-    rows = repo.search(conn, _terms(query), status, order, descending, limit, offset)
+    rows = repo.search(conn, _terms(query), status, order, descending, limit, offset,
+                       _level(conn, level_id), group_id)
     return [StudentListItem(**dict(row)) for row in rows]
 
 
-def count(conn, ctx: UserContext, query: str = "", status: str | None = "active") -> int:
+def count(conn, ctx: UserContext, query: str = "", status: str | None = "active",
+          level_id: int | None = None, group_id: int | None = None) -> int:
     """How many students search() finds, all pages."""
     require(ctx, "student.view")
     if status is not None and status not in STATUSES:
         raise ValidationError(t["validation.generic"])
-    return repo.count(conn, _terms(query), status)
+    return repo.count(conn, _terms(query), status, _level(conn, level_id), group_id)
+
+
+def _level(conn, level_id: int | None) -> tuple[int, int] | None:
+    """A level filter is the level of the open school year's registration; with no year
+    open, nobody has one (year 0 matches no registration)."""
+    if level_id is None:
+        return None
+    year = years_repo.open_year(conn)
+    return (year["id"] if year is not None else 0, level_id)
 
 
 def possible_duplicates(

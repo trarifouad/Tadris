@@ -180,6 +180,47 @@ def test_a_teacher_change_splits_by_the_months_first_day(conn, director, school)
             payouts.get(conn, director, samia).amount_due) == (3600, 3000)
 
 
+def test_a_teacher_change_never_takes_a_month_already_paid(conn, director, school):
+    """Karim was paid for A's month from 20/09: Samia takes A from the 21st at the earliest,
+    and his payout stays as it is."""
+    school.pupils(school.a, 1, on=date(2026, 9, 20))
+    payout_id = payouts.build_draft(conn, director, school.karim, SEPT_END)
+    payouts.approve(conn, director, payout_id)
+    with pytest.raises(BusinessRuleError) as caught:
+        groups.change_teacher(conn, director, school.a, school.samia, date(2026, 9, 15))
+    assert caught.value.message == t["group.teacher_paid_until"].format(
+        teacher="Karim Haddad", date="20/09/2026")
+    groups.change_teacher(conn, director, school.a, school.samia, date(2026, 9, 21))
+    assert payouts.get(conn, director, payout_id).amount_due == 3600
+    assert payouts.due(conn, director, SEPT_END) == []  # the month is Karim's, already paid
+
+
+def test_a_teacher_change_moves_the_months_to_the_new_teachers_pay(conn, director, school):
+    """Only a draft counted A's month: it leaves Karim's draft (B stays) for Samia's pay."""
+    school.pupils(school.a, 1, on=date(2026, 9, 20))  # 6 000
+    school.pupils(school.b, 1)  # 12 000, Karim's
+    payouts.build_draft(conn, director, school.karim, SEPT_END)
+    groups.change_teacher(conn, director, school.a, school.samia, date(2026, 9, 15))
+    [draft] = payouts.listing(conn, director, teacher_id=school.karim)
+    assert (draft.months, draft.base_amount, draft.amount_due) == (1, 12000, 7200)
+    [owed] = payouts.due(conn, director, SEPT_END)
+    assert (owed.teacher, owed.months, owed.revenue) == ("Samia Rahmani", 1, 6000)
+
+
+def test_a_new_rate_never_starts_inside_a_period_already_paid(conn, director, school):
+    """September paid at 60 %: 50 % from 15/09 would change what was paid; from 01/10 it
+    does not."""
+    school.pupils(school.a, 1, on=date(2026, 9, 20))
+    payouts.approve(conn, director, payouts.build_draft(conn, director, school.karim, SEPT_END))
+    with pytest.raises(BusinessRuleError) as caught:
+        teachers.set_rate(conn, director, school.karim, 5000, date(2026, 9, 15))
+    assert caught.value.message == t["rate.locked"]
+    teachers.set_rate(conn, director, school.karim, 5000, date(2026, 10, 1))
+    assert [(r.percentage_bp, r.valid_from)
+            for r in teachers.rates(conn, director, school.karim)] == [
+        (5000, "2026-10-01"), (6000, "2026-09-01")]
+
+
 def test_no_rate_on_the_months_first_day(conn, director, school):
     teacher = teachers.create(conn, director, TeacherInput("Nadia Kaci"), 5000,
                               date(2026, 9, 1))
@@ -508,6 +549,23 @@ def test_payout_slip(conn, director, school, tmp_path):
     assert path.name == "paiement-enseignant_karim-haddad_2026-09-30.pdf"
     assert path.read_bytes().startswith(b"%PDF")
     assert printing.payout_slip_content(conn, director, payout_id).copy_mark == "DUPLICATA"
+
+
+def test_payout_slip_explains_the_months_rounding(conn, director, school):
+    """Three months at 2 500 DA, 62,5 %: 1 562 each in the detail, 4 687 paid (the line
+    rounds once): the note gives the 1 DA apart. Shares that add up need no note."""
+    nadia = teachers.create(conn, director, TeacherInput("Nadia Kaci"), 6250, date(2026, 9, 1))
+    school.pupils(school.group("N", "Anglais", 2500, nadia), 3)
+    slip = printing.payout_slip_content(
+        conn, director, payouts.build_draft(conn, director, nadia, SEPT_END))
+    assert slip.total == "4 687 DA"
+    assert [row[5] for row in slip.detail_rows] == ["1 562 DA"] * 3
+    assert slip.note == t["payout_slip.note"] + " " + t["payout_slip.rounding"].format(
+        gap="1 DA")
+    school.pupils(school.a, 1)
+    even = printing.payout_slip_content(
+        conn, director, payouts.build_draft(conn, director, school.karim, SEPT_END))
+    assert even.note == t["payout_slip.note"]
 
 
 def test_payout_slip_is_the_directors(conn, director, desk, school):

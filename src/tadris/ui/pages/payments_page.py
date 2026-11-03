@@ -169,6 +169,8 @@ class CashView(QWidget):
         self.by_cashier = caption()
         self.voided = caption()
         self.voided.setWordWrap(True)
+        self.voided_earlier = caption()
+        self.voided_earlier.setWordWrap(True)
         self.teachers_paid = caption()
         self.teachers_paid.setWordWrap(True)
         self.list = ListSection([t["cash.col.time"], t["cash.col.receipt"],
@@ -186,6 +188,7 @@ class CashView(QWidget):
         layout.addWidget(self.by_method)
         layout.addWidget(self.by_cashier)
         layout.addWidget(self.voided)
+        layout.addWidget(self.voided_earlier)
         layout.addWidget(self.teachers_paid)
         layout.addSpacing(4)
         layout.addWidget(self.list, 1)
@@ -210,16 +213,26 @@ class CashView(QWidget):
         self.voided.setText(t["cash.voided"].format(
             count=len(report.voided), total=format_dzd(sum(p.amount for p in report.voided))))
         self.voided.setVisible(bool(report.voided))
+        earlier = report.voided_earlier
+        self.voided_earlier.setText(t["cash.voided_earlier"].format(
+            count=len(earlier), total=format_dzd(sum(p.amount for p in earlier)),
+            receipts=", ".join(t["cash.receipt_of"].format(number=p.receipt_number or "—",
+                                                           date=display_date(p.paid_at))
+                               for p in earlier)))
+        self.voided_earlier.setVisible(bool(earlier))
         self.teachers_paid.setText(t["cash.teachers_paid"].format(
             count=len(report.payouts), total=format_dzd(report.paid_to_teachers),
             drawer=format_dzd(report.cash_in_drawer)))
         self.teachers_paid.setVisible(bool(report.payouts))
         self._students = {p.id: p.student_id for p in report.payments}
-        self.list.set_rows([self._cells(p) for p in report.payments])
+        self.list.set_rows([self._cells(p, report) for p in report.payments])
 
     @staticmethod
-    def _cells(p: Payment) -> list:
+    def _cells(p: Payment, report: CashReport) -> list:
         state = payment_state(p)
+        status = t[f"payment_state.{state}"]
+        if p.voided and not report.voided_here(p):  # counted here, voided on a later day
+            status = t["cash.voided_later"].format(date=display_date(p.voided_at))
         return [
             item(p.paid_at[11:16], p.paid_at, item_id=p.id, align=CENTER),
             item(p.receipt_number or "—", mono=True),
@@ -227,7 +240,7 @@ class CashView(QWidget):
             item(format_dzd(p.amount), align=CENTER, mono=True),
             item(t[f"payment_method.{p.method}"]),
             item(p.cashier),
-            item(t[f"payment_state.{state}"], kind=kind_for("payment", state)),
+            item(status, kind=kind_for("payment", state)),
         ]
 
     def _open(self, payment_id: int) -> None:

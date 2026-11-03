@@ -38,7 +38,7 @@ ACTIONS: dict[str, frozenset[str]] = {
     "teacher.view": BOTH,
     "teacher.manage": DIRECTOR_ONLY,
     "cash.view": BOTH,  # the day's cash, on Paiements
-    "report.view": BOTH,  # Rapports: Présences and Élèves for the desk
+    "report.view": BOTH,  # Rapports (Présences for the desk), the Élèves list's PDF
     "report.finance": DIRECTOR_ONLY,  # the dashboard's money, Recettes, Enseignants
     "audit.view": DIRECTOR_ONLY,  # the Journal, in Paramètres → Données
     "message.send": BOTH,  # Contacts: WhatsApp messages to the parents

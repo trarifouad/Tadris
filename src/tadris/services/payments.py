@@ -119,15 +119,17 @@ def receipt_lines(conn, ctx: UserContext, payment_id: int) -> list[PaymentLine]:
 
 
 def cash_report(conn, ctx: UserContext, day: date) -> CashReport:
-    """The day's payments (totals per method and per cashier count those not voided) and,
-    for the director (teacher pay is theirs to see), the teachers paid that day."""
+    """The day's payments, the payments of earlier days voided on it (taken off it, never
+    off their own day: a day counted stays as it was) and, for the director (teacher pay is
+    theirs to see), the teachers paid that day."""
     require(ctx, "cash.view")
     teachers_paid = (tuple(payouts.paid_on(conn, ctx, day)) if allowed(ctx, "payout.view")
                      else ())
-    return CashReport(day=dates.iso(day),
-                      payments=tuple(_to_payment(row) for row in repo.on_day(conn,
-                                                                              dates.iso(day))),
-                      payouts=teachers_paid)
+    on = dates.iso(day)
+    return CashReport(day=on,
+                      payments=tuple(_to_payment(row) for row in repo.on_day(conn, on)),
+                      payouts=teachers_paid,
+                      voided_earlier=tuple(_to_payment(row) for row in repo.voided_on(conn, on)))
 
 
 # ----- planning (pure: the dialog's preview and record() use the same code) -----

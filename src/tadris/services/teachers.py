@@ -15,8 +15,9 @@ from tadris.services import audit, payouts
 
 # Rates are one percentage per teacher, stored in basis points, in half-open periods
 # [valid_from, valid_to) with no gap and no overlap: a new rate closes the current one on
-# its start date. A new rate on the current rate's own start date corrects it instead,
-# unless a validated payout already used it. The first rate may start earlier (it was set to
+# its start date, never inside a period a validated payout already paid at the old rate. A
+# new rate on the current rate's own start date corrects it instead, unless a validated
+# payout already used it. The first rate may start earlier (it was set to
 # start too late), never before the arrival date. A rate change that touches months a draft
 # payout counts builds that draft again; approved and paid payouts never change. A teacher is
 # put on a group only from a day they have a rate (require_rate_on): each month of a group
@@ -202,6 +203,8 @@ def _apply_rate(conn, ctx: UserContext, teacher_id: int, bp: int, start: str) ->
                   old={"percentage_bp": current["percentage_bp"], "valid_from": start},
                   new={"percentage_bp": bp, "valid_from": start})
     else:
+        if repo.has_locked_payout_since(conn, teacher_id, start):
+            raise BusinessRuleError(t["rate.locked"])  # months from `start` paid at the old rate
         repo.close_rate(conn, current["id"], start)
         repo.insert_rate(conn, teacher_id, bp, start)
         audit.log(conn, ctx, "teacher.rate", "teachers", teacher_id,

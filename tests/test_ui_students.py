@@ -113,26 +113,25 @@ def test_search_and_status_filter(qtbot, conn, director, amine):
     assert page.empty.text() == t["students.no_match"]
 
 
-def test_level_and_group_filters_the_figures_and_reset(qtbot, conn, director):
+def test_level_and_group_filters_and_reset(qtbot, conn, director):
     school = School(conn, director)
     other = catalog.create(conn, director, "level", "3AS")
     yanis = students.create(conn, director, StudentInput("Yanis", "Haddad"))
     registrations.register(conn, director, yanis, other, 0)
     page = list_view(qtbot, conn, director)
-    assert [(tile.name.text(), tile.value.text()) for tile in page.tiles][:2] == [
-        ("Élèves actifs", "6"), ("Inscrits cette année", "6")]
-    assert len(page.student_ids()) == 6 and not page._reset_box.isVisibleTo(page)
+    assert len(page.student_ids()) == 6
+    assert page.filters.text() == t["filters.button"]
     page.group.setCurrentIndex(page.group.findData(school.a))
     assert sorted(page.student_ids()) == sorted([school.amine, school.badis])
-    assert page.chips[3].property("active") and page._reset_box.isVisibleTo(page)
+    assert page.filters.text() == t["filters.button_count"].format(count=1)
     page.group.setCurrentIndex(0)
     page.level.setCurrentIndex(page.level.findData(other))
     assert page.student_ids() == [yanis]
-    page.search.setText("zzz")
-    page.reset.click()
-    assert page.search.text() == "" and page.level.currentData() is None
-    assert len(page.student_ids()) == 6 and not page._reset_box.isVisibleTo(page)
-    assert not any(chip.property("active") for chip in page.chips)
+    page.status.setCurrentIndex(2)  # Tous
+    assert page.filters.active_count() == 2
+    page.filters.reset.click()
+    assert page.level.currentData() is None and page.status.currentData() == "active"
+    assert len(page.student_ids()) == 6 and page.filters.active_count() == 0
 
 
 def test_the_list_prints_as_filtered(qtbot, conn, director, tmp_path, monkeypatch):

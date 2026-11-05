@@ -1,5 +1,5 @@
-"""The student's Abonnements tab: every month of every group, latest first. What is left to
-pay on each is after the student's credit, as everywhere else."""
+"""The student's Abonnements tab: every month of every group, latest first, with what is left
+to pay on each."""
 
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QLabel, QPushButton, QVBoxLayout, QWidget
@@ -32,7 +32,7 @@ class SubscriptionsTab(QWidget):
         self._ctx = ctx
         self._student_id = student_id
         self._subscriptions: dict[int, Subscription] = {}
-        self._left: dict[int, int] = {}  # charge id -> left to pay, after the credit
+        self._left: dict[int, int] = {}  # charge id -> left to pay
         self._latest: set[int] = set()  # the latest month of each enrollment
         self._without: list[Enrollment] = []
 

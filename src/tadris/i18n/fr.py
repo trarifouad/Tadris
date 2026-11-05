@@ -109,6 +109,7 @@ t = {
     "subscription.trial": "Un élève en essai n'a pas d'abonnement : confirmez d'abord l'essai.",
     "subscription.group_closed": "Ce groupe est clôturé : pas de nouvel abonnement.",
     "subscription.cancelled": "Cet abonnement est annulé.",
+    "subscription.nothing_to_renew": "Ce groupe n'a pas de mois à renouveler.",
     "subscription.not_latest": (
         "Seul le dernier abonnement peut être renouvelé (celui qui se termine le {end})."
     ),
@@ -139,10 +140,22 @@ t = {
     "payment.method_invalid": "Mode de paiement invalide.",
     "payment.payer_unknown": "Ce payeur n'est pas un contact de l'élève.",
     "payment.charge_unknown": "Cette ligne n'est pas due par l'élève (ou figure deux fois).",
-    "payment.allocation_too_high": (
-        "Le montant affecté dépasse ce qui reste à payer sur cette ligne ({amount})."
+    "payment.above_due": (
+        "Le montant dépasse ce qui reste à payer ({amount}). Pour payer d'avance, ajoutez les "
+        "mois suivants."
     ),
-    "payment.allocations_exceed": "Les montants affectés dépassent le paiement ({amount}).",
+    "payment.nothing_due": (
+        "L'élève n'a rien à payer. Pour payer d'avance, ajoutez les mois suivants."
+    ),
+    "payment.nothing_chosen": "Cochez au moins une ligne à payer.",
+    "payment.ahead_unpaid": (
+        "Le montant ne paie pas tous les mois ajoutés : retirez-en un ou augmentez le montant."
+    ),
+    "payment.ahead_invalid": "Le nombre de mois d'avance doit être un nombre entier.",
+    "payment.ahead_unknown": "Les mois suivants de ce groupe ne peuvent pas être payés d'avance.",
+    "payment.ahead_too_many": (
+        "Ce groupe n'a que {count} mois avant la fin de l'année scolaire."
+    ),
     "payment.reason_required": "Indiquez le motif de l'annulation.",
     "payment.already_voided": "Ce paiement est déjà annulé.",
     "payout_status.draft": "Brouillon",
@@ -341,12 +354,9 @@ t = {
     "receipt.cashier": "Reçu par",
     "receipt.col.item": "Désignation",
     "receipt.col.amount": "Montant",
-    "receipt.credit_line": "Avance (crédit pour les prochains mois)",
-    "receipt.credit_used": "Crédit utilisé (avance précédente)",
     "receipt.total": "Total payé",
     "receipt.left": "Reste à payer au {date}",
     "receipt.upcoming": "À venir (pas encore dû)",
-    "receipt.credit": "Crédit disponible",
     "receipt.voided": "Reçu annulé le {date} : {reason}",
     "receipt.stamp_paid": "PAYÉ",
     "receipt.stamp_voided": "ANNULÉ",
@@ -685,7 +695,6 @@ t = {
     "student_status.inactive": "Inactif",
     "students.new": "Nouvel élève",
     "students.search": "Rechercher par nom, numéro ou téléphone",
-    "students.search_short": "Nom, numéro ou téléphone",  # after the search icon
     "students.filter.active": "Actifs",
     "students.filter.inactive": "Inactifs",
     "students.filter.all": "Tous",
@@ -799,7 +808,6 @@ t = {
     "sessions_page.count_due": "{count} appel(s) à faire",
     "sessions_page.none": "Aucune séance",
     "sessions_page.day_empty": "Aucune séance ce jour. Les jours qui en ont portent un point.",
-    "sessions_page.now": "Maintenant · {time}",
     "sessions_page.state.planned": "Prévue",
     "sessions_page.state.ongoing": "En cours",
     "sessions_page.state.due": "Appel à faire",
@@ -892,8 +900,6 @@ t = {
     "subscriptions_page.count": "{count} ligne(s)",
     "payment_state.kept": "Encaissé",
     "payment_state.voided": "Annulé",
-    "payments_tab.summary": "Reste à payer {due} · en retard {overdue} · crédit {credit}",
-    "payments_tab.summary_credit": "Rien à payer · crédit disponible {credit}",
     "payments_tab.receive": "Encaisser un paiement",
     "payments_tab.nothing_due": "Rien à payer pour le moment.",
     "payments_tab.history": "Paiements reçus",
@@ -917,22 +923,25 @@ t = {
     "payment_dialog.submit": "Encaisser",
     "payment_dialog.submit_amount": "Encaisser {amount}",
     "payment_dialog.summary": "{name} : reste à payer {due}, dont {overdue} en retard.",
-    "payment_dialog.credit_deducted": "Le crédit déjà versé ({amount}) est déduit.",
-    "payment_dialog.credit_left": "Crédit disponible : {amount}.",
     "payment_dialog.amount": "Montant reçu",
     "payment_dialog.method": "Mode de paiement",
     "payment_dialog.payer": "Payé par",
     "payment_dialog.no_payer": "— (non précisé)",
     "payment_dialog.choose": "Choisir les lignes à payer (sinon : les plus anciennes d'abord)",
-    "payment_dialog.nothing_due": (
-        "Rien à payer pour le moment : le montant sera gardé en crédit pour les prochains mois."
+    "payment_dialog.nothing_due": "Rien à payer pour le moment.",
+    "payment_dialog.ahead": "Payer d'avance",
+    "payment_dialog.ahead_group": "{group} · {price} par mois",
+    "payment_dialog.ahead_none": "Aucun",
+    "payment_dialog.ahead_months": "{count} mois ({period})",
+    "payment_dialog.ahead_tip": (
+        "Les mois suivants de ce groupe, renouvelés et payés avec ce paiement."
     ),
+    "payment_dialog.new_month": "{description} · nouveau",
     "payment_dialog.col.item": "Désignation",
     "payment_dialog.col.due_date": "Échéance",
     "payment_dialog.col.left": "Reste dû",
     "payment_dialog.col.this": "Ce paiement",
     "payment_dialog.col.after": "Reste après",
-    "payment_dialog.to_credit": "{amount} seront gardés en crédit.",
     "payment_dialog.left_after": "Reste à payer après ce paiement : {amount}.",
     "void_payment_dialog.title": "Annuler le paiement",
     "void_payment_dialog.submit": "Annuler le paiement",
@@ -1035,8 +1044,6 @@ t = {
         "Le mois {period} de {group} ({price}) sera annulé, ainsi que son montant dû. "
         "Impossible une fois payé en partie ou compté dans un paiement enseignant."
     ),
-    "dues.credit": "Crédit {amount}",
-    "dues.credit_note": "Payé d'avance : le prochain paiement l'utilise d'abord.",
     "dues.group": "{name} · {count} échéance{plural} · {total}",
     "dues.group.late": "En retard",
     "dues.group.soon": "À échéance",
@@ -2240,7 +2247,7 @@ t = {
     "audit.action.holiday.update": "Vacances modifiées",
     "audit.action.level.create": "Niveau créé",
     "audit.action.level.reorder": "Ordre des niveaux changé",
-    "audit.action.payment.apply_credit": "Avoir utilisé",
+    "audit.action.payment.apply_credit": "Avoir utilisé",  # entries before 2026-11-05
     "audit.action.payment.record": "Paiement enregistré",
     "audit.action.payment.void": "Paiement annulé",
     "audit.action.payout.approve": "Paiement enseignant approuvé",
@@ -2374,7 +2381,8 @@ t = {
     "audit.key.subject_id": "Matière",
     "audit.key.substitute": "Remplaçant",
     "audit.key.teacher_id": "Enseignant",
-    "audit.key.to_credit": "Mis en avoir",
+    "audit.key.to_credit": "Mis en avoir",  # entries before 2026-11-05 (no credit since)
+    "audit.key.months_ahead": "Mois payés d'avance",
     "audit.key.type": "Type",
     "audit.key.username": "Utilisateur",
     "audit.key.valid_from": "À partir du",

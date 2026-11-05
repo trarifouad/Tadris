@@ -147,7 +147,7 @@ def full_board() -> Dashboard:
     many = range(9)
     debtors = tuple(Debtor(student_id=i, student_number=f"2026-{i:04d}",
                            student_name=f"Élève {i}", owed_now=1000 * (9 - i), due=1000,
-                           credit=0, oldest_overdue="2026-10-01", days_overdue=5 + i)
+                           oldest_overdue="2026-10-01", days_overdue=5 + i)
                     for i in many)
     return Dashboard(
         today="2026-10-18", now="10:00",

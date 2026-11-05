@@ -1,7 +1,7 @@
 """Abonnements (sidebar), the renewals: every student in every group (not on trial), one
 line each, with the latest month, where it stands and, for information, what is left to pay
-on that group's months (after the student's credit). A search, and « Filtres »: the state
-(running, ending soon, expired, without a month) and the group. Renew or start a month from
+on that group's months. A search, and « Filtres »: the state (running, ending soon, expired,
+without a month) and the group. Renew or start a month from
 the list, or renew a whole view at once; a double-click or « Voir la fiche » opens the
 student's page. Money is taken on the Paiements page."""
 

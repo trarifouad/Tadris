@@ -553,12 +553,15 @@ def test_switch_keeps_a_paid_month_ahead_and_starts_after_it(conn, receptionist,
     assert months(conn, receptionist, new) == [("2026-12-01", "2027-01-01", 2500, "active")]
 
 
-def test_abonnements_owed_counts_the_credit(conn, receptionist, amine, in_maths,
-                                            monkeypatch):
-    payments.record(conn, receptionist, amine, 6000, "cash")  # October + 3 000 of credit
+def test_abonnements_owed_is_what_is_left_on_the_months(conn, receptionist, amine, in_maths,
+                                                        monkeypatch):
+    payments.record(conn, receptionist, amine, 3000, "cash")  # October
     renewed_ahead(conn, receptionist, in_maths, monkeypatch)
     [line] = subscriptions.lines(conn, receptionist)
-    assert line.owed == 0  # the credit pays November at the next payment
+    assert line.owed == 3000  # November
+    payments.record(conn, receptionist, amine, 1000, "cash")
+    [line] = subscriptions.lines(conn, receptionist)
+    assert line.owed == 2000
 
 
 def test_closing_a_group_cancels_its_months_ahead(conn, director, receptionist, school,

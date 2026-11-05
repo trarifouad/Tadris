@@ -122,15 +122,29 @@ def last_audit(conn, action):
                         (action,)).fetchone()
 
 
+def enrollment_of(conn, ctx, student_id) -> int:
+    [month] = subscriptions.for_student(conn, ctx, student_id)
+    return month.enrollment_id
+
+
+def payment_count(conn) -> int:
+    return conn.execute("SELECT COUNT(*) FROM payments").fetchone()[0]
+
+
+def subscription_count(conn) -> int:
+    return conn.execute("SELECT COUNT(*) FROM subscriptions").fetchone()[0]
+
+
 # ----- debt -----
 
 def test_debt_of_a_new_student_is_the_fee_and_the_first_month(conn, director, amine):
     d = debt.for_student(conn, director, amine)
     assert [(c.kind, c.amount, c.due) for c in d.charges] == [("registration", 1000, 1000),
                                                               ("subscription", 3000, 3000)]
-    # 1 000 + 3 000, both due today, nothing paid, no credit
-    assert (d.due, d.overdue, d.credit, d.balance, d.owed_now) == (4000, 4000, 0, 4000, 4000)
+    # 1 000 + 3 000, both due today, nothing paid
+    assert (d.due, d.overdue, d.owed_now) == (4000, 4000, 4000)
     assert d.oldest_overdue == "2026-10-18"
+    assert not hasattr(d, "credit") and not hasattr(d, "after_credit")
 
 
 def test_a_month_renewed_ahead_is_owed_but_not_late(conn, director, amine):
@@ -151,7 +165,16 @@ def test_cancelled_charges_are_not_owed(conn, director, school):
     enrollments.enroll(conn, director, student, school.maths)
     [month] = subscriptions.for_student(conn, director, student)
     subscriptions.cancel(conn, director, month.id, "Erreur de saisie")
-    assert debt.for_student(conn, director, student).balance == 0
+    assert debt.for_student(conn, director, student).due == 0
+
+
+def test_debt_figures_are_what_is_left_on_each_line():
+    charges = (ChargeDue(1, "registration", "Frais", 1000, "2026-10-01", 0, None),
+               ChargeDue(2, "subscription", "M1", 3000, "2026-10-18", 500, 1),
+               ChargeDue(3, "subscription", "M1", 3000, "2026-11-18", 0, 1))
+    d = Debt(student_id=1, as_of="2026-10-20", charges=charges)
+    assert (d.due, d.overdue, d.owed_now, d.oldest_overdue) == (6500, 3500, 3500, "2026-10-01")
+    assert Debt(1, "2026-10-20", charges[2:]).oldest_overdue is None  # only a month to come
 
 
 # ----- recording: allocation order -----
@@ -161,22 +184,23 @@ def test_exact_payment_settles_everything_with_a_receipt(conn, receptionist, ami
     fee, [month] = fee_charge(conn, amine), month_charges(conn, amine)
     assert allocations_of(conn, payment_id) == [(fee["id"], 1000), (month["id"], 3000)]
     p = payments.get(conn, receptionist, payment_id)
-    assert (p.amount, p.allocated, p.unallocated, p.method, p.cashier) == (4000, 4000, 0, "cash",
-                                                                          "accueil")
+    assert (p.amount, p.allocated, p.method, p.cashier) == (4000, 4000, "cash", "accueil")
     assert p.receipt_number == "R2026-00001"
     assert p.paid_at.startswith("2026-10-18T")
     d = debt.for_student(conn, receptionist, amine)
-    assert (d.charges, d.balance, d.credit) == ((), 0, 0)
+    assert (d.charges, d.due) == ((), 0)
 
 
 def test_partial_payment_pays_the_oldest_charge_first(conn, receptionist, amine):
     payment_id = payments.record(conn, receptionist, amine, 2500, "cash")
     fee, [month] = fee_charge(conn, amine), month_charges(conn, amine)
-    # the fee (1 000) first, then 1 500 of the month
+    # the fee (1 000) first, then 1 500 of the month: the rest of the month stays owed
     assert allocations_of(conn, payment_id) == [(fee["id"], 1000), (month["id"], 1500)]
     d = debt.for_student(conn, receptionist, amine)
     assert [(c.id, c.paid, c.due) for c in d.charges] == [(month["id"], 1500, 1500)]
-    assert d.balance == 1500
+    assert d.due == 1500
+    payments.record(conn, receptionist, amine, 1500, "cash")  # the rest, later
+    assert debt.for_student(conn, receptionist, amine).due == 0
 
 
 def test_order_is_by_due_date_not_by_creation(conn, director, school):
@@ -191,100 +215,291 @@ def test_order_is_by_due_date_not_by_creation(conn, director, school):
     assert allocations_of(conn, payment_id) == [(month["id"], 3000), (fee["id"], 500)]
 
 
-def test_overpayment_is_kept_as_credit(conn, receptionist, amine):
-    payment_id = payments.record(conn, receptionist, amine, 5000, "cash")
-    p = payments.get(conn, receptionist, payment_id)
-    assert (p.allocated, p.unallocated) == (4000, 1000)
-    d = debt.for_student(conn, receptionist, amine)
-    assert (d.due, d.credit, d.balance, d.owed_now) == (0, 1000, -1000, 0)
-    audit = json.loads(last_audit(conn, "payment.record")["new_value"])
-    assert audit["to_credit"] == 1000
+def test_a_payment_above_what_is_left_is_refused(conn, receptionist, amine):
+    """No credit: 4 001 DA for 4 000 DA left is refused, nothing written, no receipt number
+    used."""
+    with pytest.raises(ValidationError) as caught:
+        payments.record(conn, receptionist, amine, 4001, "cash")
+    assert caught.value.message == t["payment.above_due"].format(amount="4 000 DA")
+    assert payment_count(conn) == 0
+    first = payments.record(conn, receptionist, amine, 4000, "cash")
+    assert payments.get(conn, receptionist, first).receipt_number == "R2026-00001"
+    with pytest.raises(ValidationError) as caught:
+        payments.record(conn, receptionist, amine, 100, "cash")  # all paid now
+    assert caught.value.message == t["payment.nothing_due"]
 
 
-def test_payment_without_any_charge_is_all_credit(conn, director, school):
+def test_a_payment_with_nothing_to_pay_is_refused(conn, director, school):
     student = new_student(conn, director, school, "Yacine", "Mansouri", fee=0)
-    payment_id = payments.record(conn, director, student, 2000, "transfer")
-    assert allocations_of(conn, payment_id) == []
-    assert debt.for_student(conn, director, student).balance == -2000
+    with pytest.raises(ValidationError) as caught:
+        payments.record(conn, director, student, 2000, "transfer")
+    assert caught.value.message == t["payment.nothing_due"]
+    assert payment_count(conn) == 0
 
 
-def test_credit_pays_the_next_month_first_when_money_comes_in(conn, director, amine):
-    first = payments.record(conn, director, amine, 5000, "cash")  # 1 000 left as credit
+def test_a_month_renewed_ahead_is_paid_like_any_line(conn, director, amine):
     [month] = subscriptions.for_student(conn, director, amine)
     subscriptions.renew(conn, director, month.id)  # 3 000, due 18/11
-    d = debt.for_student(conn, director, amine)
-    assert (d.due, d.credit, d.balance) == (3000, 1000, 2000)
-
-    plan = payments.preview(conn, director, amine, 2000)
-    assert (plan.credit_before, plan.credit_used, plan.allocated, plan.to_credit,
-            plan.left_to_pay) == (1000, 1000, 2000, 0, 0)
-
-    second = payments.record(conn, director, amine, 2000, "cash")
-    _old, renewal = month_charges(conn, amine)
-    # the 1 000 of credit from the first payment, then the 2 000
-    assert allocations_of(conn, first)[-1] == (renewal["id"], 1000)
-    assert allocations_of(conn, second) == [(renewal["id"], 2000)]
-    d = debt.for_student(conn, director, amine)
-    assert (d.due, d.credit, d.balance) == (0, 0, 0)
-    applied = json.loads(last_audit(conn, "payment.apply_credit")["new_value"])
-    assert applied["allocations"] == [{"payment_id": first, "charge_id": renewal["id"],
-                                       "amount": 1000}]
+    with pytest.raises(ValidationError):
+        payments.record(conn, director, amine, 7001, "cash")
+    payment_id = payments.record(conn, director, amine, 7000, "cash")
+    _october, november = month_charges(conn, amine)
+    assert allocations_of(conn, payment_id)[-1] == (november["id"], 3000)
+    assert debt.for_student(conn, director, amine).due == 0
 
 
 def test_preview_matches_what_record_does(conn, director, amine):
     plan = payments.preview(conn, director, amine, 2500)
     assert [(line.charge.amount, line.from_payment, line.left) for line in plan.lines] == [
         (1000, 1000, 0), (3000, 1500, 1500)]
+    assert (plan.allocated, plan.left_to_pay) == (2500, 1500)
     payment_id = payments.record(conn, director, amine, 2500, "cash")
     assert [v for _c, v in allocations_of(conn, payment_id)] == [1000, 1500]
-    assert conn.execute("SELECT COUNT(*) FROM payments").fetchone()[0] == 1  # preview wrote none
+    assert payment_count(conn) == 1  # the preview wrote none
+
+
+def test_the_preview_refuses_what_record_refuses(conn, director, amine):
+    with pytest.raises(ValidationError):
+        payments.preview(conn, director, amine, 4001)
+    assert payments.preview(conn, director, amine, 0).allocated == 0  # the lines, unpaid
+
+
+def test_record_is_audited_without_credit(conn, receptionist, amine):
+    payments.record(conn, receptionist, amine, 2500, "cash")
+    entry = json.loads(last_audit(conn, "payment.record")["new_value"])
+    assert "to_credit" not in entry and entry["months_ahead"] == 0
+    assert last_audit(conn, "payment.apply_credit") is None
 
 
 # ----- recording: chosen charges -----
 
 def test_chosen_charges_replace_the_oldest_first_order(conn, director, amine):
     [month] = month_charges(conn, amine)
-    payment_id = payments.record(conn, director, amine, 3000, "cash",
-                                 chosen=[(month["id"], 3000)])
+    payment_id = payments.record(conn, director, amine, 3000, "cash", chosen=[month["id"]])
     assert allocations_of(conn, payment_id) == [(month["id"], 3000)]
     d = debt.for_student(conn, director, amine)
     assert [(c.kind, c.due) for c in d.charges] == [("registration", 1000)]
 
 
-def test_chosen_less_than_the_payment_keeps_the_rest_as_credit(conn, director, amine):
-    [month] = month_charges(conn, amine)
-    payment_id = payments.record(conn, director, amine, 3000, "cash",
-                                 chosen=[(month["id"], 2000)])
-    assert payments.get(conn, director, payment_id).unallocated == 1000
-    # 1 000 + 1 000 owed, 1 000 credit
-    assert debt.for_student(conn, director, amine).balance == 1000
+def test_chosen_lines_are_paid_oldest_first_and_cap_the_amount(conn, director, amine):
+    fee, [month] = fee_charge(conn, amine), month_charges(conn, amine)
+    with pytest.raises(ValidationError) as caught:
+        payments.record(conn, director, amine, 3500, "cash", chosen=[month["id"]])
+    assert caught.value.message == t["payment.above_due"].format(amount="3 000 DA")
+    payment_id = payments.record(conn, director, amine, 1500, "cash",
+                                 chosen=[month["id"], fee["id"]])  # any order given
+    assert allocations_of(conn, payment_id) == [(fee["id"], 1000), (month["id"], 500)]
+    payment_id = payments.record(conn, director, amine, 2000, "cash", chosen=[month["id"]])
+    assert allocations_of(conn, payment_id) == [(month["id"], 2000)]  # part of a month
+    assert debt.for_student(conn, director, amine).due == 500
 
 
 @pytest.mark.parametrize("chosen_kind, message_key", [
-    ("too_high", "payment.allocation_too_high"),
     ("unknown", "payment.charge_unknown"),
     ("twice", "payment.charge_unknown"),
-    ("exceeds", "payment.allocations_exceed"),
+    ("none", "payment.nothing_chosen"),
 ])
 def test_chosen_charges_are_checked(conn, director, amine, chosen_kind, message_key):
-    fee, [month] = fee_charge(conn, amine), month_charges(conn, amine)
-    chosen, amount = {
-        "too_high": ([(month["id"], 3500)], 4000),
-        "unknown": ([(9999, 100)], 4000),
-        "twice": ([(month["id"], 100), (month["id"], 100)], 4000),
-        "exceeds": ([(fee["id"], 1000), (month["id"], 3000)], 3000),
-    }[chosen_kind]
+    [month] = month_charges(conn, amine)
+    chosen = {"unknown": [9999], "twice": [month["id"], month["id"]], "none": []}[chosen_kind]
     with pytest.raises(ValidationError) as caught:
-        payments.record(conn, director, amine, amount, "cash", chosen=chosen)
-    assert caught.value.message.split("(")[0] == t[message_key].split("(")[0]
-    assert conn.execute("SELECT COUNT(*) FROM payments").fetchone()[0] == 0
+        payments.record(conn, director, amine, 1000, "cash", chosen=chosen)
+    assert caught.value.message == t[message_key]
+    assert payment_count(conn) == 0
 
 
 def test_a_chosen_charge_of_another_student_is_refused(conn, director, school, amine):
     other = new_student(conn, director, school, "Sara", "Kaci")
     with pytest.raises(ValidationError):
         payments.record(conn, director, other, 1000, "cash",
-                        chosen=[(fee_charge(conn, amine)["id"], 1000)])
+                        chosen=[fee_charge(conn, amine)["id"]])
+
+
+def test_a_line_paid_in_full_can_no_longer_be_chosen(conn, director, amine):
+    fee = fee_charge(conn, amine)
+    payments.record(conn, director, amine, 1000, "cash", chosen=[fee["id"]])
+    with pytest.raises(ValidationError) as caught:
+        payments.record(conn, director, amine, 1000, "cash", chosen=[fee["id"]])
+    assert caught.value.message == t["payment.charge_unknown"]
+
+
+# ----- recording: months paid ahead -----
+
+def test_next_months_follow_the_latest_month_to_the_end_of_the_year(conn, director, amine):
+    [group] = subscriptions.next_months(conn, director, amine)
+    assert (group.enrollment_id, group.group_title, group.group_name, group.price) == (
+        enrollment_of(conn, director, amine), "M1 · Maths 4AM", "M1", 3000)
+    # October is the month running; the year ends on 30/06/2027.
+    assert [start for start, _end in group.months] == [
+        "2026-11-18", "2026-12-18", "2027-01-18", "2027-02-18", "2027-03-18", "2027-04-18",
+        "2027-05-18", "2027-06-18"]
+    assert group.months[0] == ("2026-11-18", "2026-12-18")
+
+
+def test_next_months_are_the_months_renewing_makes(conn, director, school):
+    """The cycle of the 31st: 31/10 -> 30/11 -> 31/12 -> 31/01 -> 28/02 -> 31/03. What the
+    payment dialog shows is what the payment renews."""
+    student = new_student(conn, director, school, "Lina", "Saidi", fee=0)
+    enrollment_id = enrollments.enroll(conn, director, student, school.maths,
+                                       enrolled_on=date(2026, 10, 31))
+    [group] = subscriptions.next_months(conn, director, student)
+    planned = list(group.months[:4])
+    assert planned == [("2026-11-30", "2026-12-31"), ("2026-12-31", "2027-01-31"),
+                       ("2027-01-31", "2027-02-28"), ("2027-02-28", "2027-03-31")]
+    payments.record(conn, director, student, 15000, "cash", ahead={enrollment_id: 4})
+    made = [(m.start_date, m.end_date)
+            for m in subscriptions.for_enrollment(conn, director, enrollment_id)][1:]
+    assert made == planned
+
+
+def test_pay_two_months_ahead(conn, receptionist, amine):
+    """What is owed (fee and October: 4 000) and two months ahead (6 000) in one payment:
+    November and December are renewed with it and paid."""
+    enrollment_id = enrollment_of(conn, receptionist, amine)
+    plan = payments.preview(conn, receptionist, amine, 10000, ahead={enrollment_id: 2})
+    assert [(line.charge.description, line.from_payment, line.ahead) for line in plan.lines] == [
+        ("Frais d'inscription 2026-2027", 1000, False),
+        ("Abonnement M1 du 18/10/2026 au 18/11/2026", 3000, False),
+        ("Abonnement M1 du 18/11/2026 au 18/12/2026", 3000, True),
+        ("Abonnement M1 du 18/12/2026 au 18/01/2027", 3000, True)]
+    assert subscription_count(conn) == 1  # the preview renewed nothing
+
+    payment_id = payments.record(conn, receptionist, amine, 10000, "cash",
+                                 ahead={enrollment_id: 2})
+    months = subscriptions.for_enrollment(conn, receptionist, enrollment_id)
+    assert [(m.start_date, m.end_date, m.paid) for m in months] == [
+        ("2026-10-18", "2026-11-18", 3000), ("2026-11-18", "2026-12-18", 3000),
+        ("2026-12-18", "2027-01-18", 3000)]
+    assert months[2].renewal_of_id == months[1].id  # renewed one from the other
+    assert [line.description for line in payments.lines(conn, receptionist, payment_id)] == [
+        line.charge.description for line in plan.lines]
+    assert debt.for_student(conn, receptionist, amine).due == 0
+    entry = json.loads(last_audit(conn, "payment.record")["new_value"])
+    assert (entry["months_ahead"], len(entry["allocations"])) == (2, 4)
+    assert conn.execute("SELECT COUNT(*) FROM audit_log WHERE action = 'subscription.create'"
+                        ).fetchone()[0] == 3  # October at entry, then the two ahead
+
+
+def test_a_month_ahead_paid_in_part(conn, director, amine):
+    enrollment_id = enrollment_of(conn, director, amine)
+    payments.record(conn, director, amine, 8500, "cash", ahead={enrollment_id: 2})
+    d = debt.for_student(conn, director, amine)
+    assert [(c.due_date, c.paid, c.due) for c in d.charges] == [("2026-12-18", 1500, 1500)]
+    assert (d.owed_now, d.due) == (0, 1500)  # to come, not late
+
+
+def test_a_month_ahead_the_amount_does_not_reach_is_refused(conn, director, amine):
+    """6 000 DA with two months ahead: the fee, October and 2 000 of November; December would
+    be renewed for nothing. Refused, and nothing is renewed."""
+    enrollment_id = enrollment_of(conn, director, amine)
+    with pytest.raises(ValidationError) as caught:
+        payments.record(conn, director, amine, 6000, "cash", ahead={enrollment_id: 2})
+    assert caught.value.message == t["payment.ahead_unpaid"]
+    with pytest.raises(ValidationError):
+        payments.preview(conn, director, amine, 6000, ahead={enrollment_id: 2})
+    assert (payment_count(conn), subscription_count(conn)) == (0, 1)
+    with pytest.raises(ValidationError) as caught:
+        payments.record(conn, director, amine, 13001, "cash", ahead={enrollment_id: 3})
+    assert caught.value.message == t["payment.above_due"].format(amount="13 000 DA")
+
+
+def test_months_ahead_alone_with_lines_still_owed(conn, director, amine):
+    """The desk ticks no line and adds a month ahead: only that month is paid; the fee and
+    October stay owed."""
+    enrollment_id = enrollment_of(conn, director, amine)
+    fee = fee_charge(conn, amine)
+    payment_id = payments.record(conn, director, amine, 3000, "cash", chosen=[],
+                                 ahead={enrollment_id: 1})
+    _october, november = month_charges(conn, amine)
+    assert allocations_of(conn, payment_id) == [(november["id"], 3000)]
+    assert debt.for_student(conn, director, amine).owed_now == 4000
+    payment_id = payments.record(conn, director, amine, 4000, "cash", chosen=[fee["id"]],
+                                 ahead={enrollment_id: 1})
+    december = month_charges(conn, amine)[-1]
+    assert allocations_of(conn, payment_id) == [(fee["id"], 1000), (december["id"], 3000)]
+
+
+def test_months_ahead_in_two_groups(conn, director, school, amine):
+    physics = enrollments.enroll(conn, director, amine, school.physics)
+    maths = next(g.enrollment_id for g in subscriptions.next_months(conn, director, amine)
+                 if g.group_name == "M1")
+    # owed: fee 1 000, M1 3 000, P1 2 500; ahead: M1 3 000, P1 2 500
+    payments.record(conn, director, amine, 12000, "cash", ahead={maths: 1, physics: 1})
+    assert debt.for_student(conn, director, amine).due == 0
+    assert len(subscriptions.for_student(conn, director, amine)) == 4
+
+
+def test_months_ahead_are_checked(conn, director, school, amine):
+    enrollment_id = enrollment_of(conn, director, amine)
+    with pytest.raises(ValidationError) as caught:
+        payments.record(conn, director, amine, 28000, "cash", ahead={enrollment_id: 9})
+    assert caught.value.message == t["payment.ahead_too_many"].format(count=8)
+    for bad in (-1, True, 1.5):
+        with pytest.raises(ValidationError) as caught:
+            payments.record(conn, director, amine, 7000, "cash", ahead={enrollment_id: bad})
+        assert caught.value.message == t["payment.ahead_invalid"]
+    with pytest.raises(ValidationError) as caught:
+        payments.record(conn, director, amine, 7000, "cash", ahead={999: 1})
+    assert caught.value.message == t["payment.ahead_unknown"]
+    other = new_student(conn, director, school, "Sara", "Kaci")
+    with pytest.raises(ValidationError):  # another student's group
+        payments.record(conn, director, other, 4000, "cash", ahead={enrollment_id: 1})
+    assert (payment_count(conn), subscription_count(conn)) == (0, 1)
+    payments.record(conn, director, amine, 4000, "cash", ahead={enrollment_id: 0})  # none
+
+
+def test_no_months_ahead_on_trial_in_a_free_or_closed_group(conn, director, school):
+    student = new_student(conn, director, school, "Lina", "Saidi", fee=0)
+    trial = enrollments.enroll(conn, director, student, school.maths, trial=True)
+    free = school.group(conn, director, "F1", "Soutien", 0)
+    enrollments.enroll(conn, director, student, free)
+    assert subscriptions.next_months(conn, director, student) == []
+    with pytest.raises(ValidationError):
+        payments.record(conn, director, student, 3000, "cash", ahead={trial: 1})
+    enrollments.confirm_trial(conn, director, trial)
+    assert [g.enrollment_id for g in subscriptions.next_months(conn, director, student)] == [
+        trial]
+    groups.close(conn, director, school.maths)
+    assert subscriptions.next_months(conn, director, student) == []
+
+
+def test_a_rolled_back_payment_renews_nothing(conn, director, amine, monkeypatch):
+    enrollment_id = enrollment_of(conn, director, amine)
+
+    def broken(*_args):
+        raise RuntimeError("disk full")
+
+    monkeypatch.setattr(payments_repo, "insert_receipt", broken)
+    with pytest.raises(RuntimeError):
+        payments.record(conn, director, amine, 7000, "cash", ahead={enrollment_id: 1})
+    assert (payment_count(conn), subscription_count(conn)) == (0, 1)
+
+
+def test_a_month_paid_ahead_cannot_be_cancelled_until_its_payment_is_voided(conn, director,
+                                                                            amine):
+    enrollment_id = enrollment_of(conn, director, amine)
+    payment_id = payments.record(conn, director, amine, 7000, "cash", ahead={enrollment_id: 1})
+    november = subscriptions.for_enrollment(conn, director, enrollment_id)[-1]
+    with pytest.raises(BusinessRuleError):
+        subscriptions.cancel(conn, director, november.id, "Erreur")
+    payments.void(conn, director, payment_id, "Chèque sans provision")
+    # The months it renewed stay, owed again like the others.
+    d = debt.for_student(conn, director, amine)
+    assert (d.due, d.owed_now) == (7000, 4000)
+    subscriptions.cancel(conn, director, november.id, "Erreur")
+    assert debt.for_student(conn, director, amine).due == 4000
+
+
+def test_leaving_the_group_keeps_the_months_paid_ahead(conn, director, amine):
+    """Paid ahead to December, the student leaves today: the months after today stay
+    (money is on them, V1 has no refunds) and stay paid."""
+    enrollment_id = enrollment_of(conn, director, amine)
+    payments.record(conn, director, amine, 10000, "cash", ahead={enrollment_id: 2})
+    enrollments.leave(conn, director, enrollment_id, reason="Déménagement")
+    months = subscriptions.for_enrollment(conn, director, enrollment_id)
+    assert [(m.status, m.paid) for m in months] == [("active", 3000)] * 3
+    assert debt.for_student(conn, director, amine).due == 0
+    assert subscriptions.next_months(conn, director, amine) == []  # no longer in the group
 
 
 # ----- recording: checks -----
@@ -362,54 +577,33 @@ def test_void_makes_the_charges_owed_again(conn, director, amine):
     payment_id = payments.record(conn, director, amine, 4000, "cash")
     payments.void(conn, director, payment_id, "Billet refusé")
     p = payments.get(conn, director, payment_id)
-    assert (p.voided, p.void_reason, p.voided_by, p.unallocated) == (True, "Billet refusé",
-                                                                     "directeur", 0)
+    assert (p.voided, p.void_reason, p.voided_by) == (True, "Billet refusé", "directeur")
     assert p.receipt_number == "R2026-00001"  # the receipt stays, marked voided
-    assert debt.for_student(conn, director, amine).balance == 4000
+    assert debt.for_student(conn, director, amine).due == 4000
     entry = json.loads(last_audit(conn, "payment.void")["new_value"])
     assert entry == {"voided": True, "reason": "Billet refusé"}
 
 
-def test_void_removes_the_credit(conn, director, amine):
-    payment_id = payments.record(conn, director, amine, 5000, "cash")
-    payments.void(conn, director, payment_id, "Erreur de montant")
-    d = debt.for_student(conn, director, amine)
-    assert (d.credit, d.balance) == (0, 4000)
-
-
-def test_credit_pays_again_what_a_void_made_owed(conn, director, amine):
-    """C pays the fee and half the month; A the other half and keeps 3 000 of credit. C
-    voided, the fee and half the month are owed again: the next payment's recording spends
-    A's credit on them, the month a second time (0018: refused before, and with it every
-    payment of the student)."""
+def test_after_a_void_the_next_payment_pays_the_lines_again(conn, director, amine):
     fee = fee_charge(conn, amine)
     [month] = month_charges(conn, amine)
     mistake = payments.record(conn, director, amine, 2500, "cash")  # 1 000 + 1 500
-    kept = payments.record(conn, director, amine, 4500, "cash")  # 1 500 + 3 000 credit
+    kept = payments.record(conn, director, amine, 1500, "cash")  # the other 1 500
     payments.void(conn, director, mistake, "Saisie en double")
-    assert (debt.for_student(conn, director, amine).due,
-            debt.for_student(conn, director, amine).credit) == (2500, 3000)
-    later = payments.record(conn, director, amine, 500, "cash")
-    assert allocations_of(conn, kept) == [(month["id"], 1500), (fee["id"], 1000),
-                                          (month["id"], 1500)]
-    d = debt.for_student(conn, director, amine)
-    assert (d.due, d.credit) == (0, 1000)  # 500 left of A's credit, P's 500
-    # What A paid, a month once with its sum; its receipt still shows what it paid then.
-    assert [(line.description, line.amount) for line in payments.lines(conn, director, kept)] \
-        == [("Frais d'inscription 2026-2027", 1000),
-            ("Abonnement M1 du 18/10/2026 au 18/11/2026", 3000)]
-    assert [(line.amount, line.from_credit)
-            for line in payments.receipt_lines(conn, director, kept)] == [(1500, 0)]
-    assert [(line.charge_id, line.amount, line.from_credit)
-            for line in payments.receipt_lines(conn, director, later)] == [
-        (fee["id"], 1000, 1000), (month["id"], 1500, 1500)]
+    assert {c.id: c.due for c in debt.for_student(conn, director, amine).charges} == {
+        fee["id"]: 1000, month["id"]: 1500}
+    with pytest.raises(ValidationError):
+        payments.record(conn, director, amine, 2501, "cash")
+    later = payments.record(conn, director, amine, 2500, "cash")
+    assert allocations_of(conn, later) == [(fee["id"], 1000), (month["id"], 1500)]
+    assert allocations_of(conn, kept) == [(month["id"], 1500)]  # as recorded
+    assert debt.for_student(conn, director, amine).due == 0
 
 
-def test_money_pays_this_month_before_the_next(conn, director, amine):
-    """Decided 2026-11-03. P1 paid the fee and October, P2 November (renewed ahead); P1
-    voided. P2's 3 000 stays on November as recorded (its receipt too), but every screen
-    shows it paying the oldest first: the fee, then 2 000 of October; 1 000 of October is
-    late, November waits for its day. The next 1 000 completes what is due."""
+def test_a_void_shows_what_each_payment_paid(conn, director, amine):
+    """Decided 2026-11-05. P1 paid the fee and October, P2 November (renewed ahead); P1
+    voided. The screens show what each payment paid: the fee and October are owed (and
+    late), November stays paid. No money moves from November to October."""
     fee = fee_charge(conn, amine)
     first = payments.record(conn, director, amine, 4000, "cash")
     [october] = subscriptions.for_student(conn, director, amine)
@@ -418,27 +612,15 @@ def test_money_pays_this_month_before_the_next(conn, director, amine):
     payments.void(conn, director, first, "Chèque sans provision")
     oct_charge, nov_charge = (m["id"] for m in month_charges(conn, amine))
     d = debt.for_student(conn, director, amine)
-    assert {c.id: c.due for c in d.charges} == {fee["id"]: 1000, oct_charge: 3000}  # recorded
-    assert debt.left_for_student(conn, director, amine) == {oct_charge: 1000, nov_charge: 3000}
-    assert (d.owed_now, d.oldest_overdue, d.balance) == (1000, "2026-10-18", 4000)
+    assert {c.id: c.due for c in d.charges} == {fee["id"]: 1000, oct_charge: 3000}
+    assert debt.left_for_student(conn, director, amine) == {fee["id"]: 1000, oct_charge: 3000}
+    assert (d.owed_now, d.oldest_overdue, d.due) == (4000, "2026-10-18", 4000)
     [debtor] = debt.debtors(conn, director)
-    assert (debtor.owed_now, debtor.due) == (1000, 4000)
+    assert (debtor.owed_now, debtor.due) == (4000, 4000)
     assert [(line.charge_id, line.amount)
-            for line in payments.receipt_lines(conn, director, ahead)] == [(nov_charge, 3000)]
-    payments.record(conn, director, amine, 1000, "cash")
-    d = debt.for_student(conn, director, amine)
-    assert (d.owed_now, debt.left_for_student(conn, director, amine)) == (0, {nov_charge: 3000})
-
-
-def test_credit_finishes_a_month_its_payment_chose_in_part(conn, director, amine):
-    """The desk put 1 000 of 4 000 on the month: 3 000 credit. The next payment's recording
-    spends it on the fee, then on the rest of that same month."""
-    [month] = month_charges(conn, amine)
-    first = payments.record(conn, director, amine, 4000, "cash", chosen=[(month["id"], 1000)])
-    payments.record(conn, director, amine, 500, "cash")
-    assert [amount for _c, amount in allocations_of(conn, first)] == [1000, 1000, 2000]
-    d = debt.for_student(conn, director, amine)
-    assert (d.due, d.credit) == (0, 500)
+            for line in payments.lines(conn, director, ahead)] == [(nov_charge, 3000)]
+    payments.record(conn, director, amine, 4000, "cash")
+    assert debt.for_student(conn, director, amine).due == 0
 
 
 def test_void_is_for_the_director_only(conn, director, receptionist, amine):
@@ -465,9 +647,9 @@ def test_void_of_an_unknown_payment(conn, director):
 @pytest.mark.parametrize("payout_status", ["draft", "approved", "paid"])
 def test_void_after_a_teacher_payout_counted_the_month(conn, director, school, amine,
                                                        payout_status):
-    """A typo (40 000 for 4 000) stays fixable: the payout pays the month's full price
-    whether it was paid or not, so it does not change; the month is owed again."""
-    payment_id = payments.record(conn, director, amine, 40000, "cash")
+    """A payment voided after a payout counted its month: the payout pays the month's full
+    price whether it was paid or not, so it does not change; the month is owed again."""
+    payment_id = payments.record(conn, director, amine, 4000, "cash")
     payout_id = payouts.build_draft(conn, director, school.teacher, TODAY)
     if payout_status != "draft":
         payouts.approve(conn, director, payout_id)
@@ -475,8 +657,7 @@ def test_void_after_a_teacher_payout_counted_the_month(conn, director, school, a
         payouts.mark_paid(conn, director, payout_id, "cash")
     payments.void(conn, director, payment_id, "Erreur de montant")
     assert payments.get(conn, director, payment_id).voided is True
-    d = debt.for_student(conn, director, amine)
-    assert (d.due, d.credit) == (4000, 0)  # the fee and the month owed again, no credit
+    assert debt.for_student(conn, director, amine).due == 4000  # the fee and the month
     p = payouts.get(conn, director, payout_id)
     assert (p.status, p.amount_due, p.months) == (payout_status, 1800, 1)
 
@@ -488,6 +669,19 @@ def test_paid_subscription_can_no_longer_be_cancelled(conn, director, amine):
         subscriptions.cancel(conn, director, month.id, "Erreur")
 
 
+def test_money_left_on_a_payment_from_before_has_no_effect(conn, director, amine):
+    """A payment recorded before 2026-11-05 with money on no line (the credit then): nothing
+    spends it now, and what is owed is what is left on the lines."""
+    old = payments_repo.insert(conn, amine, None, 5000, "cash", "2026-10-01T10:00:00",
+                               director.user_id)
+    conn.execute("INSERT INTO payment_allocations(payment_id, charge_id, amount) "
+                 "VALUES (?, ?, 1000)", (old, fee_charge(conn, amine)["id"]))
+    assert debt.for_student(conn, director, amine).due == 3000
+    payment_id = payments.record(conn, director, amine, 3000, "cash")
+    assert [amount for _c, amount in allocations_of(conn, payment_id)] == [3000]
+    assert allocations_of(conn, old) == [(fee_charge(conn, amine)["id"], 1000)]
+
+
 # ----- a hand-calculated scenario -----
 
 def test_hand_calculated_scenario(conn, director, school, monkeypatch):
@@ -496,9 +690,8 @@ def test_hand_calculated_scenario(conn, director, school, monkeypatch):
     18/10 pays 2 000: fee 1 000, M1 Oct 1 000.
     20/10 pays 6 000: M1 Oct 2 000, P1 Oct 2 500, M1 Nov 1 500.
     21/10 the 18/10 payment is voided: fee and M1 Oct owe 1 000 each again.
-    Owed: fee 1 000 + M1 Oct 1 000 + M1 Nov 1 500 = 3 500. As the screens show it, the 6 000
-    pays October first (fee, M1, then 2 000 of P1), then November: late on 21/10, 500 of
-    P1 since 20/10; November 3 000, not due yet.
+    Owed: fee 1 000 + M1 Oct 1 000 + M1 Nov 1 500 = 3 500; late on 21/10: the fee and M1 Oct,
+    2 000, since 18/10; November 1 500, not due yet. 3 501 is refused, 3 500 pays it all.
     """
     student = new_student(conn, director, school, "Rania", "Bouzid")
     enrollments.enroll(conn, director, student, school.maths)
@@ -514,34 +707,23 @@ def test_hand_calculated_scenario(conn, director, school, monkeypatch):
     move_to(monkeypatch, date(2026, 10, 21))
     payments.void(conn, director, first, "Chèque sans provision")
     d = debt.for_student(conn, director, student)
-    assert sorted(c.due for c in d.charges) == [1000, 1000, 1500]  # as recorded
-    assert (d.due, d.overdue, d.credit, d.balance, d.owed_now) == (3500, 2000, 0, 3500, 500)
-    assert d.oldest_overdue == "2026-10-20"
-    assert [(c.amount, c.due, c.due_date) for c in d.after_credit().charges] == [
-        (2500, 500, "2026-10-20"), (3000, 3000, "2026-11-18")]
+    assert [(c.amount, c.due, c.due_date) for c in d.charges] == [
+        (1000, 1000, "2026-10-18"), (3000, 1000, "2026-10-18"), (3000, 1500, "2026-11-18")]
+    assert (d.due, d.overdue, d.owed_now, d.oldest_overdue) == (3500, 2000, 2000, "2026-10-18")
+    assert debt.days_late(d) == 3
+    with pytest.raises(ValidationError):
+        payments.record(conn, director, student, 3501, "cash")
+    payments.record(conn, director, student, 3500, "cash")
+    assert debt.for_student(conn, director, student).due == 0
 
 
-def test_after_credit_pays_the_oldest_charges_first():
-    charges = (ChargeDue(1, "registration", "Frais", 1000, "2026-10-01", 0, None),
-               ChargeDue(2, "subscription", "M1", 3000, "2026-10-18", 500, 1),
-               ChargeDue(3, "subscription", "M1", 3000, "2026-11-18", 0, 1))
-    d = Debt(student_id=1, as_of="2026-10-20", charges=charges, credit=2000)
-    net = d.after_credit()
-    # The fee covered whole (left out), 1 000 more on October, November untouched.
-    assert [(c.id, c.paid, c.due) for c in net.charges] == [(2, 1500, 1500), (3, 0, 3000)]
-    assert (net.credit, net.owed_now, net.balance) == (0, d.owed_now, d.balance)
-    assert Debt(1, "2026-10-20", charges, 9000).after_credit() == Debt(1, "2026-10-20", (), 2500)
-
-
-def test_late_since_counts_the_credit(conn, director, amine, monkeypatch):
-    """The credit pays the oldest month first: the student is late from the first month it
-    does not cover, not from a month it already covers."""
-    payments.record(conn, director, amine, 7000, "cash")  # fee, October, 3 000 of credit
-    [october] = subscriptions.for_student(conn, director, amine)
-    move_to(monkeypatch, date(2026, 11, 18))
-    november = subscriptions.renew(conn, director, october.id)
+def test_late_since_the_oldest_month_left(conn, director, amine, monkeypatch):
+    """Paid through November (a month ahead): late from December's first day, not before."""
+    enrollment_id = enrollment_of(conn, director, amine)
+    payments.record(conn, director, amine, 7000, "cash", ahead={enrollment_id: 1})
     move_to(monkeypatch, date(2026, 12, 18))
-    subscriptions.renew(conn, director, november)
+    november = subscriptions.for_enrollment(conn, director, enrollment_id)[-1]
+    subscriptions.renew(conn, director, november.id)
     move_to(monkeypatch, date(2026, 12, 20))
     d = debt.for_student(conn, director, amine)
     assert (d.owed_now, d.oldest_overdue, debt.days_late(d)) == (3000, "2026-12-18", 2)
@@ -595,7 +777,7 @@ def test_debtors_filters(conn, receptionist, school, desk):
     assert debt.debtors(conn, receptionist, min_days=16) == []
 
 
-def test_credit_takes_a_student_off_the_debtors_list(conn, director, desk):
+def test_paying_what_is_late_takes_a_student_off_the_debtors_list(conn, director, desk):
     payments.record(conn, director, desk["yacine"], 500, "cash")
     assert [d.student_name for d in debt.debtors(conn, director)] == ["Benali Amine"]
 
@@ -703,43 +885,37 @@ def test_receipt_prints_the_lines_set_in_settings(conn, director, amine, tmp_pat
     assert path.stat().st_size > 1000
 
 
-def test_receipt_with_credit(conn, director, amine):
-    payment_id = payments.record(conn, director, amine, 5000, "cash")
+def test_receipt_of_months_paid_ahead(conn, director, amine):
+    enrollment_id = enrollment_of(conn, director, amine)
+    payment_id = payments.record(conn, director, amine, 10000, "cash", ahead={enrollment_id: 2})
     doc = printing.receipt_content(conn, director, receipt_of(conn, director, payment_id))
-    assert doc.lines[-1] == ("Avance (crédit pour les prochains mois)", "1 000 DA")
-    assert doc.totals == [("Total payé", "5 000 DA"), ("Reste à payer au 18/10/2026", "0 DA"),
-                          ("Crédit disponible", "1 000 DA")]
-
-
-def test_receipt_shows_what_was_paid_when_it_was_made(conn, director, amine, monkeypatch):
-    """R1 keeps 1 000 DA of credit; R2 uses it. Printed again, R1 still shows the credit it
-    kept (not the month the credit paid later), and R2 shows the credit it used."""
-    first = payments.record(conn, director, amine, 5000, "cash")
-    [october] = subscriptions.for_student(conn, director, amine)
-    move_to(monkeypatch, date(2026, 11, 18))
-    subscriptions.renew(conn, director, october.id)
-    second = payments.record(conn, director, amine, 2000, "cash")
-    doc = printing.receipt_content(conn, director, receipt_of(conn, director, first))
     assert doc.lines == [("Frais d'inscription 2026-2027", "1 000 DA"),
                          ("Abonnement M1 du 18/10/2026 au 18/11/2026", "3 000 DA"),
-                         ("Avance (crédit pour les prochains mois)", "1 000 DA")]
-    doc = printing.receipt_content(conn, director, receipt_of(conn, director, second))
-    assert doc.lines == [("Abonnement M1 du 18/11/2026 au 18/12/2026", "3 000 DA"),
-                         ("Crédit utilisé (avance précédente)", "-1 000 DA")]
-    assert doc.totals == [("Total payé", "2 000 DA"), ("Reste à payer au 18/11/2026", "0 DA")]
-    assert [(line.amount, line.from_credit)
-            for line in payments.receipt_lines(conn, director, second)] == [(3000, 1000)]
+                         ("Abonnement M1 du 18/11/2026 au 18/12/2026", "3 000 DA"),
+                         ("Abonnement M1 du 18/12/2026 au 18/01/2027", "3 000 DA")]
+    assert doc.totals == [("Total payé", "10 000 DA"), ("Reste à payer au 18/10/2026", "0 DA")]
+
+
+def test_receipt_printed_again_lists_the_same_lines(conn, director, amine, monkeypatch):
+    first = payments.record(conn, director, amine, 2500, "cash")
+    move_to(monkeypatch, date(2026, 10, 25))
+    payments.record(conn, director, amine, 1500, "cash")
+    doc = printing.receipt_content(conn, director, receipt_of(conn, director, first))
+    assert doc.lines == [("Frais d'inscription 2026-2027", "1 000 DA"),
+                         ("Abonnement M1 du 18/10/2026 au 18/11/2026", "1 500 DA")]
+    assert doc.totals == [("Total payé", "2 500 DA"), ("Reste à payer au 25/10/2026", "0 DA")]
 
 
 def test_receipt_lines_of_a_payment_from_before_0016(conn, director, amine):
-    """Allocations made before 0016 have no recorded_with: they count as the payment's own."""
+    """Allocations made before 0016 have no recorded_with: they are the payment's all the
+    same."""
     payment_id = payments_repo.insert(conn, amine, None, 1000, "cash", "2026-10-18T10:00:00",
                                       director.user_id)
     conn.execute("INSERT INTO payment_allocations(payment_id, charge_id, amount) "
                  "VALUES (?, ?, 1000)", (payment_id, fee_charge(conn, amine)["id"]))
-    assert [(line.description, line.amount, line.from_credit)
-            for line in payments.receipt_lines(conn, director, payment_id)] == [
-        ("Frais d'inscription 2026-2027", 1000, 0)]
+    assert [(line.description, line.amount)
+            for line in payments.lines(conn, director, payment_id)] == [
+        ("Frais d'inscription 2026-2027", 1000)]
 
 
 def test_receipt_puts_the_months_to_come_apart(conn, director, amine):

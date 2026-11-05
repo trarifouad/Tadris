@@ -44,7 +44,7 @@ class ReceiptDoc:
     copy_mark: str  # « DUPLICATA » on a reprint, else ""
     details: list[tuple[str, str]]  # (label, value): date, student, payer, method, cashier
     columns: tuple[str, str]  # Désignation, Montant
-    lines: list[tuple[str, str]]  # (description, amount), credit line included
+    lines: list[tuple[str, str]]  # (description, amount)
     totals: list[tuple[str, str]]  # Total payé, Reste à payer...
     stamp: str  # « PAYÉ » or « ANNULÉ »
     stamp_date: str  # dd/mm/yyyy

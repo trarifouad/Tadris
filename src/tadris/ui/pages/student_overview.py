@@ -58,7 +58,7 @@ def month_cells(e: Enrollment, month: Subscription | None, ahead: list[Subscript
                 today: str, left: dict[int, int]) -> tuple[str, str, str, str]:
     """The month's two cells: (heading, period, left to pay, the amount's tone). Months paid
     ahead (`ahead`, after `month`) only push the period's end and add what is left on them.
-    `left`: what is left on each charge after the student's credit (as in « À payer »).
+    `left`: what is left on each charge (as in « À payer »).
     Without a month, the period says why and the amount is a dash. What is left is coloured
     as in « À payer »: a month's charge falls due on its start, late from that day (red),
     soon within DUE_SOON_DAYS (amber); the first month with something left decides."""
@@ -217,7 +217,7 @@ class GroupLines(QWidget):
     def set_lines(self, enrollments: list[Enrollment], months: list[Subscription],
                   attendance: dict[int, AttendanceSummary], today: str,
                   left: dict[int, int]) -> None:
-        """left: what is left on each charge after the student's credit."""
+        """left: what is left on each charge."""
         while self._layout.count():
             widget = self._layout.takeAt(0).widget()
             if widget is not None and widget is not self.empty:

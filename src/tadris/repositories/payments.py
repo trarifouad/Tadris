@@ -4,8 +4,9 @@ charges they pay.
 A charge belongs to a student through its registration (the fee) or its subscription's
 enrollment (a month). What was paid on a charge is the sum of its allocations from payments
 not voided. Rows here are never updated or deleted (triggers): a void is a new row. A payment
-may pay one charge in several rows, one per recording (its own, then a later one using its
-credit), so its allocations are always summed.
+pays lines only (no credit since 2026-11-05), each charge once, at its own recording. Rows
+from before then may hold several rows per charge (a later recording spent its credit), so
+its allocations are always summed.
 """
 
 # The student of a charge, whatever its parent.
@@ -93,39 +94,6 @@ def open_charges(conn, student_id: int | None = None) -> list:
     ).fetchall()
 
 
-def paid_since_first_owed(conn, student_id: int | None = None) -> list:
-    """Open charges paid in full that fall due on or after the student's oldest charge with
-    something left (one student's, or everyone's), in the order payments pay them: the money
-    on them pays that older charge first (debt: this month before the next). The charges
-    before it are paid in full and keep their money. Joins, not a subquery per charge: the
-    history of paid months grows every month."""
-    return conn.execute(
-        f"""
-        WITH paid AS ({_PAID_BY_CHARGE}),
-        open AS (
-            SELECT c.id, COALESCE(r.student_id, e.student_id) AS student_id,
-                   c.registration_id, c.subscription_id, c.description, c.amount, c.due_date,
-                   c.status, COALESCE(p.paid, 0) AS paid, e.group_id, s.start_date,
-                   s.end_date, g.name AS group_name
-              FROM charges c
-              LEFT JOIN registrations r ON r.id = c.registration_id
-              LEFT JOIN subscriptions s ON s.id = c.subscription_id
-              LEFT JOIN enrollments e ON e.id = s.enrollment_id
-              LEFT JOIN class_groups g ON g.id = e.group_id
-              LEFT JOIN paid p ON p.charge_id = c.id
-             WHERE c.status = 'open'
-               AND (:student IS NULL OR COALESCE(r.student_id, e.student_id) = :student)),
-        first_owed AS (
-            SELECT student_id, MIN(due_date) AS since FROM open
-             WHERE paid < amount GROUP BY student_id)
-        SELECT o.* FROM open o JOIN first_owed f ON f.student_id = o.student_id
-         WHERE o.paid >= o.amount AND o.due_date >= f.since
-         ORDER BY o.due_date, o.id
-        """,
-        {"student": student_id},
-    ).fetchall()
-
-
 def charge(conn, charge_id: int):
     return conn.execute(f"SELECT {_CHARGE_COLUMNS} FROM charges c WHERE c.id = ?",
                         (charge_id,)).fetchone()
@@ -190,29 +158,9 @@ def voided_on(conn, day: str) -> list:
     ).fetchall()
 
 
-def with_credit(conn, student_id: int | None = None) -> list:
-    """Payments not voided with an amount left to allocate, oldest first (rows: id,
-    student_id, amount, allocated)."""
-    return conn.execute(
-        """
-        SELECT * FROM (
-            SELECT p.id, p.student_id, p.amount,
-                   COALESCE((SELECT SUM(pa.amount) FROM payment_allocations pa
-                              WHERE pa.payment_id = p.id), 0) AS allocated
-              FROM payments p
-             WHERE NOT EXISTS (SELECT 1 FROM payment_voids v WHERE v.payment_id = p.id)
-               AND (:student IS NULL OR p.student_id = :student))
-         WHERE allocated < amount
-         ORDER BY id
-        """,
-        {"student": student_id},
-    ).fetchall()
-
-
 def allocations(conn, payment_id: int) -> list:
-    """What a payment paid, charge by charge, in the order of the charges' due dates. A charge
-    it paid twice (its credit used again after a void made the charge owed again, 0018) is one
-    line with the sum."""
+    """What a payment paid, charge by charge, in the order of the charges' due dates (a charge
+    paid in two rows before 2026-11-05, 0018, is one line with the sum)."""
     return conn.execute(
         """
         SELECT pa.charge_id, SUM(pa.amount) AS amount, c.description, c.due_date,
@@ -237,35 +185,12 @@ def insert(conn, student_id: int, payer_contact_id: int | None, amount: int, met
     return int(cur.lastrowid)
 
 
-def recorded_with(conn, payment_id: int) -> list:
-    """What the recording of a payment paid, charge by charge, in the order of the charges'
-    due dates: its own money and the credit of earlier payments it used (from_credit). Its
-    credit used later is left out. Allocations made before 0016 (recorded_with NULL) count as
-    the payment's own."""
-    return conn.execute(
-        """
-        SELECT pa.charge_id, c.description, c.due_date,
-               SUM(pa.amount) AS amount,
-               SUM(CASE WHEN pa.payment_id <> :payment THEN pa.amount ELSE 0 END) AS from_credit
-          FROM payment_allocations pa
-          JOIN charges c ON c.id = pa.charge_id
-         WHERE pa.recorded_with = :payment
-            OR (pa.recorded_with IS NULL AND pa.payment_id = :payment)
-         GROUP BY pa.charge_id
-         ORDER BY c.due_date, c.id
-        """,
-        {"payment": payment_id},
-    ).fetchall()
-
-
-def insert_allocation(conn, payment_id: int, charge_id: int, amount: int,
-                      recorded_with: int) -> int:
-    """recorded_with: the payment being recorded (payment_id itself, or a later payment
-    whose recording uses this one's credit)."""
+def insert_allocation(conn, payment_id: int, charge_id: int, amount: int) -> int:
+    """Made by the payment's own recording (recorded_with, 0016: itself)."""
     cur = conn.execute(
         "INSERT INTO payment_allocations(payment_id, charge_id, amount, recorded_with) "
         "VALUES (?, ?, ?, ?)",
-        (payment_id, charge_id, amount, recorded_with),
+        (payment_id, charge_id, amount, payment_id),
     )
     return int(cur.lastrowid)
 

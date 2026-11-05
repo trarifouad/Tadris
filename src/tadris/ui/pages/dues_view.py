@@ -1,11 +1,10 @@
-"""What a student has left to pay, as the desk reads it: the lines grouped by urgency, and
-« Crédit » when money paid ahead is left. One button pays (the page's « Encaisser »): it
-names the total of the lines ticked here; a double-click on a line pays that line alone.
+"""What a student has left to pay, as the desk reads it: the lines grouped by urgency. One
+button pays (the page's « Encaisser »): it names the total of the lines ticked here; a
+double-click on a line pays that line alone.
 
 Late (red): due on or before today. Due soon (amber): within DUE_SOON_DAYS. To come
-(grey): later, months renewed ahead; folded away so they never inflate what is owed now. The
-lines are after the credit, which pays the oldest first (as the next payment will): a line it
-covers whole is not shown, one it covers in part shows what is left."""
+(grey): later, months renewed ahead; folded away so they never inflate what is owed now. A
+line paid in part shows what is left."""
 
 from datetime import date, timedelta
 
@@ -13,7 +12,6 @@ from PySide6.QtCore import QRect, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter
 from PySide6.QtWidgets import (
     QAbstractItemView,
-    QHBoxLayout,
     QLabel,
     QPushButton,
     QTableWidgetItem,
@@ -27,7 +25,6 @@ from tadris.domain.models import ChargeDue, Debt
 from tadris.i18n.fr import t
 from tadris.ui.theme import tokens
 from tadris.ui.theme.delegates import EDGE_WIDTH, TEXT_INSET, BadgeDelegate
-from tadris.ui.widgets.common import Badge
 from tadris.ui.widgets.tables import ID_ROLE, RIGHT, fill, fit_columns, item, ruled_table
 
 DUE_SOON_DAYS = 7
@@ -236,21 +233,9 @@ class DuesView(QWidget):
         self.empty.setObjectName("emptyState")
         self.empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.empty.setWordWrap(True)
-        # Money paid ahead, once every line is paid: it pays the next lines.
-        self.credit = QWidget()
-        self.credit_badge = Badge("", "info")
-        credit_note = QLabel(t["dues.credit_note"])
-        credit_note.setObjectName("caption")
-        credit = QHBoxLayout(self.credit)
-        credit.setContentsMargins(0, 0, 0, 0)
-        credit.setSpacing(8)
-        credit.addWidget(self.credit_badge)
-        credit.addWidget(credit_note, 1)
-        self.credit.hide()
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(10)
-        layout.addWidget(self.credit)
         for group in self.groups.values():
             group.ticked.connect(self.ticked.emit)
             group.pay_one.connect(lambda charge_id: self.pay.emit([charge_id]))
@@ -259,15 +244,12 @@ class DuesView(QWidget):
         self.charges: dict[int, ChargeDue] = {}
 
     def set_debt(self, d: Debt, today: date) -> None:
-        """The student's debt as computed (Debt): the credit is taken off here."""
-        d = d.after_credit()
+        """The student's debt (Debt)."""
         keep = set(self.ticked_ids())
         self.charges = {c.id: c for c in d.charges}
         keep &= set(self.charges)
         for key, group in self.groups.items():
             group.set_charges([c for c in d.charges if urgency(c, today) == key], keep)
-        self.credit_badge.setText(t["dues.credit"].format(amount=format_dzd(d.credit)))
-        self.credit.setVisible(d.credit > 0)
         self.empty.setVisible(not d.charges)
         self.ticked.emit()
 
@@ -279,5 +261,5 @@ class DuesView(QWidget):
         return [c.id for key in (LATE, SOON) for c in self.groups[key].charges]
 
     def ticked_total(self) -> int:
-        """What is left on the lines ticked (after the credit)."""
+        """What is left on the lines ticked."""
         return sum(self.charges[i].due for i in self.ticked_ids() if i in self.charges)

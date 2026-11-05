@@ -11,6 +11,7 @@ from tadris import config
 from tadris.core import dates
 from tadris.core.errors import ValidationError
 from tadris.db.connection import transaction
+from tadris.repositories import payments as payments_repo
 from tadris.services import attendance, auth, debt, payments, students
 from tadris.ui.pages.payments_tab import PaymentsTab
 from tadris.ui.pages.student_attendance_tab import StudentAttendanceTab
@@ -156,7 +157,9 @@ def test_a_students_attendance_counts_all_and_lists_a_page(qtbot, conn, director
 
 
 def test_a_students_payments_come_a_page_at_a_time(qtbot, conn, director, many):
-    ids = [payments.record(conn, director, 1, 100 + n, "cash") for n in range(130)]
+    """130 payments of a student (rows of the history: they pay no line here)."""
+    ids = [payments_repo.insert(conn, 1, None, 100 + n, "cash", "2026-10-18T10:00:00",
+                                director.user_id) for n in range(130)]
     assert payments.count_for_student(conn, director, 1) == 130
     tab = PaymentsTab(conn, director, 1)
     qtbot.addWidget(tab)

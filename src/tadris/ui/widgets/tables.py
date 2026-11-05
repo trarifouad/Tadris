@@ -30,7 +30,7 @@ class Item(QTableWidgetItem):
 def item(text: str, sort_key=None, align=LEFT, mono: bool = False, kind: str | None = None,
          item_id: int | None = None, tone: str | None = None) -> Item:
     """kind paints a status pill; tone colors the text with a token (e.g. 'danger' for a
-    late amount, 'info' for a credit)."""
+    late amount)."""
     cell = Item(text)
     cell.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
     cell.setTextAlignment(align)

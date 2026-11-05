@@ -196,6 +196,7 @@ def build_qss(t: dict, chevron: str = "", check: str = "") -> str:
     QLabel#bigNumber {{ font-family: "Reem Kufi"; font-size: 30px; font-weight: 600; }}
     QLabel#sectionTitle {{ font-size: 16px; font-weight: 500; }}
     QLabel#caption {{ font-size: 12px; color: {t['muted']}; }}
+    QLabel#caption[tone="danger"] {{ color: {t['danger']}; }}
     QLabel#money {{ font-family: "IBM Plex Mono"; font-size: 13px; font-weight: 500; }}
     QLabel#errorBanner {{ background: {t['danger_bg']}; color: {t['danger']};
         border: 1px solid {t['danger']}; border-radius: 6px; padding: 10px 14px; }}

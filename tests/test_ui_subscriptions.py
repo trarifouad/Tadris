@@ -446,16 +446,17 @@ def test_voir_la_fiche_opens_the_student_page(qtbot, conn, receptionist, amine, 
     assert students_page.detail.student_id == amine
 
 
-def test_credit_paid_before_the_fee_and_the_month(qtbot, conn, receptionist, school):
-    """Money received first (4 000 DA of credit), then the year's fee (600) and a group
-    (3 000): the credit covers both, 400 DA of it is left. No screen says 3 000 DA left."""
+def test_the_fee_and_the_month_paid_leave_nothing_on_any_screen(qtbot, conn, receptionist,
+                                                                 school):
+    """The year's fee (600) and a group (3 000), paid in one payment of 3 600 DA: every
+    screen says nothing is left."""
     from tadris.ui.pages.payments_tab import PaymentsTab
     from tadris.ui.pages.registration_tab import RegistrationTab
 
     lina = students.create(conn, receptionist, StudentInput("Lina", "Saidi"))
-    payments.record(conn, receptionist, lina, 4000, "cash")
     registrations.register(conn, receptionist, lina, school["level"], 600)
     enrollments.enroll(conn, receptionist, lina, school["maths"])
+    payments.record(conn, receptionist, lina, 3600, "cash")
     tab = make_tab(qtbot, conn, receptionist, lina)
     assert tab.summary.text() == t["subscriptions.summary"].format(due="0 DA")
     assert tab.list.table.item(0, 3).text() == "0 DA"
@@ -464,7 +465,7 @@ def test_credit_paid_before_the_fee_and_the_month(qtbot, conn, receptionist, sch
     assert registration.due.text() == "0 DA"
     dues = PaymentsTab(conn, receptionist, lina).dues
     qtbot.addWidget(dues)
-    assert not dues.empty.isHidden() and dues.credit_badge.text() == "Crédit 400 DA"
+    assert not dues.empty.isHidden()
     [line] = page(qtbot, conn, receptionist)._lines.values()
     assert line.owed == 0
 
@@ -480,17 +481,15 @@ def test_paying_ahead_extends_the_period_on_the_student_page(qtbot, conn, recept
         "En cours", "18 oct. → 18 déc.", "6 000 DA")
 
 
-def test_the_credit_counts_on_the_student_page_and_the_list(qtbot, conn, receptionist, amine,
-                                                           in_maths):
-    """3 000 DA paid ahead pay the next month at the next payment: nothing is left to pay
-    on the tile nor on the Abonnements page."""
-    payments.record(conn, receptionist, amine, 6000, "cash")
-    month = subscriptions.for_student(conn, receptionist, amine)[0]
-    subscriptions.renew(conn, receptionist, month.id)
+def test_a_month_paid_ahead_shows_on_the_student_page_and_the_list(qtbot, conn, receptionist,
+                                                                     amine, in_maths):
+    """October and November paid in one payment (November renewed with it): the period runs
+    to 18/12, nothing is left on the tile nor on the Abonnements page."""
+    payments.record(conn, receptionist, amine, 6000, "cash", ahead={in_maths: 1})
     view = StudentDetailView(conn, receptionist, amine)
     qtbot.addWidget(view)
     [line] = view.group_lines.lines
-    assert line.left.text() == t["overview.paid"]
+    assert (line.period.text(), line.left.text()) == ("18 oct. → 18 déc.", t["overview.paid"])
     assert [row[4] for row in section_rows(page(qtbot, conn, receptionist).list)] == ["0 DA"]
 
 

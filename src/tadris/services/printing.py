@@ -174,10 +174,9 @@ def receipt(conn, ctx: UserContext, receipt_id: int, out_dir: Path | None = None
 
 
 def receipt_content(conn, ctx: UserContext, receipt_id: int) -> ReceiptDoc:
-    """What was paid when the payment was recorded, line by line (the same on a duplicate):
-    each charge settled, the credit of earlier payments it used taken off, the part kept as
-    credit. Then what the student owes on the day it is printed (a duplicate shows its own
-    day): what is due, the months to come apart, after the credit."""
+    """What the payment paid, line by line (the same on a duplicate), then what the student
+    owes on the day it is printed (a duplicate shows its own day): what is due, the months
+    to come apart."""
     row = payments_repo.receipt(conn, receipt_id)
     if row is None:
         raise NotFound(t["receipt.not_found"])
@@ -190,22 +189,14 @@ def receipt_content(conn, ctx: UserContext, receipt_id: int) -> ReceiptDoc:
         details.append((t["receipt.payer"], p.payer_name))
     details += [(t["receipt.method"], t[f"payment_method.{p.method}"]),
                 (t["receipt.cashier"], p.cashier)]
-    paid = payments.receipt_lines(conn, ctx, p.id)
-    lines = [(line.description, format_dzd(line.amount)) for line in paid]
-    credit_used = sum(line.from_credit for line in paid)
-    if credit_used:
-        lines.append((t["receipt.credit_used"], format_dzd(-credit_used)))
-    kept = p.amount - sum(line.amount - line.from_credit for line in paid)
-    if kept:
-        lines.append((t["receipt.credit_line"], format_dzd(kept)))
-    owed = debt.for_student(conn, ctx, p.student_id).after_credit()
+    lines = [(line.description, format_dzd(line.amount))
+             for line in payments.lines(conn, ctx, p.id)]
+    owed = debt.for_student(conn, ctx, p.student_id)
     today = dates.display_date(dates.iso(dates.today()))
     totals = [(t["receipt.total"], format_dzd(p.amount)),
               (t["receipt.left"].format(date=today), format_dzd(owed.overdue))]
     if owed.due > owed.overdue:
         totals.append((t["receipt.upcoming"], format_dzd(owed.due - owed.overdue)))
-    if owed.credit:
-        totals.append((t["receipt.credit"], format_dzd(owed.credit)))
     voided_note = ""
     if p.voided:
         voided_note = t["receipt.voided"].format(date=dates.display_date(p.voided_at),

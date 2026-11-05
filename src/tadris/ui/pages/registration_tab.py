@@ -140,7 +140,6 @@ class RegistrationTab(QWidget):
                                                                            "active"))
             self.level.setText(reg.level)
             self.fee.setText(format_dzd(reg.fee_amount))
-            # What is left on the fee after the student's credit, as everywhere else.
             left = debt.left_for_student(self._conn, self._ctx, self._student_id)
             self.due.setText(format_dzd(left.get(reg.fee_charge_id, 0)))
             self.registered_on.setText(display_date(reg.registered_at))

@@ -194,34 +194,6 @@ class RecordBar(QWidget):
             painter.drawRoundedRect(QRectF(0, 0, max(self.width() * self._rate, 6), 6), 3, 3)
 
 
-class NowLine(QWidget):
-    """« Maintenant · 15:42 » and a line, between the sessions over and those to come."""
-
-    def __init__(self, now: str):
-        super().__init__()
-        self.setFixedHeight(22)
-        self.text = t["sessions_page.now"].format(time=now)
-
-    def paintEvent(self, event) -> None:
-        tk = tokens()
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        font = QFont(self.font())
-        font.setPixelSize(11)
-        font.setWeight(QFont.Weight.DemiBold)
-        painter.setFont(font)
-        color = QColor(tk["primary"])
-        painter.setPen(color)
-        middle = self.height() / 2
-        text_width = painter.fontMetrics().horizontalAdvance(self.text)
-        painter.drawText(QRectF(4, 0, text_width + 2, self.height()),
-                         Qt.AlignmentFlag.AlignVCenter, self.text)
-        painter.setBrush(color)
-        painter.drawEllipse(QRectF(text_width + 14, middle - 3, 6, 6))
-        painter.setPen(QPen(color, 1.5))
-        painter.drawLine(int(text_width + 20), int(middle), self.width(), int(middle))
-
-
 class SessionCard(QFrame):
     """One session: a coloured accent for its state, the time, the group, room and teacher,
     its badge, the attendance recorded, its main button and the « ⋯ » menu.
@@ -509,17 +481,10 @@ class SessionsView(QWidget):
         self.period.setText(day_title(day))
         self.summary.setText(day_summary([states[s.id] for s in shown]))
         self._clear_cards()
-        now_at = None
-        if dates.iso(day) == today and shown:
-            now_at = next((i for i, s in enumerate(shown) if s.start_time > now), len(shown))
-        for i, s in enumerate(shown):
-            if i == now_at:
-                self._cards.addWidget(NowLine(now))
+        for s in shown:
             card = SessionCard(s, states[s.id], today, self.manages, self._act)
             self.cards.append(card)
             self._cards.addWidget(card)
-        if now_at == len(shown):
-            self._cards.addWidget(NowLine(now))
         self.empty.setText(t["sessions_page.day_empty"] if listed else t["sessions_page.empty"])
         self.empty.setVisible(not shown)
 

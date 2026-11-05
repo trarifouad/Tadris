@@ -526,7 +526,7 @@ Add a `holidays` table or a settings JSON list in this phase. Decide which and a
 - A month or fee counts in the month of its accrual date (a month on its first day, the fee on the registration day); cancelled ones are left out. « Réglé » is what payments not voided paid on them, whenever they were paid; « Encaissé » is the money received in the month, whatever it paid; « Remboursé » is what was handed back in the month. So a month's « Facturé − Réglé » is still owed, and « Encaissé » matches the days' cash reports.
 - Money (revenue, teacher summary, the dashboard's money card) is the director's; the receptionist sees sessions, renewals, debt, attendance, the student list and group fill.
 - Attendance rate = (present + late) / (present + late + absent): an excused absence is left out; cancelled sessions do not count.
-- Debt by age: each late charge from its due date, in 0–30, 31–60, 61–90 and over 90 days; the credit pays the oldest first (as a payment would), so the buckets add up to the debtors list.
+- Debt by age: each late charge from its due date, in 0–30, 31–60, 61–90 and over 90 days, so the buckets add up to the debtors list.
 - Teacher summary: groups and students today; paid during the school year; waiting (drafts and approved); « À préparer » is what a draft built today would pay (same rate rule as the payout).
 - The audit log viewer shows at most 1 000 entries, latest first, and says so when the limit is reached.
 
@@ -730,7 +730,7 @@ Add a `holidays` table or a settings JSON list in this phase. Decide which and a
 | 3 / 6 | Timetable slot validity | **Decided:** half-open `[valid_from, valid_to)`, same as rates and subscriptions. Adjacent periods that share a boundary date do not overlap. |
 | 6 | Holidays storage | **Decided:** `holidays` table of periods (start, end included, label) |
 | 7 | Receipt paper | **Decided:** thermal 80 mm tickets for receipts and refund slips (A4 first, changed after phase 12) |
-| 7 | Overpayment | **Decided:** kept as credit; it pays the oldest charges first when the next payment is recorded |
+| 7 | Overpayment | **Decided (2026-11-05, replacing « kept as credit »):** refused. A payment pays lines only: the open charges (oldest first, or the lines the desk ticks) and the next months of a group, which the payment dialog renews with the payment (« Payer d'avance », up to the year's end). Less than what is left is fine: the rest stays owed. Screens show what each payment paid; after a void no money moves from a later month to an older one. Money left on no line by a payment from before stays as recorded and pays nothing. |
 | 7 | Debt limit | **Decided:** a warning in the enroll, switch, renew and payment dialogs once the late debt reaches the threshold in Paramètres (0 = off); never a block, so no override |
 | 11 | SMS provider | Decide after testing a real modem or phone gateway |
 | 13 | Arabic RTL in v1 | French only until after the pilot |
@@ -759,5 +759,4 @@ Add a `holidays` table or a settings JSON list in this phase. Decide which and a
 - Inventory of books and materials.
 - Remises (discounts) and corrections: built then dropped in phase 8 by decision; the school charges the full price.
 - Refunds (built in phase 8, removed from V1 after phase 12, rows archived): request, director approval and payout with allocation to the original payments, numbered slip, cash and reports. Decisions already taken for V2: the suggestion counts the sessions held up to the departure (from the timetable, absences count as used); a month starts at the first session attended (moved only within the original month, renewals moved with it); the fee is refundable through the normal request only before any attendance, otherwise by director exception; a departure date changed after a request means reject and ask again; an impossible makeup is decided by the director; refunds do not lower teacher pay; credit beyond what is owed may be refunded; a paid refund is corrected by a numbered reversal (director, full or part).
-- Refund a student's credit (money paid and allocated to no charge), e.g. paid in advance and gone before the next month was created.
 - Debt by age (0–30, 31–60, 61–90, over 90 days), built in phase 10 and not in the rebuilt Rapports; the Journal's filters by action and by item, with its exports.

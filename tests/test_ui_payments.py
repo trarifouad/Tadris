@@ -139,25 +139,22 @@ def test_tab_lists_what_is_left_to_pay(qtbot, conn, receptionist, amine):
     assert shown(tab.receive) and not shown(tab.void)  # void: director only
 
 
-def test_tab_with_credit(qtbot, conn, director, amine):
-    payments.record(conn, director, amine, 5000, "cash")
+def test_tab_with_everything_paid(qtbot, conn, director, amine):
+    payments.record(conn, director, amine, 4000, "cash")
     tab = make_tab(qtbot, conn, director, amine)
     assert shown(tab.dues.empty)
     assert all(group.isHidden() for group in tab.dues.groups.values())
-    assert shown(tab.dues.credit) and tab.dues.credit_badge.text() == "Crédit 1 000 DA"
+    assert not hasattr(tab.dues, "credit")  # no « Crédit » block any more
 
 
-def test_lines_are_shown_after_the_credit(qtbot, conn, director, amine):
-    """The credit pays the oldest lines first, as the next payment will: the month to come
-    shows what is left once the 1 000 DA of credit is on it, and no credit is left over."""
-    payments.record(conn, director, amine, 5000, "cash")  # fee, October, 1 000 of credit
+def test_a_month_paid_in_part_shows_what_is_left(qtbot, conn, director, amine):
     [month] = subscriptions.for_student(conn, director, amine)
     subscriptions.renew(conn, director, month.id)  # 18/11 -> 18/12, 3 000
+    payments.record(conn, director, amine, 5000, "cash")  # fee, October, 1 000 of November
     tab = make_tab(qtbot, conn, director, amine)
     later = tab.dues.groups["later"]
     assert later.header.text() == "À venir · 1 échéance · 2 000 DA ▸"
     assert rows(later.table)[0][4] == "2 000 / 3 000 DA"
-    assert tab.dues.credit.isHidden()
 
 
 def test_lines_are_grouped_and_ticked_to_pay(qtbot, conn, director, receptionist, amine,
@@ -219,8 +216,13 @@ def test_dialog_preview_follows_the_amount(qtbot, conn, receptionist, amine):
     assert [r[3:] for r in rows(dialog.table)] == [["1 000 DA", "0 DA"],
                                                    ["1 500 DA", "1 500 DA"]]
     assert dialog.outcome.text() == t["payment_dialog.left_after"].format(amount="1 500 DA")
-    dialog.amount.setText("5 000")
-    assert t["payment_dialog.to_credit"].format(amount="1 000 DA") in dialog.outcome.text()
+    assert dialog.submit.isEnabled()
+    dialog.amount.setText("5 000")  # more than is left: no credit
+    assert dialog.outcome.text() == t["payment.above_due"].format(amount="4 000 DA")
+    assert not dialog.submit.isEnabled()
+    assert [r[3:] for r in rows(dialog.table)] == [["—", "1 000 DA"], ["—", "3 000 DA"]]
+    dialog.amount.setText("4 000")
+    assert dialog.submit.isEnabled()
 
 
 @pytest.mark.parametrize("typed", ["", "abc", "0", "-5"])
@@ -248,7 +250,7 @@ def test_dialog_chosen_lines(qtbot, conn, receptionist, amine):
     assert month.checkState() == Qt.CheckState.Unchecked
     month.setCheckState(Qt.CheckState.Checked)  # the month only, not the fee
     assert dialog.table.item(1, 0) is month  # updated in place, not rebuilt
-    assert dialog.chosen(3000) == [(month_id, 3000)]
+    assert dialog.chosen() == [month_id]
     assert [r[3] for r in rows(dialog.table)] == ["—", "3 000 DA"]
     dialog.choose.setChecked(False)  # back to the oldest first: no boxes
     assert dialog.table.item(1, 0).data(Qt.ItemDataRole.CheckStateRole) is None
@@ -259,43 +261,120 @@ def test_dialog_chosen_lines(qtbot, conn, receptionist, amine):
     assert [(c.kind, c.due) for c in d.charges] == [("registration", 1000)]
 
 
-def test_dialog_lists_only_what_the_credit_leaves(qtbot, conn, receptionist, school,
-                                                monkeypatch):
-    """3 000 DA paid ahead, then the fee (600), the month (3 000) and the next month renewed
-    ahead: the credit pays the fee and 2 400 of the month; only what is left is listed."""
-    lina = students.create(conn, receptionist, StudentInput("Lina", "Saidi"))
-    payments.record(conn, receptionist, lina, 3000, "cash")
-    registrations.register(conn, receptionist, lina, school["level"], 600)
-    enrollments.enroll(conn, receptionist, lina, school["maths"])
-    [month] = subscriptions.for_student(conn, receptionist, lina)
-    subscriptions.renew(conn, receptionist, month.id)  # 18/11 -> 18/12, 3 000
-    dialog = make_dialog(qtbot, conn, receptionist, lina)
-    assert dialog.summary.text() == (
-        "Saidi Lina : reste à payer 3 600 DA, dont 600 DA en retard. "
-        "Le crédit déjà versé (3 000 DA) est déduit.")
-    assert [r[:3] for r in rows(dialog.table)] == [
-        ["Abonnement M1 du 18/10/2026 au 18/11/2026", "18/10/2026", "600 DA"],
-        ["Abonnement M1 du 18/11/2026 au 18/12/2026", "18/11/2026", "3 000 DA"]]
-    assert dialog.amount.text() == "600 DA"  # what is late, after the credit
-    dialog._submit()  # the credit pays the fee and 2 400, the 600 DA the rest of October
-    d = debt.for_student(conn, receptionist, lina)
-    assert ([(c.due_date, c.due) for c in d.charges], d.credit) == ([("2026-11-18", 3000)], 0)
-
-
-def test_dialog_choose_without_a_tick_pays_the_oldest_first(qtbot, conn, receptionist,
-                                                             amine):
+def test_dialog_choose_without_a_tick_pays_nothing(qtbot, conn, receptionist, amine):
     dialog = make_dialog(qtbot, conn, receptionist, amine)
     dialog.amount.setText("3 000")
-    dialog.choose.setChecked(True)  # nothing ticked: not everything to credit
-    assert dialog.chosen(3000) is None
-    assert [r[3] for r in rows(dialog.table)] == ["1 000 DA", "2 000 DA"]
+    dialog.choose.setChecked(True)  # nothing ticked
+    assert dialog.chosen() == []
+    assert dialog.outcome.text() == t["payment.nothing_chosen"]
+    assert not dialog.submit.isEnabled()
 
 
 def test_dialog_with_nothing_due(qtbot, conn, director, school):
     student = students.create(conn, director, StudentInput("Lina", "Saidi"))
     dialog = make_dialog(qtbot, conn, director, student)
+    assert dialog.amount.text() == "" and dialog.ahead == {}  # no group: nothing ahead
+    assert shown(dialog.nothing) and not shown(dialog.table) and not shown(dialog.choose)
+    assert not dialog.submit.isEnabled()
+    dialog.amount.setText("2 000")  # it would be credit: refused
+    assert dialog.outcome.text() == t["payment.nothing_due"]
+    assert not dialog.submit.isEnabled()
+
+
+# ----- the payment dialog: months ahead -----
+
+def ahead_combo_of(dialog):
+    [combo] = dialog.ahead.values()
+    return combo
+
+
+def test_dialog_offers_the_next_months_of_each_group(qtbot, conn, receptionist, school, amine):
+    from PySide6.QtWidgets import QLabel
+
+    enrollments.enroll(conn, receptionist, amine, school["physics"])
+    dialog = make_dialog(qtbot, conn, receptionist, amine)
+    by_name = {g.group_name: g.enrollment_id
+               for g in subscriptions.next_months(conn, receptionist, amine)}
+    assert set(dialog.ahead) == set(by_name.values())
+    maths = dialog.ahead[by_name["M1"]]
+    assert [maths.itemText(i) for i in range(3)] == [
+        "Aucun", "1 mois (18 nov. → 18 déc.)", "2 mois (18 nov. → 18 janv.)"]
+    assert maths.count() == 9  # « Aucun », then the 8 months left in the school year
+    labels = {label.text() for label in dialog.findChildren(QLabel)}
+    assert {"Payer d'avance", "M1 · Maths 4AM · 3 000 DA par mois",
+            "P1 · Physique 4AM · 2 500 DA par mois"} <= labels
+
+
+def test_dialog_pays_two_months_ahead(qtbot, conn, receptionist, amine):
+    """What is late (4 000 DA) and two months ahead: the amount follows (10 000 DA), the two
+    months are listed as new; saved, they are renewed and paid."""
+    dialog = make_dialog(qtbot, conn, receptionist, amine)
+    combo = ahead_combo_of(dialog)
+    combo.setCurrentIndex(2)
+    assert dialog.amount.text() == "10 000 DA"
+    assert dialog.submit.text() == "Encaisser 10 000 DA"
+    assert [r[:4] for r in rows(dialog.table)] == [
+        ["Frais d'inscription 2026-2027", "18/10/2026", "1 000 DA", "1 000 DA"],
+        ["Abonnement M1 du 18/10/2026 au 18/11/2026", "18/10/2026", "3 000 DA", "3 000 DA"],
+        ["Abonnement M1 du 18/11/2026 au 18/12/2026 · nouveau", "18/11/2026", "3 000 DA",
+         "3 000 DA"],
+        ["Abonnement M1 du 18/12/2026 au 18/01/2027 · nouveau", "18/12/2026", "3 000 DA",
+         "3 000 DA"]]
+    assert dialog.outcome.text() == t["payment_dialog.left_after"].format(amount="0 DA")
+    combo.setCurrentIndex(1)  # one month less: its price off the amount
+    assert dialog.amount.text() == "7 000 DA" and dialog.table.rowCount() == 3
+    combo.setCurrentIndex(2)
+    dialog._submit()
+    assert dialog.result() == dialog.DialogCode.Accepted
+    assert debt.for_student(conn, receptionist, amine).due == 0
+    months = subscriptions.for_student(conn, receptionist, amine)
+    assert [(m.start_date, m.paid) for m in months] == [
+        ("2026-12-18", 3000), ("2026-11-18", 3000), ("2026-10-18", 3000)]  # latest first
+
+
+def test_dialog_refuses_a_month_ahead_the_amount_does_not_reach(qtbot, conn, receptionist,
+                                                                amine):
+    dialog = make_dialog(qtbot, conn, receptionist, amine)
+    ahead_combo_of(dialog).setCurrentIndex(2)
+    dialog.amount.setText("6 000")
+    assert dialog.outcome.text() == t["payment.ahead_unpaid"]
+    assert not dialog.submit.isEnabled()
+    dialog.amount.setText("8 500")  # December in part: allowed
+    assert dialog.submit.isEnabled()
+    assert rows(dialog.table)[3][3:] == ["1 500 DA", "1 500 DA"]
+
+
+def test_dialog_months_ahead_with_the_lines_ticked(qtbot, conn, receptionist, amine):
+    """Choose on: a month ahead is ticked and its box cannot be unticked; with no line ticked,
+    the payment pays the month ahead alone."""
+    dialog = make_dialog(qtbot, conn, receptionist, amine)
+    dialog.choose.setChecked(True)
+    ahead_combo_of(dialog).setCurrentIndex(1)
+    new = dialog.table.item(2, 0)
+    assert new.checkState() == Qt.CheckState.Checked
+    assert not new.flags() & Qt.ItemFlag.ItemIsUserCheckable
+    assert dialog.outcome.text() == t["payment.above_due"].format(amount="3 000 DA")
+    dialog.amount.setText("3 000")
+    assert dialog.submit.isEnabled()
+    dialog._submit()
+    d = debt.for_student(conn, receptionist, amine)
+    assert [(c.kind, c.due_date, c.due) for c in d.charges] == [
+        ("registration", "2026-10-18", 1000), ("subscription", "2026-10-18", 3000)]
+
+
+def test_dialog_with_everything_paid_can_still_pay_ahead(qtbot, conn, receptionist, amine):
+    payments.record(conn, receptionist, amine, 4000, "cash")
+    dialog = make_dialog(qtbot, conn, receptionist, amine)
     assert dialog.amount.text() == ""
     assert shown(dialog.nothing) and not shown(dialog.table) and not shown(dialog.choose)
+    ahead_combo_of(dialog).setCurrentIndex(1)
+    assert dialog.amount.text() == "3 000 DA"
+    assert shown(dialog.table) and not shown(dialog.nothing)
+    assert rows(dialog.table)[0][0] == "Abonnement M1 du 18/11/2026 au 18/12/2026 · nouveau"
+    dialog._submit()
+    assert dialog.result() == dialog.DialogCode.Accepted
+    [renewed, _october] = subscriptions.for_student(conn, receptionist, amine)
+    assert (renewed.start_date, renewed.paid) == ("2026-11-18", 3000)
 
 
 # ----- receiving from the tab: the receipt is printed right away -----
@@ -326,7 +405,7 @@ def test_a_failed_payment_keeps_the_dialog_open(qtbot, conn, receptionist, amine
     def fill(dialog):
         dialog.choose.setChecked(True)
         dialog.amount.setText("100")
-        monkeypatch.setattr(dialog, "chosen", lambda _amount: [(9999, 100)])
+        monkeypatch.setattr(dialog, "chosen", lambda: [9999])
         dialog._submit()
         seen["banner"] = dialog.banner.text()
     auto_exec(monkeypatch, PaymentDialog, fill)

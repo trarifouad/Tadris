@@ -133,8 +133,6 @@ def test_states_through_the_day(qtbot, conn, desk, school, monkeypatch):
     card = page.cards[0]
     assert (card.badge.text(), card.main_key) == ("En cours", "take")
     assert card.main.property("variant") == "primary"
-    lines = page._cards
-    assert isinstance(lines.itemAt(1).widget(), attendance.NowLine)  # after what started
     monkeypatch.setattr(attendance, "now_time", lambda: "19:00")
     page.refresh()
     assert page.cards[0].badge.text() == "Appel à faire"

@@ -50,7 +50,8 @@ class School:
     01/10  Amine and Badis renewed for October.
     02/10  Karim's September (3 600) paid; Samia's September (2 000) left as a draft.
     03/10  Amine pays 6 000 (October).
-    05/10  Chahinez: fee 1 000, A from 05/10.  06/10  she pays 8 000 (1 000 left as credit).
+    05/10  Chahinez: fee 1 000, A from 05/10.  06/10  she pays 8 000: the fee, October and
+           1 000 of November, renewed ahead with the payment.
     Today 18/10.
 
     By hand: September charged 12 000, settled 9 000, collected 9 000.
@@ -96,7 +97,9 @@ class School:
         move_to(monkeypatch, date(2026, 10, 5))
         self.chahinez = self.pupil("Chahinez", "Djebbar", self.a)
         move_to(monkeypatch, date(2026, 10, 6))
-        payments.record(conn, ctx, self.chahinez, 8000, "transfer")
+        [october] = subscriptions.for_student(conn, ctx, self.chahinez)
+        payments.record(conn, ctx, self.chahinez, 8000, "transfer",
+                        ahead={october.enrollment_id: 1})
         move_to(monkeypatch, TODAY)
 
     def group(self, name, subject, price, teacher):

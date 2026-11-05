@@ -7,7 +7,12 @@ from tadris.core.money import format_dzd
 from tadris.core.permissions import require
 from tadris.core.text import clean, fold
 from tadris.db.errors import atomic
-from tadris.domain.models import MissingSubscription, Subscription, SubscriptionLine
+from tadris.domain.models import (
+    MissingSubscription,
+    NextMonths,
+    Subscription,
+    SubscriptionLine,
+)
 from tadris.i18n.fr import t
 from tadris.repositories import enrollments as enrollments_repo
 from tadris.repositories import groups as groups_repo
@@ -27,6 +32,8 @@ from tadris.services import audit, debt, payouts
 # they cannot be.
 
 EXPIRING_DAYS = 7
+# The months a payment can pay ahead in one group: the year ends first in practice.
+MAX_AHEAD = 12
 
 
 def _today() -> str:
@@ -177,6 +184,53 @@ def renewal_day(previous_start: str, previous_end: str, start: str) -> int:
     return dates.cycle_day(begin, date.fromisoformat(previous_start))
 
 
+def following(start: str, end: str, last_start: str, count: int = MAX_AHEAD
+              ) -> list[tuple[str, str]]:
+    """(start, end) of the months after [start, end), as renewing each from its end makes
+    them, while they start on or before `last_start` (the year's end)."""
+    months: list[tuple[str, str]] = []
+    while len(months) < count and end <= last_start:
+        day = renewal_day(start, end, end)
+        start, end = end, dates.iso(dates.add_one_month(date.fromisoformat(end), day))
+        months.append((start, end))
+    return months
+
+
+def next_months(conn, ctx: UserContext, student_id: int) -> list[NextMonths]:
+    """The student's groups whose next months can be paid ahead: a paid enrollment (not on
+    trial) in a group still open, at a price above 0, with a month not cancelled to follow;
+    each with the months that can follow it, up to the end of the school year."""
+    require(ctx, "student.view")
+    result = []
+    for enrollment in enrollments_repo.for_student(conn, student_id):
+        if enrollment["status"] != "active":
+            continue
+        group = groups_repo.get(conn, enrollment["group_id"], _today())
+        latest = repo.latest(conn, enrollment["id"])
+        if group["status"] == "closed" or group["price"] <= 0 or latest is None:
+            continue
+        months = following(latest["start_date"], latest["end_date"], group["year_end"])
+        if months:
+            result.append(NextMonths(
+                enrollment_id=enrollment["id"], group_id=group["id"], group_title=_title(latest),
+                group_name=group["name"], price=group["price"], months=tuple(months)))
+    return result
+
+
+def renew_ahead_in(conn, ctx: UserContext, enrollment_id: int, count: int) -> list[int]:
+    """Inside a transaction: `count` months after the enrollment's latest one, each renewed
+    from the end of the one before (next_months shows the same). Returns their charge ids."""
+    require(ctx, "subscription.manage")
+    charge_ids = []
+    for _ in range(count):
+        latest = repo.latest(conn, enrollment_id)
+        if latest is None:
+            raise BusinessRuleError(t["subscription.nothing_to_renew"])
+        subscription_id = _renew(conn, ctx, latest["id"], None)
+        charge_ids.append(repo.get(conn, subscription_id)["charge_id"])
+    return charge_ids
+
+
 def renew_many(conn, ctx: UserContext, subscription_ids: list[int]) -> list[int]:
     """Renew several latest months at once, from their end dates, all or nothing."""
     require(ctx, "subscription.manage")
@@ -287,13 +341,13 @@ def missing(conn, ctx: UserContext) -> list[MissingSubscription]:
 
 def lines(conn, ctx: UserContext) -> list[SubscriptionLine]:
     """The Abonnements page: each student in each group (not on trial) with the latest month
-    and what is left to pay on all of its months (after the student's credit), those with no
-    month left too. By name, then group."""
+    and what is left to pay on all of its months, those with no month left too. By name,
+    then group."""
     require(ctx, "student.view")
     months: dict[int, list[Subscription]] = {}
     for row in repo.live_months(conn):
         months.setdefault(row["enrollment_id"], []).append(_to_subscription(row))
-    left = debt.left_after_credit(debt.every_debt(conn).values())
+    left = debt.left_on_charges(debt.every_debt(conn).values())
     result = []
     today = _today()
     for mine in months.values():

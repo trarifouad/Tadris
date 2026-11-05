@@ -38,7 +38,9 @@ HIDDEN = {"id", "charge_id", "receipt_id", "registration_id", "enrollment_id", "
           "chosen",  # whether the desk picked the lines: says nothing to the director
           "whatsapp_code"}  # a group's invite code: the group's name says it
 LISTS = {"allocations", "lines", "from"}  # shown as a count
-ZERO_SAYS_NOTHING = {"to_credit"}  # « Mis en avoir : 0 DA » on every payment
+# « Mis en avoir : 0 DA » (entries before 2026-11-05) or « Mois payés d'avance : 0 » on
+# every payment.
+ZERO_SAYS_NOTHING = {"to_credit", "months_ahead"}
 
 
 @dataclass(frozen=True)

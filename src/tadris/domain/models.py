@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from datetime import date
 
 from tadris.core.percent import ratio_bp
@@ -380,6 +380,19 @@ def standing(month: Subscription | None) -> str:
 
 
 @dataclass(frozen=True)
+class NextMonths:
+    """A group whose next months a payment can pay ahead: they are renewed with it, from the
+    end of the latest month and keeping its cycle, as « Renouveler » does."""
+
+    enrollment_id: int
+    group_id: int
+    group_title: str  # "M1 · Maths 4AM"
+    group_name: str  # "M1": the charge's description names it
+    price: int  # the group's price now, the price of each month made
+    months: tuple[tuple[str, str], ...]  # (start, end) of each month that can follow, in order
+
+
+@dataclass(frozen=True)
 class SubscriptionLine:
     """A student in a group (not on trial), on the Abonnements page: the latest month (None
     when none is left) and what is left to pay on all of that group's months. Months paid
@@ -393,7 +406,7 @@ class SubscriptionLine:
     group_id: int
     group_title: str
     month: Subscription | None
-    owed: int  # after the student's credit
+    owed: int  # left to pay on the group's months
     period_start: str | None  # None without a month
 
     @property
@@ -527,10 +540,6 @@ class Debt:
     student_id: int
     as_of: str  # 'YYYY-MM-DD'
     charges: tuple[ChargeDue, ...]  # oldest due first, each with due > 0
-    credit: int  # money received and not allocated to a charge yet
-    # Charges paid in full that fall due after the oldest charge with something left: their
-    # money pays it first (after_credit).
-    settled: tuple[ChargeDue, ...] = ()
 
     @property
     def due(self) -> int:
@@ -543,37 +552,15 @@ class Debt:
         return sum(c.due for c in self.charges if c.due_date <= self.as_of)
 
     @property
-    def balance(self) -> int:
-        """Above 0: the student owes it; below 0: the school owes it (credit)."""
-        return self.due - self.credit
-
-    @property
     def owed_now(self) -> int:
-        """What is late now, once the student's money paid the oldest charges first: what
-        the debtors list shows."""
-        return self.after_credit().overdue
+        """What is late now: what the debtors list shows."""
+        return self.overdue
 
     @property
     def oldest_overdue(self) -> str | None:
-        """The due date of the oldest late charge that the student's money does not cover."""
-        late = [c.due_date for c in self.after_credit().charges if c.due_date <= self.as_of]
+        """The due date of the oldest late charge with something left to pay."""
+        late = [c.due_date for c in self.charges if c.due_date <= self.as_of]
         return min(late) if late else None
-
-    def after_credit(self) -> "Debt":
-        """The debt as every screen shows it: the student's money pays the oldest charges
-        first, this month before the next: the credit (as the next payment will spend it)
-        and the money recorded on a later charge than one still owed (`settled`, and what
-        was paid on the charges left). A charge it covers whole is left out, one it covers
-        in part counts that part as paid, and `credit` is what is left once every charge is
-        paid. balance stays the same."""
-        money = self.credit + sum(c.paid for c in self.charges + self.settled)
-        charges = []
-        for c in sorted(self.charges + self.settled, key=lambda c: (c.due_date, c.id)):
-            used = min(money, c.amount)
-            money -= used
-            if used < c.amount:
-                charges.append(replace(c, paid=used))
-        return replace(self, charges=tuple(charges), credit=money, settled=())
 
 
 @dataclass(frozen=True)
@@ -596,11 +583,6 @@ class Payment:
     voided_at: str | None
     voided_by: str | None
 
-    @property
-    def unallocated(self) -> int:
-        """The part kept as credit (0 once voided)."""
-        return 0 if self.voided else self.amount - self.allocated
-
 
 @dataclass(frozen=True)
 class PaymentLine:
@@ -610,7 +592,6 @@ class PaymentLine:
     description: str
     due_date: str
     amount: int
-    from_credit: int = 0  # on a receipt: the part paid by the credit of earlier payments
 
 
 @dataclass(frozen=True)
@@ -619,8 +600,7 @@ class Debtor:
     student_number: str
     student_name: str
     owed_now: int
-    due: int  # months to come included, after the credit
-    credit: int
+    due: int  # months to come included
     oldest_overdue: str | None
     days_overdue: int
 
@@ -805,7 +785,7 @@ class Dashboard:
     sessions: tuple[DashboardSession, ...]  # today's, cancelled ones included
     ending: tuple[Subscription, ...]  # months ending within 7 days
     lapsed: int  # months over and not renewed
-    debt_total: int  # late, after credit, every student
+    debt_total: int  # late, every student
     debtors: int
     top_debtors: tuple[Debtor, ...]
     groups: tuple[GroupFill, ...]  # running groups, fullest first

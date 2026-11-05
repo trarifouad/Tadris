@@ -13,36 +13,36 @@ from tadris.i18n.fr import t
 from tadris.repositories import contacts as contacts_repo
 from tadris.repositories import payments as repo
 from tadris.repositories import students as students_repo
-from tadris.services import audit, counters, debt, payouts
+from tadris.services import audit, counters, debt, payouts, subscriptions
 
 # A payment is money received from (or for) a student. It is immutable: a mistake is undone
-# by a void (director only), never by an update or a negative payment. Recording one, in a
-# single transaction: the student's credit (money received earlier and not allocated yet)
-# pays the oldest charges first, then the new money does, oldest due first unless the desk
-# chose the charges; what is left stays as credit. A receipt number 'R2026-00001' comes from
-# the year's counter in the same transaction, so a rolled-back payment leaves no gap.
+# by a void (director only), never by an update or a negative payment. A payment pays lines
+# and nothing else: there is no credit (decided 2026-11-05). Recording one, in a single
+# transaction: the months ahead the desk added are renewed first (a student still pays
+# months in advance: as months, not as credit), then the money pays the student's open
+# charges, oldest due first unless the desk chose them, the months ahead always among them.
+# It is never more than what is left on those lines; less (a part of a month) leaves the rest
+# owed. A receipt number 'R2026-00001' comes from the year's counter in the same
+# transaction, so a rolled-back payment leaves no gap.
 
 
 @dataclass(frozen=True)
 class PlannedLine:
     charge: ChargeDue
-    from_credit: int  # paid by money received earlier
     from_payment: int  # paid by the new payment
+    ahead: bool = False  # a month ahead the payment renews (in a preview: not made yet)
 
     @property
     def left(self) -> int:
-        return self.charge.due - self.from_credit - self.from_payment
+        return self.charge.due - self.from_payment
 
 
 @dataclass(frozen=True)
 class PaymentPlan:
     """What recording a payment would do, before it is recorded."""
 
-    lines: tuple[PlannedLine, ...]  # every charge with something left to pay
-    credit_before: int
-    credit_used: int
+    lines: tuple[PlannedLine, ...]  # every charge with something left, the months ahead too
     amount: int
-    to_credit: int  # the part of the new payment kept as credit
 
     @property
     def allocated(self) -> int:
@@ -98,24 +98,12 @@ def count_for_student(conn, ctx: UserContext, student_id: int) -> int:
 
 
 def lines(conn, ctx: UserContext, payment_id: int) -> list[PaymentLine]:
-    """What the payment paid, charge by charge (its credit, used later, included)."""
+    """What the payment paid, charge by charge: what its receipt lists."""
     require(ctx, "student.view")
     _require_row(conn, payment_id)
     return [PaymentLine(charge_id=row["charge_id"], description=row["description"],
                         due_date=row["due_date"], amount=row["amount"])
             for row in repo.allocations(conn, payment_id)]
-
-
-def receipt_lines(conn, ctx: UserContext, payment_id: int) -> list[PaymentLine]:
-    """What was paid when the payment was recorded, as its receipt shows it (the same when
-    printed again): per charge, its own money and the credit of earlier payments it used.
-    Its own credit, used by a later payment, shows on that payment's receipt."""
-    require(ctx, "student.view")
-    _require_row(conn, payment_id)
-    return [PaymentLine(charge_id=row["charge_id"], description=row["description"],
-                        due_date=row["due_date"], amount=row["amount"],
-                        from_credit=row["from_credit"])
-            for row in repo.recorded_with(conn, payment_id)]
 
 
 def cash_report(conn, ctx: UserContext, day: date) -> CashReport:
@@ -134,86 +122,91 @@ def cash_report(conn, ctx: UserContext, day: date) -> CashReport:
 
 # ----- planning (pure: the dialog's preview and record() use the same code) -----
 
-def plan_payment(charges: list[ChargeDue], credits: list[tuple[int, int]], amount: int,
-                 chosen: list[tuple[int, int]] | None = None,
-                 ) -> tuple[PaymentPlan, list[tuple[int, int, int]], list[tuple[int, int]]]:
-    """Plan a payment of `amount` for open charges (oldest due first) and the credits
-    (payment id, amount left), oldest first.
+def plan_payment(charges: list[ChargeDue], amount: int, chosen: list[int] | None = None,
+                 ahead: frozenset[int] = frozenset(),
+                 ) -> tuple[PaymentPlan, list[tuple[int, int]]]:
+    """Plan a payment of `amount` over the open charges, in their order (oldest due first).
 
-    Returns the plan, the credit allocations (payment id, charge id, amount) and the new
-    payment's allocations (charge id, amount). `chosen` replaces the oldest-first order
-    for the new payment: (charge id, amount) pairs, checked against what is left after the
-    credit."""
-    left = {c.id: c.due for c in charges}
-    from_credit = dict.fromkeys(left, 0)
-    credit_allocations: list[tuple[int, int, int]] = []
-    for payment_id, available in credits:
-        for c in charges:
-            if available <= 0:
-                break
-            take = min(available, left[c.id])
-            if take > 0:
-                credit_allocations.append((payment_id, c.id, take))
-                left[c.id] -= take
-                from_credit[c.id] += take
-                available -= take
-
-    if chosen is None:
-        allocations = []
-        remaining = amount
-        for c in charges:
-            if remaining <= 0:
-                break
-            take = min(remaining, left[c.id])
-            if take > 0:
-                allocations.append((c.id, take))
-                remaining -= take
-    else:
-        allocations = _check_chosen(chosen, left, amount)
-    from_payment = dict.fromkeys(left, 0)
-    for charge_id, value in allocations:
-        from_payment[charge_id] += value
-
-    credit_before = sum(available for _payment_id, available in credits)
-    credit_used = sum(value for _p, _c, value in credit_allocations)
-    plan = PaymentPlan(
-        lines=tuple(PlannedLine(c, from_credit[c.id], from_payment[c.id]) for c in charges),
-        credit_before=credit_before, credit_used=credit_used, amount=amount,
-        to_credit=amount - sum(value for _c, value in allocations))
-    return plan, credit_allocations, allocations
-
-
-def _check_chosen(chosen: list[tuple[int, int]], left: dict[int, int],
-                  amount: int) -> list[tuple[int, int]]:
-    allocations = []
-    seen = set()
-    for charge_id, value in chosen:
-        if value == 0:
-            continue
-        if charge_id not in left or charge_id in seen:
+    Returns the plan and the allocations (charge id, amount). `chosen`: the charge ids it
+    pays instead of all of them. The months ahead (`ahead`: charge ids among `charges`) are
+    always paid, and each must get something: a month would otherwise be renewed for
+    nothing. The amount is never more than what is left on the lines it pays."""
+    if chosen is not None:
+        known = {c.id for c in charges if c.id not in ahead}
+        if len(set(chosen)) != len(chosen) or not set(chosen) <= known:
             raise ValidationError(t["payment.charge_unknown"])
-        if value < 0 or value > left[charge_id]:
-            raise ValidationError(t["payment.allocation_too_high"].format(
-                amount=format_dzd(left[charge_id])))
-        seen.add(charge_id)
-        allocations.append((charge_id, value))
-    if sum(value for _c, value in allocations) > amount:
-        raise ValidationError(t["payment.allocations_exceed"].format(amount=format_dzd(amount)))
-    return allocations
+        if not chosen and not ahead:
+            raise ValidationError(t["payment.nothing_chosen"])
+    paying = [c for c in charges if chosen is None or c.id in ahead or c.id in chosen]
+    room = sum(c.due for c in paying)
+    if amount > room:
+        raise ValidationError(t["payment.above_due"].format(amount=format_dzd(room)) if room
+                              else t["payment.nothing_due"])
+    allocations: list[tuple[int, int]] = []
+    remaining = amount
+    for c in paying:
+        take = min(remaining, c.due)
+        if take <= 0:
+            break
+        allocations.append((c.id, take))
+        remaining -= take
+    paid = dict(allocations)
+    if amount and not ahead <= set(paid):
+        raise ValidationError(t["payment.ahead_unpaid"])
+    plan = PaymentPlan(lines=tuple(PlannedLine(c, paid.get(c.id, 0), c.id in ahead)
+                                   for c in charges), amount=amount)
+    return plan, allocations
 
 
-def _credits(conn, student_id: int) -> list[tuple[int, int]]:
-    return [(row["id"], row["amount"] - row["allocated"])
-            for row in repo.with_credit(conn, student_id)]
+def _check_ahead(ahead: dict[int, int] | None) -> dict[int, int]:
+    """{enrollment id: how many months ahead}, the zeros left out."""
+    checked = {}
+    for enrollment_id, count in (ahead or {}).items():
+        if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+            raise ValidationError(t["payment.ahead_invalid"])
+        if count:
+            checked[enrollment_id] = count
+    return checked
+
+
+def _months_ahead(conn, ctx: UserContext, student_id: int,
+                  ahead: dict[int, int]) -> list[ChargeDue]:
+    """The months `ahead` renews, as the charges they will be (not made yet: ids below 0), in
+    the order record() makes them."""
+    if not ahead:
+        return []
+    require(ctx, "subscription.manage")
+    groups = {g.enrollment_id: g for g in subscriptions.next_months(conn, ctx, student_id)}
+    months: list[ChargeDue] = []
+    for enrollment_id, count in ahead.items():
+        group = groups.get(enrollment_id)
+        if group is None:
+            raise ValidationError(t["payment.ahead_unknown"])
+        if count > len(group.months):
+            raise ValidationError(t["payment.ahead_too_many"].format(count=len(group.months)))
+        for start, end in group.months[:count]:
+            months.append(ChargeDue(
+                id=-(len(months) + 1), kind="subscription",
+                description=t["subscription.charge_description"].format(
+                    group=group.group_name, start=dates.display_date(start),
+                    end=dates.display_date(end)),
+                amount=group.price, due_date=start, paid=0, group_id=group.group_id,
+                start_date=start, end_date=end, group_name=group.group_name))
+    return months
 
 
 def preview(conn, ctx: UserContext, student_id: int, amount: int,
-            chosen: list[tuple[int, int]] | None = None) -> PaymentPlan:
+            chosen: list[int] | None = None, ahead: dict[int, int] | None = None
+            ) -> PaymentPlan:
     """What record() would do with the same arguments, nothing written."""
     require(ctx, "payment.record")
-    current = debt.compute(conn, student_id)
-    plan, _credit, _allocations = plan_payment(list(current.charges),
-                                               _credits(conn, student_id), amount, chosen)
+    months = _months_ahead(conn, ctx, student_id, _check_ahead(ahead))
+    # By due date, the months ahead after the charges of the same day: their ids will be
+    # the newest (sorted() keeps the order of equal keys).
+    charges = sorted([*debt.compute(conn, student_id).charges, *months],
+                     key=lambda c: c.due_date)
+    plan, _allocations = plan_payment(charges, amount, chosen,
+                                      frozenset(c.id for c in months))
     return plan
 
 
@@ -232,55 +225,52 @@ def receipt_number(conn) -> str:
 
 
 def record(conn, ctx: UserContext, student_id: int, amount: int, method: str,
-           payer_contact_id: int | None = None,
-           chosen: list[tuple[int, int]] | None = None) -> int:
+           payer_contact_id: int | None = None, chosen: list[int] | None = None,
+           ahead: dict[int, int] | None = None) -> int:
     """Receive `amount` DA for the student; returns the payment id. The receipt is made with
-    it. chosen: (charge id, amount) pairs instead of the oldest-first order."""
+    it. chosen: the charge ids to pay instead of all of them, oldest first either way.
+    ahead: {enrollment id: how many months}, renewed now and paid by this payment."""
     require(ctx, "payment.record")
     _check_amount(amount)
     if method not in PAYMENT_METHODS:
         raise ValidationError(t["payment.method_invalid"])
+    ahead = _check_ahead(ahead)
     with atomic(conn):
         if students_repo.get(conn, student_id) is None:
             raise NotFound(t["student.not_found"])
         if payer_contact_id is not None and contacts_repo.get_link(
                 conn, student_id, payer_contact_id) is None:
             raise ValidationError(t["payment.payer_unknown"])
-        current = debt.compute(conn, student_id)
-        plan, credit_allocations, allocations = plan_payment(
-            list(current.charges), _credits(conn, student_id), amount, chosen)
+        _months_ahead(conn, ctx, student_id, ahead)  # the preview's checks, before renewing
+        made = frozenset(charge_id for enrollment_id, count in ahead.items()
+                         for charge_id in subscriptions.renew_ahead_in(conn, ctx,
+                                                                       enrollment_id, count))
+        _plan, allocations = plan_payment(list(debt.compute(conn, student_id).charges),
+                                          amount, chosen, made)
 
-        # The payment first: every allocation its recording makes, its credit's too, says so.
         now = _now()
         payment_id = repo.insert(conn, student_id, payer_contact_id, amount, method, now,
                                  ctx.user_id)
-        for credit_payment_id, charge_id, value in credit_allocations:
-            repo.insert_allocation(conn, credit_payment_id, charge_id, value, payment_id)
-        if credit_allocations:
-            audit.log(conn, ctx, "payment.apply_credit", "payments", payment_id, new={
-                "student_id": student_id,
-                "allocations": [{"payment_id": p, "charge_id": c, "amount": v}
-                                for p, c, v in credit_allocations]})
         for charge_id, value in allocations:
-            repo.insert_allocation(conn, payment_id, charge_id, value, payment_id)
+            repo.insert_allocation(conn, payment_id, charge_id, value)
         number = receipt_number(conn)
         receipt_id = repo.insert_receipt(conn, payment_id, number, now)
         audit.log(conn, ctx, "payment.record", "payments", payment_id, new={
             "student_id": student_id, "amount": amount, "method": method,
             "payer_contact_id": payer_contact_id, "receipt_id": receipt_id,
             "receipt_number": number, "chosen": chosen is not None,
-            "allocations": [{"charge_id": c, "amount": v} for c, v in allocations],
-            "to_credit": plan.to_credit})
+            "months_ahead": sum(ahead.values()),
+            "allocations": [{"charge_id": c, "amount": v} for c, v in allocations]})
         return payment_id
 
 
 # ----- voiding -----
 
 def void(conn, ctx: UserContext, payment_id: int, reason: str) -> None:
-    """Director only. The payment stays, marked voided: what it paid is owed again and its
-    credit is gone. Teacher payouts do not stop it: they count each month's full price
-    whether it was paid or not. Refused once money of it was handed back (refunds archived
-    since 0015)."""
+    """Director only. The payment stays, marked voided: what it paid is owed again (the
+    months it renewed ahead stay, owed). Teacher payouts do not stop it: they count each
+    month's full price whether it was paid or not. Refused once money of it was handed back
+    (refunds archived since 0015)."""
     require(ctx, "payment.void")
     reason = clean(reason)
     if not reason:

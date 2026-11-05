@@ -479,8 +479,8 @@ def student_tiles(conn, ctx: UserContext) -> tuple[ReportTile, ...]:
 def student_list(conn, ctx: UserContext, status: str | None = "active",
                  level_id: int | None = None, group_id: int | None = None,
                  query: str = "") -> Report:
-    """The students the filters match, in name order, with what is late for each (after
-    their credit, as the Paiements page shows it)."""
+    """The students the filters match, in name order, with what is late for each (as the
+    Paiements page shows it)."""
     require(ctx, "student.view")
     if status not in STUDENT_STATUSES:
         raise ValidationError(t["validation.generic"])

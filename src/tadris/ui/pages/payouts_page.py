@@ -74,7 +74,7 @@ class PayoutListView(QWidget):
         title.setObjectName("pageTitle")
         intro = caption(t["payouts.caption"])
         intro.setWordWrap(True)
-        self.until = DateLineEdit()
+        self.until = DateLineEdit(maximum=dates.today())  # months already started only
         self.until.set_value(last_month_end())
         self.until.textChanged.connect(lambda _text: self._load_due())
         self.run = primary_button(t["payouts.run"])

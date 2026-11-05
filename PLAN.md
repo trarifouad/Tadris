@@ -13,12 +13,12 @@ Estimated effort: 3 to 4 months part-time (about 10 to 15 hours per week).
 
 | Topic | Rule |
 |---|---|
-| Subscriptions | Monthly, fixed price snapshot copied from the group at creation. `end_date = start_date + 1 month`. Student absence never extends or changes a subscription. |
-| Money | Whole DZD integers. Debt is always derived (charges minus valid allocations). Never store a running debt column. |
+| Subscriptions | Monthly, fixed price snapshot copied from the group at creation. `end_date = start_date + 1 month`, the same day next month (its last day when shorter); a renewal keeps the cycle's day: 31 Jan → 28 Feb → 31 Mar (decided 2026-11-03). Student absence never extends or changes a subscription. |
+| Money | Whole DZD integers. Debt is always derived (charges minus valid allocations). Never store a running debt column. What is shown as paid, left and late spends the student's money on the oldest month first, then the next, wherever a payment was recorded (after a void, or lines the desk chose; decided 2026-11-03). |
 | Discounts | None. A student always owes the full price of each month and fee: no remises, no corrections (decided in phase 8). |
 | Refunds | None in V1 (decided after phase 12; refund tables archived in 0015). A mistaken payment is voided by the director; money handed back is handled outside the app until V2. |
 | Payments | Immutable. Corrections are new rows (`payment_voids`, never negative payments). |
-| Teacher pay | Percentage of group revenue, accrual basis: the full subscription price of the month, whether or not the student has paid yet. One percentage per teacher, applied to each of their groups. Example: 60% of 60,000 plus 60% of 120,000 = 108,000. |
+| Teacher pay | Percentage of group revenue, accrual basis: the full subscription price of the month, whether or not the student has paid yet. One percentage per teacher, applied to each of their groups. Example: 60% of 60,000 plus 60% of 120,000 = 108,000. A payout counts only months already started: its date is today at most, and a month renewed ahead goes into the payout after it starts (decided 2026-11-03). |
 | Rates and prices | Snapshots. Never recompute an old month from today's price or rate. |
 | Trial | One free trial per student, ever. |
 | Deletion | No hard deletes. Soft delete through `status`. |
@@ -297,7 +297,7 @@ ui/first_run.py        create the director account and school name on first star
 - Switch mid-month: the running month stays with the old group (and its teacher); the new group's first month starts when it ends, at the new group's price (on the switch date when no month runs). No money moves, even if prices differ. Past the end of the year, no month is created and the switch is not blocked. A switched trial stays free.
 - Leaving keeps the running month unchanged; refunds come in phase 8.
 - Renewal is manual (both roles), from the student page or the Abonnements page (bulk: every row ticked, untick who stops, all or nothing). Only the latest month of a live paid enrollment in an open group is renewed; the next month starts on its end date, or later after a gap, never earlier, never after the end of the year. The price is the group's on the renewal day. `renewal_of_id` stays unique even for a cancelled renewal: renewing again then leaves the link out.
-- Month ends follow `add_one_month`: 31 Jan → 28 Feb → 28 Mar (each month starts on the previous end).
+- Month ends follow `add_one_month` and keep the cycle's day: 31 Jan → 28 Feb → 31 Mar → 30 Apr (each month starts on the previous end; decided 2026-11-03, it stayed on the 28th before).
 - Cancel: director only (`subscription.cancel`), with a reason; refused once part of the month was paid (refund first, phase 8) or once its charge is in a teacher payout; the charge is cancelled and the period is free again. A paid enrollment left without any month shows in « Sans abonnement » with « Nouvel abonnement ».
 - A free group (price 0) gets months without charges. Display states: à venir, en cours, se termine bientôt (7 days or less), terminé, annulé. At app start, months past their last day are marked `ended` (audited without a user).
 
@@ -325,7 +325,7 @@ ui/first_run.py        create the director account and school name on first star
 - Renewal chain with no gap or overlap.
 - Cancelled subscription frees the period.
 - Cancel after payout is refused.
-- Month-end start dates (31 Jan renewal lands on 28 Feb then 28 Mar logic is stable and documented).
+- Month-end start dates (31 Jan → 28 Feb → 31 Mar: a renewal keeps the cycle's day).
 
 **Acceptance:** renewals chain without overlap and the expiring lists are correct.
 

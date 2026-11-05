@@ -18,7 +18,8 @@ from tadris.services import audit, debt, payouts
 # of the group's price, with a charge due (and accrued) on its first day. Absence never
 # changes it. Each student has their own cycle: the first month starts on the entry date.
 # Renewal is done by the desk: the next month starts when the previous one ends, or later
-# after a gap, never earlier. A trial has no subscription. Cancelling (director only) is
+# after a gap, never earlier. A month runs to the same day next month (the last day of a
+# shorter month), and a renewal keeps the cycle's day: 31/01 -> 28/02 -> 31/03. A trial has no subscription. Cancelling (director only) is
 # refused once something was paid on the month (V1 has no refunds: only a void of the payment,
 # by the director, frees it) or once an approved or paid teacher payout counted it; a draft
 # lets it go. A student who leaves a group (or switches, or whose group closes) owes no month
@@ -89,9 +90,10 @@ def for_enrollment(conn, ctx: UserContext, enrollment_id: int) -> list[Subscript
 # ----- create -----
 
 def create_in(conn, ctx: UserContext, enrollment_id: int, start: str,
-              renewal_of_id: int | None = None) -> int:
+              renewal_of_id: int | None = None, day: int | None = None) -> int:
     """Inside a transaction: one month of the enrollment from `start` ('YYYY-MM-DD'), at the
-    group's current price, with its charge when the price is above 0."""
+    group's current price, with its charge when the price is above 0. day: the cycle's day
+    (dates.cycle_day), start's by default."""
     enrollment = enrollments_repo.get(conn, enrollment_id)
     if enrollment is None:
         raise NotFound(t["enrollment.not_found"])
@@ -108,7 +110,7 @@ def create_in(conn, ctx: UserContext, enrollment_id: int, start: str,
     if start > group["year_end"]:
         raise ValidationError(t["subscription.start_outside_year"].format(
             end=dates.display_date(group["year_end"])))
-    end = dates.iso(dates.add_one_month(date.fromisoformat(start)))
+    end = dates.iso(dates.add_one_month(date.fromisoformat(start), day))
     subscription_id = repo.insert(conn, enrollment_id, renewal_of_id, group["price"], start, end)
     charge_id = None
     if group["price"] > 0:
@@ -161,7 +163,18 @@ def _renew(conn, ctx: UserContext, subscription_id: int, start_date: date | None
             end=dates.display_date(row["end_date"])))
     # renewal_of_id is unique even when that renewal was cancelled: the link is then left out.
     link = None if repo.has_renewal(conn, row["id"]) else row["id"]
-    return create_in(conn, ctx, row["enrollment_id"], on, link)
+    return create_in(conn, ctx, row["enrollment_id"], on, link,
+                     renewal_day(row["start_date"], row["end_date"], on))
+
+
+def renewal_day(previous_start: str, previous_end: str, start: str) -> int:
+    """The cycle's day of the month after [previous_start, previous_end) starting on `start`
+    (the renewal dialogs show the same dates): from its end, the same cycle; after a gap, a
+    new one from `start`."""
+    begin = date.fromisoformat(start)
+    if start != previous_end:
+        return begin.day
+    return dates.cycle_day(begin, date.fromisoformat(previous_start))
 
 
 def renew_many(conn, ctx: UserContext, subscription_ids: list[int]) -> list[int]:

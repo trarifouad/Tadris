@@ -210,15 +210,21 @@ def test_renewal_after_a_gap_never_before_the_end(conn, receptionist, in_maths):
     assert subscriptions.get(conn, receptionist, later).start_date == "2026-12-05"
 
 
-def test_month_end_dates_are_stable(conn, receptionist, school, amine):
-    """31 Jan -> 28 Feb, then 28 Feb -> 28 Mar: each month starts on the previous end."""
+def test_a_month_cycle_keeps_its_day(conn, receptionist, school, amine):
+    """31 Jan -> 28 Feb -> 31 Mar -> 30 Apr: each month starts on the previous end and runs
+    to the cycle's day where the calendar has it (decided 2026-11-03; 28 Mar before). After
+    a gap, a new cycle starts on the day chosen."""
     enrollment_id = enrollments.enroll(conn, receptionist, amine, school.physics,
                                        enrolled_on=date(2027, 1, 31))
-    first = month_of(conn, receptionist, enrollment_id)
-    second = subscriptions.renew(conn, receptionist, first)
-    s1, s2 = (subscriptions.get(conn, receptionist, i) for i in (first, second))
-    assert (s1.start_date, s1.end_date) == ("2027-01-31", "2027-02-28")
-    assert (s2.start_date, s2.end_date) == ("2027-02-28", "2027-03-28")
+    month = month_of(conn, receptionist, enrollment_id)
+    for _ in range(2):
+        month = subscriptions.renew(conn, receptionist, month)
+    assert [(s.start_date, s.end_date)
+            for s in subscriptions.for_enrollment(conn, receptionist, enrollment_id)] == [
+        ("2027-01-31", "2027-02-28"), ("2027-02-28", "2027-03-31"),
+        ("2027-03-31", "2027-04-30")]
+    later = subscriptions.renew(conn, receptionist, month, date(2027, 5, 2))
+    assert subscriptions.get(conn, receptionist, later).end_date == "2027-06-02"
 
 
 def test_no_renewal_once_the_student_left(conn, receptionist, in_maths):
@@ -489,22 +495,35 @@ def test_leaving_keeps_a_month_ahead_already_paid(conn, director, receptionist, 
     assert audit_new(conn, "enrollment.leave")["months_kept"] == [ahead]
 
 
-def test_leaving_takes_a_month_ahead_out_of_the_teachers_draft(conn, director, receptionist,
-                                                               school, in_maths, monkeypatch):
-    renewed_ahead(conn, receptionist, in_maths, monkeypatch)
-    draft = payouts.build_draft(conn, director, school.teacher, date(2026, 11, 30))
-    assert payouts.get(conn, director, draft).months == 2
-    enrollments.leave(conn, receptionist, in_maths)
+def started_and_counted(conn, director, receptionist, school, in_maths, monkeypatch,
+                        approve: bool) -> tuple[int, int]:
+    """The month from 18/11 started: a payout of 20/11 counts it (a payout counts only
+    months started). Returns (that month, the payout)."""
+    ahead = renewed_ahead(conn, receptionist, in_maths, monkeypatch)
+    monkeypatch.setattr(dates, "today", lambda: date(2026, 11, 20))
+    payout = payouts.build_draft(conn, director, school.teacher, date(2026, 11, 20))
+    assert payouts.get(conn, director, payout).months == 2
+    if approve:
+        payouts.approve(conn, director, payout)
+    return ahead, payout
+
+
+def test_leaving_takes_a_month_out_of_the_teachers_draft(conn, director, receptionist,
+                                                         school, in_maths, monkeypatch):
+    """The leaving recorded on 20/11 from 17/11: the month of 18/11 goes, and leaves the
+    draft."""
+    _ahead, draft = started_and_counted(conn, director, receptionist, school, in_maths,
+                                        monkeypatch, approve=False)
+    enrollments.leave(conn, receptionist, in_maths, date(2026, 11, 17))
     p = payouts.get(conn, director, draft)
     assert (p.months, p.base_amount, p.amount_due) == (1, 3000, 1800)
 
 
-def test_leaving_keeps_a_month_ahead_a_teacher_was_paid_for(conn, director, receptionist,
-                                                            school, in_maths, monkeypatch):
-    ahead = renewed_ahead(conn, receptionist, in_maths, monkeypatch)
-    payouts.approve(conn, director, payouts.build_draft(conn, director, school.teacher,
-                                                        date(2026, 11, 30)))
-    enrollments.leave(conn, receptionist, in_maths)
+def test_leaving_keeps_a_month_a_teacher_was_paid_for(conn, director, receptionist,
+                                                      school, in_maths, monkeypatch):
+    ahead, _payout = started_and_counted(conn, director, receptionist, school, in_maths,
+                                         monkeypatch, approve=True)
+    enrollments.leave(conn, receptionist, in_maths, date(2026, 11, 17))
     assert audit_new(conn, "enrollment.leave")["months_kept"] == [ahead]
 
 

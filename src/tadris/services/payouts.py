@@ -1,4 +1,3 @@
-import calendar
 from datetime import date, datetime
 
 from tadris.core import dates
@@ -23,7 +22,8 @@ from tadris.services import audit, counters
 # A teacher is paid a percentage of the full price of each month (subscription charge) of
 # the groups they taught on the month's first day, whether the student paid or not (section
 # 1 of the plan; there are no discounts). A payout takes every month not paid to the
-# teacher yet up to a date: a month renewed late, starting in a period already paid, goes
+# teacher yet up to a date, today at most: a month is paid once it has started (one
+# renewed ahead waits), and a month renewed late, starting in a period already paid, goes
 # into the next payout instead of being lost. One line per group and rate, each at the
 # teacher's rate on the months' first day (snapshot), its share rounded down once.
 #
@@ -35,10 +35,6 @@ STATUSES_OPEN = ("draft", "approved")
 
 def _now() -> str:
     return f"{dates.iso(dates.today())}T{datetime.now():%H:%M:%S}"
-
-
-def month_end(on: date) -> date:
-    return on.replace(day=calendar.monthrange(on.year, on.month)[1])
 
 
 def _to_payout(row) -> Payout:
@@ -126,10 +122,12 @@ def for_teacher(conn, ctx: UserContext, teacher_id: int) -> list[Payout]:
 # ----- building a draft -----
 
 def _check_until(until: date) -> str:
-    limit = month_end(dates.today())
-    if until > limit:
+    """A payout counts the months started by the day it is built: up to today at most. A
+    month to come (renewed ahead) goes into the payout after it starts, nothing is lost."""
+    today = dates.today()
+    if until > today:
         raise ValidationError(t["payout.until_too_late"].format(
-            date=dates.display_date(dates.iso(limit))))
+            date=dates.display_date(dates.iso(today))))
     return dates.iso(until)
 
 
@@ -202,8 +200,8 @@ def _build(conn, ctx: UserContext, teacher_id: int, until: str) -> int:
 
 
 def build_draft(conn, ctx: UserContext, teacher_id: int, until: date) -> int:
-    """The teacher's draft for every month not paid yet up to `until` (at most the end of
-    this month). Their previous draft, if any, is replaced."""
+    """The teacher's draft for every month not paid yet up to `until` (today at most: only
+    months already started). Their previous draft, if any, is replaced."""
     require(ctx, "payout.manage")
     end = _check_until(until)
     with atomic(conn):

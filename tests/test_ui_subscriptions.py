@@ -159,6 +159,19 @@ def test_renew_before_the_end_shows_in_the_dialog(qtbot, conn, receptionist, in_
     assert dialog.banner.text() == t["subscription.start_before_end"].format(end="18/11/2026")
 
 
+def test_renew_dialog_shows_the_cycles_day(qtbot, conn, receptionist, school, amine):
+    """From 28/02 in a cycle of the 31st, the month shown runs to 31/03, as renewing does."""
+    enrollment = enrollments.enroll(conn, receptionist, amine, school["maths"],
+                                    enrolled_on=date(2027, 1, 31))
+    [first] = subscriptions.for_enrollment(conn, receptionist, enrollment)
+    subscriptions.renew(conn, receptionist, first.id)  # 28/02 -> 31/03
+    second = subscriptions.for_enrollment(conn, receptionist, enrollment)[-1]
+    dialog = RenewDialog(conn, receptionist, second)
+    qtbot.addWidget(dialog)
+    assert (second.start_date, second.end_date) == ("2027-02-28", "2027-03-31")
+    assert "30/04/2027" in dialog.preview.text()  # 31/03 -> 30/04, the cycle's last day
+
+
 def test_no_renewal_once_the_student_left(qtbot, conn, receptionist, in_maths, amine):
     enrollments.leave(conn, receptionist, in_maths)
     tab = make_tab(qtbot, conn, receptionist, amine)

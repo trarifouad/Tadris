@@ -254,7 +254,8 @@ t = {
         "être signé par l'enseignant."
     ),
     "payout.until_too_late": (
-        "On paie au plus tard jusqu'à la fin du mois en cours ({date})."
+        "Un paiement compte les mois déjà commencés : au plus tard jusqu'à aujourd'hui "
+        "({date}). Un mois à venir ira dans le paiement suivant."
     ),
     "payout.nothing": "Rien à payer à {teacher} jusqu'au {date} : aucun mois non payé.",
     "payout.no_rate": (

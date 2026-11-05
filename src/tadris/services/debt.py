@@ -19,6 +19,9 @@ from tadris.services import settings
 # first day, the fee from the registration day); months renewed ahead are owed, not late.
 # The credit is spent only when the next payment is recorded, but every figure shown counts
 # it already, oldest charges first (Debt.after_credit): what is late, since when, what is left.
+# So does the money recorded on a later charge than one still owed (a void made an older
+# month owed again, or the desk chose the lines): the student's money pays this month first,
+# then the next (decided 2026-11-03). Payments and receipts stay as recorded.
 
 
 def _today() -> str:
@@ -34,16 +37,18 @@ def to_charge(row) -> ChargeDue:
     )
 
 
-def _build(student_id: int, charge_rows, credit_rows, on: str) -> Debt:
+def _build(student_id: int, charge_rows, credit_rows, on: str, settled_rows=()) -> Debt:
     charges = tuple(c for c in (to_charge(row) for row in charge_rows) if c.due > 0)
     credit = sum(row["amount"] - row["allocated"] for row in credit_rows)
-    return Debt(student_id=student_id, as_of=on, charges=charges, credit=credit)
+    return Debt(student_id=student_id, as_of=on, charges=charges, credit=credit,
+                settled=tuple(to_charge(row) for row in settled_rows))
 
 
 def compute(conn, student_id: int) -> Debt:
     """The debt, without a permission check: for services, inside their transaction."""
     return _build(student_id, repo.open_charges(conn, student_id),
-                  repo.with_credit(conn, student_id), _today())
+                  repo.with_credit(conn, student_id), _today(),
+                  repo.paid_since_first_owed(conn, student_id))
 
 
 def for_student(conn, ctx: UserContext, student_id: int) -> Debt:
@@ -75,7 +80,11 @@ def every_debt(conn) -> dict[int, Debt]:
     credits: dict[int, list] = {}
     for row in repo.with_credit(conn):
         credits.setdefault(row["student_id"], []).append(row)
-    return {student_id: _build(student_id, rows, credits.get(student_id, []), on)
+    settled: dict[int, list] = {}
+    for row in repo.paid_since_first_owed(conn):
+        settled.setdefault(row["student_id"], []).append(row)
+    return {student_id: _build(student_id, rows, credits.get(student_id, []), on,
+                               settled.get(student_id, []))
             for student_id, rows in charges.items()}
 
 

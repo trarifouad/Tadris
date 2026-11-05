@@ -151,7 +151,7 @@ def test_a_rate_change_leaves_old_payouts_unchanged(conn, director, school):
     payouts.approve(conn, director, september)
     teachers.set_rate(conn, director, school.karim, 5000, date(2026, 10, 1))
     school.pupils(school.a, 1, on=date(2026, 10, 5))  # October: 6 000 at 50 %
-    october = payouts.build_draft(conn, director, school.karim, OCT_END)
+    october = payouts.build_draft(conn, director, school.karim, TODAY)
     assert payouts.get(conn, director, september).amount_due == 7200  # 60 %, untouched
     p = payouts.get(conn, director, october)
     assert (p.period_start, p.amount_due) == ("2026-10-05", 3000)
@@ -163,7 +163,7 @@ def test_a_rate_that_changed_gives_two_lines_for_one_group(conn, director, schoo
     teachers.set_rate(conn, director, school.karim, 5000, date(2026, 10, 1))
     school.pupils(school.a, 1)  # 01/09 at 60 %
     school.pupils(school.a, 1, on=date(2026, 10, 2))  # 02/10 at 50 %
-    payout_id = payouts.build_draft(conn, director, school.karim, OCT_END)
+    payout_id = payouts.build_draft(conn, director, school.karim, TODAY)
     assert sorted((line.percentage_bp, line.amount)
                   for line in payouts.lines(conn, director, payout_id)) == [
         (5000, 3000), (6000, 3600)]
@@ -174,8 +174,8 @@ def test_a_teacher_change_splits_by_the_months_first_day(conn, director, school)
     school.pupils(school.a, 1, on=date(2026, 10, 5))  # Karim's
     groups.change_teacher(conn, director, school.a, school.samia, date(2026, 10, 10))
     school.pupils(school.a, 1, on=date(2026, 10, 15))  # Samia's
-    karim = payouts.build_draft(conn, director, school.karim, OCT_END)
-    samia = payouts.build_draft(conn, director, school.samia, OCT_END)
+    karim = payouts.build_draft(conn, director, school.karim, TODAY)
+    samia = payouts.build_draft(conn, director, school.samia, TODAY)
     assert (payouts.get(conn, director, karim).amount_due,
             payouts.get(conn, director, samia).amount_due) == (3600, 3000)
 
@@ -321,7 +321,7 @@ def test_rebuilding_never_counts_a_month_twice(conn, director, school):
 def test_building_again_replaces_the_teachers_draft(conn, director, school):
     school.pupils(school.a, 1)
     first = payouts.build_draft(conn, director, school.karim, SEPT_END)
-    second = payouts.build_draft(conn, director, school.karim, OCT_END)
+    second = payouts.build_draft(conn, director, school.karim, TODAY)
     assert [x.id for x in payouts.listing(conn, director)] == [second]
     assert last_audit(conn, "payout.build")["replaced"] == first
 
@@ -334,7 +334,7 @@ def test_a_month_renewed_late_goes_into_the_next_payout(conn, director, school):
     payouts.approve(conn, director, september)
     school.pupils(school.a, 1, on=date(2026, 9, 20))  # backdated entry
     assert payouts.stale(conn, director, september) == 1
-    october = payouts.build_draft(conn, director, school.karim, OCT_END)
+    october = payouts.build_draft(conn, director, school.karim, TODAY)
     p = payouts.get(conn, director, october)
     assert (p.period_start, p.months, p.amount_due) == ("2026-09-20", 1, 3600)
 
@@ -402,11 +402,24 @@ def test_the_same_period_twice(conn, director, school):
     payouts.build_draft(conn, director, school.karim, TODAY)  # another end: fine
 
 
-def test_until_at_most_the_end_of_this_month(conn, director, school):
-    school.pupils(school.a, 1)
-    with pytest.raises(ValidationError):
-        payouts.build_draft(conn, director, school.karim, date(2026, 11, 1))
-    payouts.build_draft(conn, director, school.karim, OCT_END)
+def test_a_payout_takes_only_the_months_started_by_its_day(conn, director, school,
+                                                           monkeypatch):
+    """On 18/10, up to 18/10 at most: November, renewed ahead, waits for the payout after it
+    starts, and nothing is lost."""
+    [enrollment] = school.pupils(school.a, 1, on=date(2026, 10, 1))
+    [october] = subscriptions.for_enrollment(conn, director, enrollment)
+    subscriptions.renew(conn, director, october.id)  # 01/11 -> 01/12, ahead
+    with pytest.raises(ValidationError) as caught:
+        payouts.build_draft(conn, director, school.karim, OCT_END)
+    assert caught.value.message == t["payout.until_too_late"].format(date="18/10/2026")
+    p = payouts.get(conn, director, payouts.build_draft(conn, director, school.karim, TODAY))
+    assert (p.months, p.period_end) == (1, "2026-10-18")
+    payouts.approve(conn, director, p.id)
+    move_to(monkeypatch, date(2026, 11, 30))
+    november = payouts.get(conn, director, payouts.build_draft(conn, director, school.karim,
+                                                               date(2026, 11, 30)))
+    assert (november.period_start, november.months, november.amount_due) == (
+        "2026-11-01", 1, 3600)
 
 
 def test_delete_a_draft(conn, director, school):
@@ -449,7 +462,7 @@ def test_payout_numbers_are_sequential(conn, director, school):
     school.pupils(school.a, 1)
     school.pupils(school.a, 1, on=date(2026, 10, 1))
     numbers = []
-    for until in (SEPT_END, OCT_END):
+    for until in (SEPT_END, TODAY):
         payout_id = payouts.build_draft(conn, director, school.karim, until)
         payouts.approve(conn, director, payout_id)
         numbers.append(payouts.mark_paid(conn, director, payout_id, "cash"))

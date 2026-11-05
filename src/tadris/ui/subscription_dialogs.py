@@ -47,12 +47,16 @@ class _MonthDialog(FormDialog):
     def _price(self) -> int:
         raise NotImplementedError
 
+    def _day(self, start: date) -> int | None:
+        """The cycle's day of the month made (None: start's own)."""
+        return None
+
     def _update_preview(self) -> None:
         start = self.date.value()
         if start is None:
             self.preview.setText("")
             return
-        end = dates.add_one_month(start)
+        end = dates.add_one_month(start, self._day(start))
         self.preview.setText(t["renew_dialog.preview"].format(
             period=period_text(dates.iso(start), dates.iso(end)), price=format_dzd(self._price())))
 
@@ -80,6 +84,10 @@ class RenewDialog(_MonthDialog):
 
     def _price(self) -> int:
         return self._group_price
+
+    def _day(self, start: date) -> int | None:
+        return subscriptions.renewal_day(self._subscription.start_date,
+                                         self._subscription.end_date, dates.iso(start))
 
     def save(self) -> None:
         self.new_id = subscriptions.renew(self._conn, self._ctx, self._subscription.id,
@@ -187,7 +195,8 @@ class BulkRenewDialog(FormDialog):
             name,
             item(m.group_title),
             item(period_text(m.start_date, m.end_date)),
-            item(period_text(m.end_date, dates.iso(dates.add_one_month(end)))),
+            item(period_text(m.end_date, dates.iso(dates.add_one_month(
+                end, subscriptions.renewal_day(m.start_date, m.end_date, m.end_date))))),
             item(format_dzd(self._prices[m.id]), align=CENTER, mono=True),
         ]
 

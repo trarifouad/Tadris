@@ -93,6 +93,39 @@ def open_charges(conn, student_id: int | None = None) -> list:
     ).fetchall()
 
 
+def paid_since_first_owed(conn, student_id: int | None = None) -> list:
+    """Open charges paid in full that fall due on or after the student's oldest charge with
+    something left (one student's, or everyone's), in the order payments pay them: the money
+    on them pays that older charge first (debt: this month before the next). The charges
+    before it are paid in full and keep their money. Joins, not a subquery per charge: the
+    history of paid months grows every month."""
+    return conn.execute(
+        f"""
+        WITH paid AS ({_PAID_BY_CHARGE}),
+        open AS (
+            SELECT c.id, COALESCE(r.student_id, e.student_id) AS student_id,
+                   c.registration_id, c.subscription_id, c.description, c.amount, c.due_date,
+                   c.status, COALESCE(p.paid, 0) AS paid, e.group_id, s.start_date,
+                   s.end_date, g.name AS group_name
+              FROM charges c
+              LEFT JOIN registrations r ON r.id = c.registration_id
+              LEFT JOIN subscriptions s ON s.id = c.subscription_id
+              LEFT JOIN enrollments e ON e.id = s.enrollment_id
+              LEFT JOIN class_groups g ON g.id = e.group_id
+              LEFT JOIN paid p ON p.charge_id = c.id
+             WHERE c.status = 'open'
+               AND (:student IS NULL OR COALESCE(r.student_id, e.student_id) = :student)),
+        first_owed AS (
+            SELECT student_id, MIN(due_date) AS since FROM open
+             WHERE paid < amount GROUP BY student_id)
+        SELECT o.* FROM open o JOIN first_owed f ON f.student_id = o.student_id
+         WHERE o.paid >= o.amount AND o.due_date >= f.since
+         ORDER BY o.due_date, o.id
+        """,
+        {"student": student_id},
+    ).fetchall()
+
+
 def charge(conn, charge_id: int):
     return conn.execute(f"SELECT {_CHARGE_COLUMNS} FROM charges c WHERE c.id = ?",
                         (charge_id,)).fetchone()

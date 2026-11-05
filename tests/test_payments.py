@@ -405,6 +405,31 @@ def test_credit_pays_again_what_a_void_made_owed(conn, director, amine):
         (fee["id"], 1000, 1000), (month["id"], 1500, 1500)]
 
 
+def test_money_pays_this_month_before_the_next(conn, director, amine):
+    """Decided 2026-11-03. P1 paid the fee and October, P2 November (renewed ahead); P1
+    voided. P2's 3 000 stays on November as recorded (its receipt too), but every screen
+    shows it paying the oldest first: the fee, then 2 000 of October; 1 000 of October is
+    late, November waits for its day. The next 1 000 completes what is due."""
+    fee = fee_charge(conn, amine)
+    first = payments.record(conn, director, amine, 4000, "cash")
+    [october] = subscriptions.for_student(conn, director, amine)
+    subscriptions.renew(conn, director, october.id)  # 18/11 -> 18/12
+    ahead = payments.record(conn, director, amine, 3000, "cash")
+    payments.void(conn, director, first, "Chèque sans provision")
+    oct_charge, nov_charge = (m["id"] for m in month_charges(conn, amine))
+    d = debt.for_student(conn, director, amine)
+    assert {c.id: c.due for c in d.charges} == {fee["id"]: 1000, oct_charge: 3000}  # recorded
+    assert debt.left_for_student(conn, director, amine) == {oct_charge: 1000, nov_charge: 3000}
+    assert (d.owed_now, d.oldest_overdue, d.balance) == (1000, "2026-10-18", 4000)
+    [debtor] = debt.debtors(conn, director)
+    assert (debtor.owed_now, debtor.due) == (1000, 4000)
+    assert [(line.charge_id, line.amount)
+            for line in payments.receipt_lines(conn, director, ahead)] == [(nov_charge, 3000)]
+    payments.record(conn, director, amine, 1000, "cash")
+    d = debt.for_student(conn, director, amine)
+    assert (d.owed_now, debt.left_for_student(conn, director, amine)) == (0, {nov_charge: 3000})
+
+
 def test_credit_finishes_a_month_its_payment_chose_in_part(conn, director, amine):
     """The desk put 1 000 of 4 000 on the month: 3 000 credit. The next payment's recording
     spends it on the fee, then on the rest of that same month."""
@@ -443,7 +468,7 @@ def test_void_after_a_teacher_payout_counted_the_month(conn, director, school, a
     """A typo (40 000 for 4 000) stays fixable: the payout pays the month's full price
     whether it was paid or not, so it does not change; the month is owed again."""
     payment_id = payments.record(conn, director, amine, 40000, "cash")
-    payout_id = payouts.build_draft(conn, director, school.teacher, date(2026, 10, 31))
+    payout_id = payouts.build_draft(conn, director, school.teacher, TODAY)
     if payout_status != "draft":
         payouts.approve(conn, director, payout_id)
     if payout_status == "paid":
@@ -471,7 +496,9 @@ def test_hand_calculated_scenario(conn, director, school, monkeypatch):
     18/10 pays 2 000: fee 1 000, M1 Oct 1 000.
     20/10 pays 6 000: M1 Oct 2 000, P1 Oct 2 500, M1 Nov 1 500.
     21/10 the 18/10 payment is voided: fee and M1 Oct owe 1 000 each again.
-    Owed: fee 1 000 + M1 Oct 1 000 + M1 Nov 1 500 = 3 500; late on 21/10: 2 000.
+    Owed: fee 1 000 + M1 Oct 1 000 + M1 Nov 1 500 = 3 500. As the screens show it, the 6 000
+    pays October first (fee, M1, then 2 000 of P1), then November: late on 21/10, 500 of
+    P1 since 20/10; November 3 000, not due yet.
     """
     student = new_student(conn, director, school, "Rania", "Bouzid")
     enrollments.enroll(conn, director, student, school.maths)
@@ -487,9 +514,11 @@ def test_hand_calculated_scenario(conn, director, school, monkeypatch):
     move_to(monkeypatch, date(2026, 10, 21))
     payments.void(conn, director, first, "Chèque sans provision")
     d = debt.for_student(conn, director, student)
-    assert sorted(c.due for c in d.charges) == [1000, 1000, 1500]
-    assert (d.due, d.overdue, d.credit, d.balance, d.owed_now) == (3500, 2000, 0, 3500, 2000)
-    assert d.oldest_overdue == "2026-10-18"
+    assert sorted(c.due for c in d.charges) == [1000, 1000, 1500]  # as recorded
+    assert (d.due, d.overdue, d.credit, d.balance, d.owed_now) == (3500, 2000, 0, 3500, 500)
+    assert d.oldest_overdue == "2026-10-20"
+    assert [(c.amount, c.due, c.due_date) for c in d.after_credit().charges] == [
+        (2500, 500, "2026-10-20"), (3000, 3000, "2026-11-18")]
 
 
 def test_after_credit_pays_the_oldest_charges_first():

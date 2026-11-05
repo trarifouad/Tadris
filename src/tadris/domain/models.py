@@ -528,6 +528,9 @@ class Debt:
     as_of: str  # 'YYYY-MM-DD'
     charges: tuple[ChargeDue, ...]  # oldest due first, each with due > 0
     credit: int  # money received and not allocated to a charge yet
+    # Charges paid in full that fall due after the oldest charge with something left: their
+    # money pays it first (after_credit).
+    settled: tuple[ChargeDue, ...] = ()
 
     @property
     def due(self) -> int:
@@ -546,28 +549,31 @@ class Debt:
 
     @property
     def owed_now(self) -> int:
-        """What is late now, after the credit: what the debtors list shows."""
-        return max(self.overdue - self.credit, 0)
+        """What is late now, once the student's money paid the oldest charges first: what
+        the debtors list shows."""
+        return self.after_credit().overdue
 
     @property
     def oldest_overdue(self) -> str | None:
-        """The due date of the oldest late charge that the credit does not cover."""
+        """The due date of the oldest late charge that the student's money does not cover."""
         late = [c.due_date for c in self.after_credit().charges if c.due_date <= self.as_of]
         return min(late) if late else None
 
     def after_credit(self) -> "Debt":
-        """The debt as every screen shows it: the credit pays the oldest charges first, as
-        the next payment will. A charge it covers whole is left out, one it covers in part
-        counts that part as paid, and `credit` is what is left of it once every charge is
-        paid. owed_now and balance stay the same."""
-        credit = self.credit
+        """The debt as every screen shows it: the student's money pays the oldest charges
+        first, this month before the next: the credit (as the next payment will spend it)
+        and the money recorded on a later charge than one still owed (`settled`, and what
+        was paid on the charges left). A charge it covers whole is left out, one it covers
+        in part counts that part as paid, and `credit` is what is left once every charge is
+        paid. balance stays the same."""
+        money = self.credit + sum(c.paid for c in self.charges + self.settled)
         charges = []
-        for c in self.charges:
-            used = min(credit, c.due)
-            credit -= used
-            if used < c.due:
-                charges.append(replace(c, paid=c.paid + used))
-        return replace(self, charges=tuple(charges), credit=credit)
+        for c in sorted(self.charges + self.settled, key=lambda c: (c.due_date, c.id)):
+            used = min(money, c.amount)
+            money -= used
+            if used < c.amount:
+                charges.append(replace(c, paid=used))
+        return replace(self, charges=tuple(charges), credit=money, settled=())
 
 
 @dataclass(frozen=True)

@@ -56,11 +56,20 @@ def parse_display_date(text: str) -> date | None:
         raise ValidationError(t["date.invalid"]) from exc
 
 
-def add_one_month(value: date) -> date:
+def add_one_month(value: date, day: int | None = None) -> date:
+    """The same day next month, or its last day when it is shorter. day: the cycle's day when
+    the calendar shortened this one (a month from 28/02 in a cycle of the 31st ends 31/03)."""
     year = value.year + (1 if value.month == 12 else 0)
     month = 1 if value.month == 12 else value.month + 1
     last_day = calendar.monthrange(year, month)[1]
-    return date(year, month, min(value.day, last_day))
+    return date(year, month, min(day or value.day, last_day))
+
+
+def cycle_day(start: date, previous_start: date | None = None) -> int:
+    """The day a month starting on `start` keeps. A renewal from the previous month's end
+    keeps the previous month's day when a short month moved it: 31/01 -> 28/02 -> 31/03, not
+    28/03 (two short months never follow each other, so the larger day is the cycle's)."""
+    return max(start.day, previous_start.day) if previous_start else start.day
 
 
 def parse_time(text: str) -> str:

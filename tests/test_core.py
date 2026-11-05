@@ -7,6 +7,7 @@ from tadris.core.context import UserContext
 from tadris.core.dates import (
     add_minutes,
     add_one_month,
+    cycle_day,
     display_date,
     iso,
     parse_display_date,
@@ -79,14 +80,19 @@ def test_add_one_month(start, expected):
     assert add_one_month(start) == expected
 
 
-def test_add_one_month_chain_stays_on_shortened_day():
-    # Documented behavior: a 31 Jan start drifts to the 28th and stays there.
-    d = date(2027, 1, 31)
-    chain = []
-    for _ in range(3):
-        d = add_one_month(d)
-        chain.append(d)
-    assert chain == [date(2027, 2, 28), date(2027, 3, 28), date(2027, 4, 28)]
+def test_a_month_cycle_keeps_its_day():
+    """Decided 2026-11-03 (it drifted to the 28th before): each month from the previous end
+    keeps the cycle's day where the calendar has it."""
+    start, previous, ends = date(2027, 1, 31), None, []
+    for _ in range(5):
+        end = add_one_month(start, cycle_day(start, previous))
+        ends.append(end)
+        previous, start = start, end
+    assert ends == [date(2027, 2, 28), date(2027, 3, 31), date(2027, 4, 30), date(2027, 5, 31),
+                    date(2027, 6, 30)]
+    assert (cycle_day(date(2026, 10, 15), date(2026, 9, 15)), cycle_day(date(2026, 10, 15))) == (
+        15, 15)
+    assert add_one_month(date(2028, 2, 29), 30) == date(2028, 3, 30)  # a cycle of the 30th
 
 
 def test_weekday_1_to_7():

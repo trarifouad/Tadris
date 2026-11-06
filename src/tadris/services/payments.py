@@ -6,14 +6,15 @@ from tadris.core.context import UserContext
 from tadris.core.errors import BusinessRuleError, NotFound, ValidationError
 from tadris.core.money import format_dzd
 from tadris.core.permissions import allowed, require
-from tadris.core.text import clean
+from tadris.core.text import clean, group_title
 from tadris.db.errors import atomic
 from tadris.domain.models import PAYMENT_METHODS, CashReport, ChargeDue, Payment, PaymentLine
 from tadris.i18n.fr import t
 from tadris.repositories import contacts as contacts_repo
 from tadris.repositories import payments as repo
+from tadris.repositories import refunds as refunds_repo
 from tadris.repositories import students as students_repo
-from tadris.services import audit, counters, debt, payouts, subscriptions
+from tadris.services import audit, counters, debt, payouts, refunds, subscriptions
 
 # A payment is money received from (or for) a student. It is immutable: a mistake is undone
 # by a void (director only), never by an update or a negative payment. A payment pays lines
@@ -104,14 +105,15 @@ def lines(conn, ctx: UserContext, payment_id: int) -> list[PaymentLine]:
     return [PaymentLine(charge_id=row["charge_id"], description=row["description"],
                         due_date=row["due_date"], amount=row["amount"],
                         group_title=None if row["group_name"] is None else
-                        f"{row['group_name']} · {row['subject']} {row['level']}",
+                        group_title(row),
                         month_start=row["month_start"], month_end=row["month_end"])
             for row in repo.allocations(conn, payment_id)]
 
 
 def cash_report(conn, ctx: UserContext, day: date) -> CashReport:
     """The day's payments, the payments of earlier days voided on it (taken off it, never
-    off their own day: a day counted stays as it was) and, for the director (teacher pay is
+    off their own day: a day counted stays as it was), the refunds whose money went back that
+    day (money going out, apart from the payments) and, for the director (teacher pay is
     theirs to see), the teachers paid that day."""
     require(ctx, "cash.view")
     teachers_paid = (tuple(payouts.paid_on(conn, ctx, day)) if allowed(ctx, "payout.view")
@@ -120,7 +122,8 @@ def cash_report(conn, ctx: UserContext, day: date) -> CashReport:
     return CashReport(day=on,
                       payments=tuple(_to_payment(row) for row in repo.on_day(conn, on)),
                       payouts=teachers_paid,
-                      voided_earlier=tuple(_to_payment(row) for row in repo.voided_on(conn, on)))
+                      voided_earlier=tuple(_to_payment(row) for row in repo.voided_on(conn, on)),
+                      refunds=tuple(refunds.paid_on(conn, ctx, day)))
 
 
 # ----- planning (pure: the dialog's preview and record() use the same code) -----
@@ -273,7 +276,8 @@ def void(conn, ctx: UserContext, payment_id: int, reason: str) -> None:
     """Director only. The payment stays, marked voided: what it paid is owed again (the
     months it renewed ahead stay, owed). Teacher payouts do not stop it: they count each
     month's full price whether it was paid or not. Refused once money of it was handed back
-    (refunds archived since 0015)."""
+    (a refund paid, or the archive), and while a month it paid has a refund request pending
+    or approved."""
     require(ctx, "payment.void")
     reason = clean(reason)
     if not reason:
@@ -282,6 +286,10 @@ def void(conn, ctx: UserContext, payment_id: int, reason: str) -> None:
         row = _require_row(conn, payment_id)
         if row["voided"]:
             raise BusinessRuleError(t["payment.already_voided"])
+        if refunds_repo.payment_handed_back(conn, payment_id):
+            raise BusinessRuleError(t["payment.handed_back"])
+        if refunds_repo.payment_month_asked(conn, payment_id):
+            raise BusinessRuleError(t["payment.refund_open"])
         lines_paid = [{"charge_id": a["charge_id"], "amount": a["amount"]}
                       for a in repo.allocations(conn, payment_id)]
         repo.insert_void(conn, payment_id, reason, ctx.user_id, _now())

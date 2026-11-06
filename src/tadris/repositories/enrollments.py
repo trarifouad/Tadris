@@ -6,12 +6,21 @@ group (unique index); one trial per student, ever (unique index on started_as_tr
 
 _NOW = "strftime('%Y-%m-%dT%H:%M:%S','now','localtime')"
 
+
+def on_day(alias: str = "e", day: str = "s.date") -> str:
+    """The place is in the group that calendar day: entered on or before it, not left
+    before it, and not a place that ended before it ever started."""
+    return (f"{alias}.enrolled_on <= {day} AND ({alias}.left_on IS NULL OR {alias}.left_on >= {day})"
+            f" AND {alias}.never_started = 0")
+
+
 _COLUMNS = """
     e.id, e.student_id, st.student_number, st.last_name, st.first_name,
     e.group_id, g.name AS group_name, sb.name AS subject, gl.name AS group_level,
     gl.is_open AS group_level_open,
     g.school_year_id, e.registration_id, rl.name AS registration_level,
-    e.status, e.started_as_trial, e.enrolled_on, e.left_on, e.switched_from_id
+    e.status, e.started_as_trial, e.enrolled_on, e.left_on, e.switched_from_id,
+    e.never_started
 """
 _FROM = """
     FROM enrollments e
@@ -120,26 +129,32 @@ def set_status(conn, enrollment_id: int, status: str) -> None:
                  (status, enrollment_id))
 
 
-def end(conn, enrollment_id: int, status: str, left_on: str) -> None:
+def end(conn, enrollment_id: int, status: str, left_on: str,
+        never_started: bool = False) -> None:
     """status 'left' or 'switched'."""
     conn.execute(
-        f"UPDATE enrollments SET status = ?, left_on = ?, updated_at = {_NOW} WHERE id = ?",
-        (status, left_on, enrollment_id),
+        f"""
+        UPDATE enrollments SET status = ?, left_on = ?, never_started = ?,
+                               updated_at = {_NOW} WHERE id = ?
+        """,
+        (status, left_on, int(never_started), enrollment_id),
     )
 
 
-def end_live_for_group(conn, group_id: int, on: str) -> list[int]:
+def end_live_for_group(conn, group_id: int, on: str, closure_id: int) -> list[int]:
     """Every live enrollment of the group leaves on `on`, or on its entry date if later (a
-    group closed before it started). Returns their ids."""
+    group closed before it started), ended by that closure. Returns their ids."""
     ids = [int(row[0]) for row in conn.execute(
         "SELECT id FROM enrollments WHERE group_id = ? AND status IN ('trial', 'active')",
         (group_id,))]
     conn.execute(
         f"""
-        UPDATE enrollments SET status = 'left', left_on = max(?, enrolled_on), updated_at = {_NOW}
+        UPDATE enrollments SET status = 'left', left_on = max(?, enrolled_on), closure_id = ?,
+                               never_started = CASE WHEN enrolled_on > ? THEN 1 ELSE 0 END,
+                               updated_at = {_NOW}
          WHERE group_id = ? AND status IN ('trial', 'active')
         """,
-        (on, group_id),
+        (on, closure_id, on, group_id),
     )
     return ids
 

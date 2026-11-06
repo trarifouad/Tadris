@@ -124,19 +124,20 @@ def test_money_reports_are_the_directors(conn, desk, school):
 
 def test_revenue_by_month(conn, director, school):
     report = reports.revenue(conn, director, school.year, "month")
-    assert tiles(report) == [("Facturé", 35000), ("Encaissé", 17000), ("Reste dû", 18000),
+    assert tiles(report) == [("Attendu", 35000), ("Encaissé", 17000), ("Impayé", 18000),
                              ("Part école", 15000)]
     by_month = {row[0]: row[1:] for row in report.rows}
     assert len(report.rows) == 10  # September to June, empty months too
     # September: A 2 x 6 000 + B 12 000; Karim's 60 % of each: 14 400.
-    assert by_month["Septembre 2026"] == (24000, 11000, 13000, 0, 14400, 9600)
+    # Attendu, payé, impayé, encaissé, remboursé, net encaissé, part enseignants, part école.
+    assert by_month["Septembre 2026"] == (24000, 11000, 13000, 0, 0, 0, 14400, 9600)
     # October: A 6 000 (60 %), C 4 000 (50 %), Farid's fee 1 000 (all the school's).
-    assert by_month["Octobre 2026"] == (11000, 6000, 5000, 17000, 5600, 5400)
-    assert by_month["Novembre 2026"] == (0, 0, 0, 0, 0, 0)
-    assert report.total == ("Total", 35000, 17000, 18000, 17000, 20000, 15000)
+    assert by_month["Octobre 2026"] == (11000, 6000, 5000, 17000, 0, 17000, 5600, 5400)
+    assert by_month["Novembre 2026"] == (0,) * 8
+    assert report.total == ("Total", 35000, 17000, 18000, 17000, 0, 17000, 20000, 15000)
     assert report.chart.labels[:2] == ("sept.", "oct.")
     assert report.chart.series == (
-        ("Facturé", (24000, 11000) + (0,) * 8), ("Encaissé", (0, 17000) + (0,) * 8))
+        ("Attendu", (24000, 11000) + (0,) * 8), ("Encaissé", (0, 17000) + (0,) * 8))
 
 
 def test_revenue_by_group_the_fees_last(conn, director, school):
@@ -177,11 +178,11 @@ def test_the_summer_before_the_year_is_its(conn, director, monkeypatch):
     payments.record(conn, director, student, 1500, "cash")
     monkeypatch.setattr(dates, "today", lambda: TODAY)
     report = reports.revenue(conn, director, year)
-    assert tiles(report) == [("Facturé", 1500), ("Encaissé", 1500), ("Reste dû", 0),
+    assert tiles(report) == [("Attendu", 1500), ("Encaissé", 1500), ("Impayé", 0),
                              ("Part école", 1500)]
-    assert report.rows[0] == ("Août 2026", 1500, 1500, 0, 1500, 0, 1500)
+    assert report.rows[0] == ("Août 2026", 1500, 1500, 0, 1500, 0, 1500, 0, 1500)
     assert len(report.rows) == 11  # August, then September to June
-    assert tiles(reports.revenue(conn, director, old))[:2] == [("Facturé", 0), ("Encaissé", 0)]
+    assert tiles(reports.revenue(conn, director, old))[:2] == [("Attendu", 0), ("Encaissé", 0)]
 
 
 def test_june_paid_in_july_is_the_years(conn, director, school, monkeypatch):
@@ -198,8 +199,8 @@ def test_june_paid_in_july_is_the_years(conn, director, school, monkeypatch):
 def test_the_teachers_share_follows_the_rate_of_the_months_first_day(conn, director, school):
     teachers.set_rate(conn, director, school.karim, 5000, date(2026, 10, 1))
     by_month = {row[0]: row for row in reports.revenue(conn, director, school.year).rows}
-    assert by_month["Septembre 2026"][5] == 14400  # still 60 %
-    assert by_month["Octobre 2026"][5] == 3000 + 2000  # A's October at 50 %, C at 50 %
+    assert by_month["Septembre 2026"][7] == 14400  # still 60 %
+    assert by_month["Octobre 2026"][7] == 3000 + 2000  # A's October at 50 %, C at 50 %
 
 
 # ----- Présences -----
@@ -319,8 +320,8 @@ def test_export_pdf_and_excel_and_the_audit(conn, director, school, tmp_path):
     sheet = book.worksheets[0]
     assert sheet["A1"].value == "Recettes par groupe"
     assert [c.value for c in sheet[6]] == [
-        "Groupe", "Enseignant", "Mois facturés", "Facturé (DA)", "Réglé (DA)",
-        "Reste dû (DA)", "Taux", "Part enseignants (DA)", "Part école (DA)"]
+        "Groupe", "Enseignant", "Mois", "Attendu (DA)", "Payé (DA)",
+        "Impayé (DA)", "Taux", "Part enseignants (DA)", "Part école (DA)"]
     assert [c.value for c in sheet[7]] == ["A · Maths 4AM", "Karim Haddad", 3, 18000, 12000,
                                            6000, 0.6, 10800, 7200]
     assert sheet["D7"].number_format == '#,##0 "DA"' and sheet["G7"].number_format == "0.0%"

@@ -22,10 +22,13 @@ from tadris.repositories import journal as repo
 PAGE = 100  # the latest entries, then this many more as the list is scrolled
 
 MONEY = {"amount", "amount_due", "amount_final", "base_amount", "default_fee", "fee_amount",
-         "price", "suggestion", "to_credit"}
+         "price", "suggestion", "to_credit",
+         # refunds (0021)
+         "amount_requested", "amount_approved", "max_amount", "held_before", "sessions_value",
+         "refunded", "archived"}
 PERCENT = {"percentage_bp"}
 DATES = {"birth_date", "date", "end_date", "enrolled_on", "hire_date", "left_on", "on",
-         "period_end", "period_start", "rate_from", "start_date", "valid_from",
+         "period_end", "period_start", "rate_from", "start_date", "valid_from", "counted_from",
          "now", "last"}  # now, last: the computer's date accepted at start (clock.*)
 BOOLS = {"can_receive_sms", "is_main", "voided", "substitute", "deleted"}
 # Ids that only link rows together: the name they point to is shown when there is one.
@@ -34,7 +37,7 @@ NAMES = {"student_id": "students", "teacher_id": "teachers", "group_id": "class_
          "school_year_id": "school_years"}
 HIDDEN = {"id", "charge_id", "receipt_id", "registration_id", "enrollment_id", "contact_id",
           "payer_contact_id", "renewal_of_id", "switched_from_id", "makeup_of_session_id",
-          "allocation_id", "payment_id", "replaced", "conflicts",
+          "allocation_id", "payment_id", "replaced", "conflicts", "subscription_id",
           "chosen",  # whether the desk picked the lines: says nothing to the director
           "whatsapp_code"}  # a group's invite code: the group's name says it
 LISTS = {"allocations", "lines", "from"}  # shown as a count

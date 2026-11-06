@@ -45,11 +45,12 @@ def test_journal_values():
     assert journal.entity_label("app", None, names) == "Application"
     new = json.dumps({"student_id": 7, "group_id": 3, "price": 3000, "percentage_bp": 6250,
                       "weekday": 2, "method": "cheque", "is_main": True, "charge_id": 99,
-                      "start_date": "2026-09-15", "notes": None, "mystery": "x"})
+                      "start_date": "2026-09-15", "archived": 1000, "notes": None,
+                      "mystery": "x"})
     assert journal.lines(None, new, names) == [
         "Élève : Benali Amine", "Groupe : Maths 4AM", "Prix : 3 000 DA", "Taux : 62,5 %",
         "Jour : Mardi", "Mode : Chèque", "Contact principal : Oui",
-        "Début : 15/09/2026", "mystery : x"]
+        "Début : 15/09/2026", "Déjà remboursé (archive) : 1 000 DA", "mystery : x"]
     marks = json.dumps({"date": "2026-10-18", "changes": [
         {"enrollment_id": 1, "old": None, "new": "present"},
         {"enrollment_id": 2, "old": None, "new": "present"},

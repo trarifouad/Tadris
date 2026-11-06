@@ -1,15 +1,22 @@
-"""Fill a database with a demo school, lived day by day from the groups' start to today, so
-every page has realistic rows.
+"""Fill a database with a demo school the size of an average tutoring school (soutien
+scolaire), lived day by day from the first week of September to today, so every page has
+realistic rows.
 
-The school: a year, 7 levels, 6 subjects, 8 rooms, 10 teachers, 34 groups with three weekly
-slots each, about 30 families (55 to 60 students, some inactive). Then, day by day through
-the services, as the desk would: students register and enter their groups on their own day
-(some on trial, a few leave or switch later), months are renewed around their end (most
-students stay), and each student pays as they usually do: on the day, late, half now and the
-rest later, or not at all, so the debtors have every age. Every past session has its
-attendance (each student with their own habit); today's sessions are marked once started.
-Then: holidays, a cancelled session with its makeup, a substitute, a voided payment and the
-teachers paid up to the end of last month (one paid, the others approved).
+The school: the 2026-2027 year, the 5AP to 3AS levels and « Tous niveaux » (open to every
+level, for the workshops), 7 school subjects and 2 workshops (calligraphie, arts
+plastiques), 9 rooms, 14 teachers, 38 groups. About 120 families: 210 pupils or so, most in
+the exam years (5AP, 4AM, 3AS), each with the age of their level, and a few adults who only
+take a workshop. Groups meet twice a week (workshops once, for two hours): weekday
+evenings, Friday afternoon and Saturday.
+
+Then, day by day through the services, as the desk would: pupils register and enter their
+groups on their own day, most in September, fewer in October (some on trial, a few leave or
+switch later); some also take a workshop. Months are renewed around their end (most pupils
+stay); each family pays as it usually does: on the day, late, half now and the rest later,
+or not at all, so the debtors have every age. Every past session has its attendance (each
+pupil with their own habit); today's sessions are marked once started. On the last day of
+each month the teachers are paid for the months over by then (a month is paid once it is
+done). Then: holidays, a cancelled session with its makeup, a substitute, a voided payment.
 
 Usage: python scripts/seed_demo.py PATH.db
 The path is required so the real database is never seeded by accident. Creates the director
@@ -63,70 +70,113 @@ FAMILIES = [
     "Benali", "Haddad", "Mansouri", "Bouzid", "Saidi", "Khelifi", "Belkacem", "Meziane",
     "Brahimi", "Cherif", "Amrani", "Ferhat", "Zerrouki", "Boudiaf", "Hamidi", "Rahmani",
     "Djebbar", "Kaci", "Lounis", "Ouali", "Slimani", "Toumi", "Yahiaoui", "Zitouni",
-    "Bensaid", "Guerfi", "Hadjadj", "Larbi", "Mebarki", "Nait",
+    "Bensaid", "Guerfi", "Hadjadj", "Larbi", "Mebarki", "Nait", "Abbas", "Aissaoui",
+    "Bekkouche", "Benamar", "Bendjelloul", "Benmoussa", "Bouchama", "Boukhari", "Chaouch",
+    "Dahmani", "Derradji", "Djellouli", "Fodil", "Ghezal", "Hamadouche", "Kadri", "Kebir",
+    "Khaldi", "Laribi", "Madani", "Mammeri", "Messaoudi", "Mokrani", "Moussaoui", "Naceri",
+    "Rezki", "Saadi", "Sahraoui", "Tahri", "Taleb",
 ]
 FIRST_NAMES = [
     "Amine", "Yanis", "Lina", "Sara", "Rayan", "Ines", "Adam", "Meriem", "Walid", "Hiba",
-    "Islam", "Nour", "Anis", "Aya", "Mehdi", "Hélène", "Ilyes", "Chaïma", "Riad", "Maya",
-    "Sofiane", "Yasmine", "Karim", "Dounia", "Nassim", "Amira", "Bilal", "Selma",
+    "Islam", "Nour", "Anis", "Aya", "Mehdi", "Ilyes", "Chaïma", "Riad", "Maya", "Sofiane",
+    "Yasmine", "Karim", "Dounia", "Nassim", "Amira", "Bilal", "Selma", "Abdelkader", "Asma",
+    "Younes", "Rania", "Zakaria", "Imane", "Haroun", "Malak", "Ayoub", "Wissem", "Djihane",
+    "Mohamed", "Fatima Zohra", "Abderrahmane", "Kenza", "Oussama", "Lyna",
 ]
-FATHERS = ["Karim", "Mourad", "Farid", "Rachid", "Nabil", "Samir", "Djamel", "Hakim"]
-MOTHERS = ["Nadia", "Samia", "Fatima", "Amel", "Leila", "Souad", "Karima", "Wafa"]
+FATHERS = ["Karim", "Mourad", "Farid", "Rachid", "Nabil", "Samir", "Djamel", "Hakim",
+           "Khaled", "Mustapha", "Abdelaziz", "Hocine", "Toufik", "Lakhdar"]
+MOTHERS = ["Nadia", "Samia", "Fatima", "Amel", "Leila", "Souad", "Karima", "Wafa", "Naima",
+           "Houria", "Saliha", "Zohra", "Malika", "Faiza"]
 
 
 def phone(rng: random.Random) -> str:
     return f"0{rng.choice('567')}{rng.randrange(10**8):08d}"
 
 
-LEVELS = ["1AM", "2AM", "3AM", "4AM", "1AS", "2AS", "3AS"]
-SUBJECTS = ["Mathématiques", "Physique", "Sciences", "Français", "Anglais", "Arabe"]
-ROOMS = [("Salle A", 20), ("Salle B", 15), ("Salle C", 25), ("Salle D", 18), ("Labo", 12),
-         ("Salle E", 16), ("Salle F", 20), ("Salle G", 18)]
-TEACHERS = [("Karim Haddad", 6000), ("Samia Rahmani", 5500), ("Nabil Cherif", 6000),
-            ("Leila Bouzid", 5000), ("Mourad Saidi", 6500), ("Amel Kaci", 5500),
-            ("Rachid Lounis", 6000), ("Yasmine Ferhat", 5500), ("Hocine Mansouri", 6000),
-            ("Nadia Belkacem", 5000)]
-# (subject, level, group name, teacher index, price, capacity)
-GROUPS = [
-    ("Mathématiques", "4AM", "Maths 4AM G1", 0, 3000, 15),
-    ("Mathématiques", "4AM", "Maths 4AM G2", 0, 3000, 15),
-    ("Physique", "4AM", "Physique 4AM", 1, 2500, 15),
-    ("Français", "4AM", "Français 4AM", 3, 2000, 16),
-    ("Mathématiques", "3AS", "Maths 3AS", 4, 4000, 20),
-    ("Physique", "3AS", "Physique 3AS", 1, 3500, 12),
-    ("Sciences", "3AS", "Sciences 3AS", 5, 3500, 12),
-    ("Français", "1AM", "Français 1AM", 3, 2000, 20),
-    ("Mathématiques", "1AM", "Maths 1AM", 6, 2500, 18),
-    ("Anglais", "2AS", "Anglais 2AS", 2, 2500, 15),
-    ("Mathématiques", "2AS", "Maths 2AS", 4, 3500, 15),
-    ("Sciences", "3AM", "Sciences 3AM", 2, 2500, 12),
-    ("Arabe", "2AM", "Arabe 2AM", 5, 2000, 16),
-    ("Mathématiques", "1AS", "Maths 1AS", 6, 3000, 16),
-    ("Mathématiques", "1AM", "Maths 1AM G2", 7, 2500, 18),
-    ("Physique", "1AM", "Physique 1AM", 1, 2000, 16),
-    ("Anglais", "1AM", "Anglais 1AM", 2, 2000, 18),
-    ("Mathématiques", "2AM", "Maths 2AM", 6, 2500, 18),
-    ("Français", "2AM", "Français 2AM", 8, 2000, 16),
-    ("Sciences", "2AM", "Sciences 2AM", 5, 2000, 15),
-    ("Mathématiques", "3AM", "Maths 3AM", 0, 2500, 16),
-    ("Physique", "3AM", "Physique 3AM", 9, 2500, 15),
-    ("Anglais", "3AM", "Anglais 3AM", 2, 2000, 18),
-    ("Arabe", "4AM", "Arabe 4AM", 8, 2000, 16),
-    ("Anglais", "4AM", "Anglais 4AM", 7, 2000, 16),
-    ("Sciences", "4AM", "Sciences 4AM", 5, 2500, 15),
-    ("Physique", "1AS", "Physique 1AS", 9, 3000, 15),
-    ("Français", "1AS", "Français 1AS", 3, 2500, 16),
-    ("Sciences", "2AS", "Sciences 2AS", 5, 3000, 12),
-    ("Physique", "2AS", "Physique 2AS", 1, 3000, 15),
-    ("Mathématiques", "3AS", "Maths 3AS G2", 4, 4000, 20),
-    ("Anglais", "3AS", "Anglais 3AS", 7, 3000, 15),
-    ("Arabe", "3AS", "Arabe 3AS", 8, 2500, 16),
-    ("Français", "3AS", "Français 3AS", 3, 2500, 16),
+# ----- the school -----
+
+LEVELS = ["5AP", "1AM", "2AM", "3AM", "4AM", "1AS", "2AS", "3AS"]
+OPEN_LEVEL = "Tous niveaux"
+# Of 100 pupils, how many in each level: the exam years (5AP, 4AM, 3AS) the most.
+LEVEL_SHARE = {"5AP": 10, "1AM": 8, "2AM": 8, "3AM": 9, "4AM": 20, "1AS": 9, "2AS": 12,
+               "3AS": 24}
+# The year a pupil of the level is born (one in seven repeated a year: born the year before).
+BORN = {"5AP": 2015, "1AM": 2014, "2AM": 2013, "3AM": 2012, "4AM": 2011, "1AS": 2010,
+        "2AS": 2009, "3AS": 2008}
+# How many subjects a pupil of the level takes: more in the exam years.
+SUBJECTS_TAKEN = {"5AP": (1, 1, 2), "1AM": (1, 1, 2), "2AM": (1, 1, 2), "3AM": (1, 2),
+                  "4AM": (2, 2, 3), "1AS": (1, 1, 2), "2AS": (1, 2), "3AS": (2, 2, 3)}
+SUBJECTS = ["Mathématiques", "Physique", "Sciences", "Français", "Anglais", "Arabe",
+            "Philosophie"]
+WORKSHOPS = ["Calligraphie", "Arts plastiques"]  # subjects of the open level
+ROOMS = [("Salle 1", 20), ("Salle 2", 20), ("Salle 3", 18), ("Salle 4", 18), ("Salle 5", 16),
+         ("Salle 6", 24), ("Salle 7", 16), ("Labo", 16), ("Atelier", 14)]
+TEACHERS = [  # (name, rate in basis points)
+    ("Karim Haddad", 6000),      # 0 maths, lycée
+    ("Mourad Saidi", 5500),      # 1 maths, CEM
+    ("Amina Brahimi", 5000),     # 2 maths, primaire and 1AM-2AM, 1AS
+    ("Samia Rahmani", 6000),     # 3 physique, lycée
+    ("Nabil Cherif", 5500),      # 4 physique, CEM
+    ("Amel Kaci", 5500),         # 5 sciences
+    ("Leila Bouzid", 5000),      # 6 français, lycée and 4AM
+    ("Hocine Mansouri", 5000),   # 7 français, primaire and CEM
+    ("Yasmine Ferhat", 5000),    # 8 anglais, lycée and 4AM
+    ("Rachid Lounis", 5000),     # 9 anglais, CEM
+    ("Nadia Belkacem", 5000),    # 10 arabe
+    ("Djamel Ouali", 5500),      # 11 philosophie
+    ("Fatima Zerrouki", 5000),   # 12 calligraphie
+    ("Sofiane Toumi", 5000),     # 13 arts plastiques
 ]
-SLOTS_PER_GROUP = 3
-WEEKEND_STARTS = ["08:30", "10:00", "13:30", "15:00"]
+# (subject, level, group name, teacher index, monthly price, capacity)
+GROUPS = [
+    ("Mathématiques", "5AP", "Maths 5AP", 2, 1800, 16),
+    ("Arabe", "5AP", "Arabe 5AP", 10, 1500, 16),
+    ("Français", "5AP", "Français 5AP", 7, 1500, 16),
+    ("Mathématiques", "1AM", "Maths 1AM", 2, 2000, 16),
+    ("Français", "1AM", "Français 1AM", 7, 2000, 16),
+    ("Anglais", "1AM", "Anglais 1AM", 9, 2000, 16),
+    ("Mathématiques", "2AM", "Maths 2AM", 2, 2000, 16),
+    ("Physique", "2AM", "Physique 2AM", 4, 2000, 16),
+    ("Français", "2AM", "Français 2AM", 7, 2000, 16),
+    ("Mathématiques", "3AM", "Maths 3AM", 1, 2500, 16),
+    ("Physique", "3AM", "Physique 3AM", 4, 2500, 16),
+    ("Anglais", "3AM", "Anglais 3AM", 9, 2000, 16),
+    ("Mathématiques", "4AM", "Maths 4AM G1", 1, 3000, 18),
+    ("Mathématiques", "4AM", "Maths 4AM G2", 1, 3000, 18),
+    ("Physique", "4AM", "Physique 4AM G1", 4, 2500, 18),
+    ("Physique", "4AM", "Physique 4AM G2", 4, 2500, 18),
+    ("Sciences", "4AM", "Sciences 4AM", 5, 2500, 18),
+    ("Français", "4AM", "Français 4AM", 6, 2500, 18),
+    ("Anglais", "4AM", "Anglais 4AM", 8, 2500, 18),
+    ("Arabe", "4AM", "Arabe 4AM", 10, 2500, 18),
+    ("Mathématiques", "1AS", "Maths 1AS", 2, 3000, 16),
+    ("Physique", "1AS", "Physique 1AS", 3, 3000, 16),
+    ("Français", "1AS", "Français 1AS", 6, 2500, 16),
+    ("Mathématiques", "2AS", "Maths 2AS", 0, 3500, 18),
+    ("Physique", "2AS", "Physique 2AS", 3, 3500, 18),
+    ("Sciences", "2AS", "Sciences 2AS", 5, 3000, 16),
+    ("Anglais", "2AS", "Anglais 2AS", 8, 3000, 16),
+    ("Mathématiques", "3AS", "Maths 3AS G1", 0, 4000, 20),
+    ("Mathématiques", "3AS", "Maths 3AS G2", 0, 4000, 20),
+    ("Physique", "3AS", "Physique 3AS G1", 3, 4000, 20),
+    ("Physique", "3AS", "Physique 3AS G2", 3, 4000, 20),
+    ("Sciences", "3AS", "Sciences 3AS", 5, 3500, 18),
+    ("Philosophie", "3AS", "Philosophie 3AS", 11, 3000, 18),
+    ("Anglais", "3AS", "Anglais 3AS", 8, 3000, 18),
+    ("Français", "3AS", "Français 3AS", 6, 3000, 18),
+    ("Calligraphie", OPEN_LEVEL, "Calligraphie G1", 12, 2000, 14),
+    ("Calligraphie", OPEN_LEVEL, "Calligraphie G2", 12, 2000, 14),
+    ("Arts plastiques", OPEN_LEVEL, "Arts plastiques", 13, 2000, 14),
+]
+SLOTS_PER_GROUP = 2  # a school subject: twice a week, 1 h 30
+WORKSHOP_SLOTS = 1  # a workshop: once a week, 2 h
+# 1 = Monday ... 7 = Sunday. Classes run Sunday to Thursday after school, Friday after the
+# prayer and all of Saturday.
+STARTS = {5: ["14:00", "15:30", "17:00"], 6: ["08:30", "10:00", "13:30", "15:00", "16:30"]}
 EVENING_STARTS = ["16:30", "18:00", "19:30"]
-GROUP_START = date(2026, 9, 15)
+SCHOOL_HOURS = ("08:00", "21:00")
+GROUP_START = date(2026, 9, 5)  # the first Saturday of September
+SLOT_TRIES = 400  # a group that cannot find a free hour after so many tries keeps fewer
 
 
 @contextmanager
@@ -144,9 +194,14 @@ def seed_school(conn, director, rng: random.Random) -> None:
     if school_years.current(conn, director) is not None:
         return
     year = school_years.create(conn, director, "2026-2027", date(2026, 9, 1), date(2027, 6, 30))
-    level_ids = {name: catalog.create(conn, director, "level", name) for name in LEVELS}
-    subject_ids = {name: catalog.create(conn, director, "subject", name) for name in SUBJECTS}
-    room_ids = [rooms.create(conn, director, name, capacity) for name, capacity in ROOMS]
+    level_ids = {name: catalog.create(conn, director, "level", name)
+                 for name in LEVELS + [OPEN_LEVEL]}
+    catalog.set_open(conn, director, level_ids[OPEN_LEVEL], True)
+    subject_ids = {name: catalog.create(conn, director, "subject", name)
+                   for name in SUBJECTS + WORKSHOPS}
+    for name in WORKSHOPS:
+        catalog.set_workshop(conn, director, subject_ids[name], True)
+    room_ids = {name: rooms.create(conn, director, name, capacity) for name, capacity in ROOMS}
     teacher_ids = [
         teachers.create(conn, director, TeacherInput(name, phone(rng), date(2024, 9, 1)), bp,
                         date(2026, 9, 1))
@@ -156,33 +211,56 @@ def seed_school(conn, director, rng: random.Random) -> None:
         group_id = groups.create(conn, director, GroupInput(
             year, level_ids[level], subject_ids[subject], name, price, capacity,
             GROUP_START), teacher_ids[teacher])
-        placed, days = 0, set()
-        while placed < SLOTS_PER_GROUP:
-            # Weekend daytime and weekday evenings, one slot a day; skip what the services
-            # refuse (a room, a teacher or the group already busy).
-            weekday = rng.choice((5, 6, 6, 7, 1, 2, 3, 4))
-            if weekday in days:
-                continue
-            start = rng.choice(WEEKEND_STARTS if weekday in (5, 6) else EVENING_STARTS)
-            end = add_minutes(start, 90)
-            try:
-                timetable.add_slot(conn, director, SlotInput(
-                    group_id, rng.choice(room_ids), weekday, start, end, GROUP_START))
-            except BusinessRuleError:
-                continue
-            placed += 1
-            days.add(weekday)
+        workshop = subject in WORKSHOPS
+        _place_slots(conn, director, rng, group_id,
+                     WORKSHOP_SLOTS if workshop else SLOTS_PER_GROUP,
+                     120 if workshop else 90,
+                     [room_ids["Atelier"]] if workshop else
+                     [r for n, r in room_ids.items() if n != "Atelier"])
 
 
-def seed_students(conn, director, rng: random.Random) -> int:
-    created = 0
-    for family in FAMILIES:
+def _place_slots(conn, director, rng: random.Random, group_id: int, count: int,
+                 minutes: int, room_choices: list[int]) -> None:
+    """`count` weekly slots on different days; what the services refuse (a room, the
+    teacher or the group already busy) is tried again elsewhere."""
+    days: set[int] = set()
+    for _ in range(SLOT_TRIES):
+        if len(days) == count:
+            return
+        weekday = rng.choice((5, 6, 6, 7, 1, 2, 3, 4))
+        if weekday in days:
+            continue
+        start = rng.choice(STARTS.get(weekday, EVENING_STARTS))
+        try:
+            timetable.add_slot(conn, director, SlotInput(
+                group_id, rng.choice(room_choices), weekday, start, add_minutes(start, minutes),
+                GROUP_START))
+        except BusinessRuleError:
+            continue
+        days.add(weekday)
+
+
+def _child(rng: random.Random, level: str) -> tuple[str, date]:
+    """A pupil's level and birthday: the age of the level (or a year older, repeated)."""
+    born = BORN[level] - (1 if rng.random() < 1 / 7 else 0)
+    return level, date(born, rng.randrange(1, 13), rng.randrange(1, 29))
+
+
+def seed_students(conn, director, rng: random.Random) -> dict[int, str]:
+    """The families and their children; returns {student id: level} (the open level for
+    the adults who only take a workshop). Some pupils are inactive (they left last year)."""
+    levels = list(LEVEL_SHARE)
+    weights = list(LEVEL_SHARE.values())
+    made: dict[int, str] = {}
+    families = FAMILIES + rng.sample(FAMILIES, k=55)  # two households of a name, often
+    for family in families:
         father = ContactInput(f"{rng.choice(FATHERS)} {family}", phone(rng))
         mother = ContactInput(f"{rng.choice(MOTHERS)} {family}", phone(rng))
         father_id = None
-        for _ in range(rng.choice((1, 1, 2, 2, 3))):
-            born = date(rng.randrange(2008, 2019), rng.randrange(1, 13), rng.randrange(1, 29))
-            data = StudentInput(rng.choice(FIRST_NAMES), family, born)
+        first_names = rng.sample(FIRST_NAMES, k=3)
+        for index in range(rng.choice((1, 1, 2, 2, 2, 3))):
+            level, born = _child(rng, rng.choices(levels, weights=weights)[0])
+            data = StudentInput(first_names[index], family, born)
             if father_id is None:
                 student_id = students.create(conn, director, data, father,
                                              ContactLink("Père", is_main=True))
@@ -193,21 +271,31 @@ def seed_students(conn, director, rng: random.Random) -> int:
             else:
                 student_id = students.create(conn, director, data)
                 contacts.link_existing(conn, director, student_id, father_id, ContactLink("Père"))
-            created += 1
-            if rng.random() < 0.08:
+            if rng.random() < 0.05:
                 students.deactivate(conn, director, student_id)
-    return created
+            else:
+                made[student_id] = level
+    for index in range(8):  # adults: a workshop only, their own phone
+        family = rng.choice(FAMILIES)
+        first = rng.choice(MOTHERS if index % 2 else FATHERS)
+        born = date(rng.randrange(1970, 2004), rng.randrange(1, 13), rng.randrange(1, 29))
+        student_id = students.create(conn, director, StudentInput(first, family, born),
+                                     ContactInput(f"{first} {family}", phone(rng)),
+                                     ContactLink("Élève adulte", is_main=True))
+        made[student_id] = OPEN_LEVEL
+    return made
 
 
 # ----- the year, day by day -----
 
-REGISTRATION_FEE = 1500
+REGISTRATION_FEE = 1000
 DEBT_WARNING = 10_000
 METHODS = ["cash"] * 8 + ["transfer", "cheque"]
 # How a family pays: on the day, a few days late, half now and the rest later, or not.
 PAYERS = ["on_time"] * 13 + ["late"] * 3 + ["partial"] * 3 + ["never"] * 1
-STAYS = 0.8  # a month is renewed (the others show as « non renouvelés »)
-ATTENDANCE = {  # a student's habit: (present, late, absent, excused) weights
+STAYS = 0.85  # a month is renewed (the others show as « non renouvelés »)
+WORKSHOP_TOO = 0.1  # a pupil also takes a workshop
+ATTENDANCE = {  # a pupil's habit: (present, late, absent, excused) weights
     "keen": (90, 6, 2, 2), "usual": (78, 8, 10, 4), "loose": (55, 10, 30, 5),
 }
 MARKS = ("present", "late", "absent", "excused")
@@ -217,13 +305,15 @@ MARKS = ("present", "late", "absent", "excused")
 class Pupil:
     student_id: int
     level_id: int
-    groups: list[int]
+    # One entry per subject taken: its groups, the preferred first (the others when that
+    # one is full or meets at the hour of another of the pupil's groups).
+    groups: list[list[int]]
     entry: date
     payer: str
     habit: str
     trial: bool = False
     leaves_on: date | None = None  # leaves the first group that day
-    switches_on: date | None = None  # moves the first group to another of the level
+    switches_on: date | None = None  # moves the first group to another of the same subject
     confirms_on: date | None = None  # the trial becomes a place (its first month starts)
 
 
@@ -237,38 +327,57 @@ class Year:
     paid: int = 0
     marked: int = 0
     renewed: int = 0
+    payouts: int = 0
 
     def pay_on(self, day: date, student_id: int, how: str) -> None:
         self.to_pay.setdefault(day, []).append((student_id, how))
 
 
-def plan(conn, director, rng: random.Random, today: date) -> Year:
+def _entry_day(rng: random.Random, today: date) -> date:
+    """Most enter in the first two weeks, many through September, fewer in October."""
+    luck = rng.random()
+    if luck < 0.55:
+        offset = rng.randrange(0, 14)
+    elif luck < 0.85:
+        offset = rng.randrange(14, 26)
+    else:
+        offset = rng.randrange(26, 60)
+    return min(GROUP_START + timedelta(days=offset), today)
+
+
+def plan(conn, director, rng: random.Random, today: date, levels: dict[int, str]) -> Year:
     """Who registers, in which groups, on which day, and how they pay and attend."""
-    by_level: dict[int, list[int]] = {}
+    level_ids = {i.name: i.id for i in catalog.list_items(conn, director, "level")}
+    # Per level, its groups by subject (a subject with two groups: one of them).
+    by_level: dict[int, dict[int, list[int]]] = {}
     for g in groups.search(conn, director):
         if g.status != "closed":
-            by_level.setdefault(g.level_id, []).append(g.id)
+            by_level.setdefault(g.level_id, {}).setdefault(g.subject_id, []).append(g.id)
+    workshops = [ids for ids in by_level.get(level_ids[OPEN_LEVEL], {}).values()]
     year = Year()
-    last_entry = max(min(today, GROUP_START + timedelta(days=40)), GROUP_START)
-    span = (last_entry - GROUP_START).days
-    for row in students.search(conn, director, status="active"):
-        if rng.random() > 0.88:
-            continue  # not registered this year
-        level_id = rng.choice(list(by_level))
-        wanted = rng.sample(by_level[level_id], k=min(len(by_level[level_id]),
-                                                       rng.choice((1, 1, 2))))
-        # Most enter in the first two weeks, the others through October.
-        offset = int(rng.triangular(0, span, 0)) if span else 0
-        entry = GROUP_START + timedelta(days=offset)
-        pupil = Pupil(row.id, level_id, wanted, entry, rng.choice(PAYERS),
+    for student_id, level in levels.items():
+        if level != OPEN_LEVEL and rng.random() > 0.92:
+            continue  # not back this year (yet)
+        level_id = level_ids[level]
+        subjects = by_level[level_id]
+        if level == OPEN_LEVEL:
+            wanted = [rng.choice(workshops)]
+        else:
+            count = min(len(subjects), rng.choice(SUBJECTS_TAKEN[level]))
+            wanted = rng.sample(list(subjects.values()), k=count)
+            if rng.random() < WORKSHOP_TOO:
+                wanted.append(rng.choice(workshops))
+        wanted = [rng.sample(ids, k=len(ids)) for ids in wanted]  # which group first
+        entry = _entry_day(rng, today)
+        pupil = Pupil(student_id, level_id, wanted, entry, rng.choice(PAYERS),
                       rng.choice(("keen", "usual", "usual", "usual", "loose")),
-                      trial=rng.random() < 0.12)
+                      trial=rng.random() < 0.1)
         luck = rng.random()
-        if luck < 0.06:
-            pupil.leaves_on = entry + timedelta(days=rng.randrange(10, 30))
-        elif luck < 0.14 and len(by_level[level_id]) > len(wanted):
+        if luck < 0.05:
+            pupil.leaves_on = entry + timedelta(days=rng.randrange(10, 35))
+        elif luck < 0.1:
             pupil.switches_on = entry + timedelta(days=rng.randrange(5, 20))
-        year.pupils[row.id] = pupil
+        year.pupils[student_id] = pupil
     return year
 
 
@@ -276,16 +385,19 @@ def _enter(conn, director, year: Year, pupil: Pupil, day: date, rng: random.Rand
     if registrations.current(conn, director, pupil.student_id) is None:
         registrations.register(conn, director, pupil.student_id, pupil.level_id)
         year.registered += 1
-    for index, group_id in enumerate(pupil.groups):
-        trial = pupil.trial and index == 0
-        try:
-            enrollments.enroll(conn, director, pupil.student_id, group_id, trial=trial,
-                               enrolled_on=day)
-        except BusinessRuleError:
-            continue  # full: the desk offers another day
-        year.placed += 1
-        if trial and rng.random() < 0.5:  # half confirm after their trial week
-            pupil.confirms_on = day + timedelta(days=7)
+    trial = pupil.trial
+    for choices in pupil.groups:
+        for group_id in choices:
+            try:
+                enrollments.enroll(conn, director, pupil.student_id, group_id, trial=trial,
+                                   enrolled_on=day)
+            except BusinessRuleError:
+                continue  # full, or at the hour of another of their groups: the next one
+            year.placed += 1
+            if trial and rng.random() < 0.6:  # most confirm after their trial week
+                pupil.confirms_on = day + timedelta(days=7)
+            trial = False  # the first group placed only
+            break
     _schedule_payment(year, pupil, day, rng)
 
 
@@ -312,7 +424,7 @@ def _pay(conn, cashier, student_id: int, how: str, rng: random.Random) -> bool:
 
 
 def _renewals(conn, director, year: Year, day: date, rng: random.Random) -> None:
-    """Months ending within two days are renewed at the desk (80 % of them)."""
+    """Months ending within two days are renewed at the desk (most of them)."""
     for month in subscriptions.ending_soon(conn, director, days=2):
         if month.enrollment_status != "active" or month.student_id not in year.pupils:
             continue
@@ -347,9 +459,11 @@ def _moves(conn, director, year: Year, day: date, rng: random.Random) -> None:
                     _schedule_payment(year, pupil, day, rng)
             elif day == pupil.leaves_on:
                 enrollments.leave(conn, director, live[0].id, reason="Démo : départ")
-            else:
-                others = [g.id for g in groups.search(conn, director, level_id=pupil.level_id)
-                          if g.status != "closed" and g.id not in pupil.groups]
+            else:  # to the other group of the same subject, when there is one
+                group = groups.get(conn, director, live[0].group_id)
+                others = [g.id for g in groups.search(conn, director, level_id=group.level_id,
+                                                      subject_id=group.subject_id)
+                          if g.status != "closed" and g.id != group.id]
                 if others:
                     enrollments.switch(conn, director, live[0].id, rng.choice(others))
         except BusinessRuleError:
@@ -372,8 +486,21 @@ def _attendance(conn, director, year: Year, day: date, until: str | None,
             year.marked += attendance.save(conn, director, s.id, marks)
 
 
-def live_the_year(conn, director, desk, rng: random.Random, today: date) -> Year:
-    year = plan(conn, director, rng, today)
+def _payday(conn, director, year: Year, day: date, today: date) -> None:
+    """The last day of the month: every teacher is paid for the months over by then. The
+    latest payday before today leaves a few payouts approved, not paid yet."""
+    built, _refused = payouts.run(conn, director, day)
+    latest = (day + timedelta(days=1)).month == today.month and day < today
+    for index, payout_id in enumerate(built):
+        payouts.approve(conn, director, payout_id)
+        if not latest or index % 3 != 2:
+            payouts.mark_paid(conn, director, payout_id, "cash" if index % 4 else "transfer")
+    year.payouts += len(built)
+
+
+def live_the_year(conn, director, desk, rng: random.Random, today: date,
+                  levels: dict[int, str], void_on: date) -> Year:
+    year = plan(conn, director, rng, today, levels)
     entering: dict[date, list[Pupil]] = {}
     for pupil in year.pupils.values():
         entering.setdefault(pupil.entry, []).append(pupil)
@@ -392,25 +519,30 @@ def live_the_year(conn, director, desk, rng: random.Random, today: date) -> Year
                 cashier = desk if rng.random() < 0.8 else director
                 year.paid += _pay(conn, cashier, student_id, how, rng)
             _attendance(conn, director, year, day, now if day == today else None, rng)
+            if day == void_on:
+                seed_void(conn, director, rng)  # before a payday locks its months
+            if (day + timedelta(days=1)).month != day.month and day < today:
+                _payday(conn, director, year, day, today)
         day += timedelta(days=1)
     return year
 
 
-# ----- today -----
+# ----- the calendar, today's changes -----
 
 HOLIDAYS = [("1er Novembre", date(2026, 11, 1), None),
             ("Vacances d'hiver", date(2026, 12, 20), date(2027, 1, 3))]
 
 
 def seed_calendar(conn, director) -> None:
-    """Holidays (before any session is generated) and the school's address."""
+    """Holidays (before any session is generated), the school's details and hours (before
+    any slot), the registration fee and the debt warning."""
     if not holidays.list_holidays(conn, director):
         for label, start, end in HOLIDAYS:
             holidays.create(conn, director, label, start, end)
     if not settings.get(conn, "school.address"):
-        opens_at, closes_at = settings.school_hours(conn)
         settings.save_school(conn, director, settings.get(conn, "school.name"),
-                             "0550 12 34 56", "12 rue des Oliviers, Oran", opens_at, closes_at)
+                             "0550 12 34 56", "12 rue des Oliviers, Oran", *SCHOOL_HOURS,
+                             receipt_footer="Merci de votre confiance.")
     if registrations.default_fee(conn) == 0:
         settings.set_value(conn, director, "defaults.registration_fee", REGISTRATION_FEE)
     if debt.warning_threshold(conn) == 0:
@@ -445,8 +577,9 @@ def seed_changes(conn, director, today: date) -> None:
 
 
 def seed_void(conn, director, rng: random.Random) -> None:
-    """The director voids one payment (before the payouts, which would lock its months)."""
-    ids = [row[0] for row in conn.execute("SELECT id FROM payments")]
+    """The director voids one payment of the day (a payout would lock its months)."""
+    ids = [row[0] for row in conn.execute(
+        "SELECT id FROM payments WHERE substr(paid_at, 1, 10) = ?", (dates.iso(dates.today()),))]
     rng.shuffle(ids)
     for payment_id in ids:
         try:
@@ -454,20 +587,6 @@ def seed_void(conn, director, rng: random.Random) -> None:
             return
         except BusinessRuleError:
             continue
-
-
-def seed_payouts(conn, director, today: date) -> int:
-    """The monthly run up to the end of last month: the first teacher paid in cash, the
-    others approved. Returns how many payouts."""
-    until = today.replace(day=1) - timedelta(days=1)
-    if until < GROUP_START:
-        return 0
-    built, _refused = payouts.run(conn, director, until)
-    for index, payout_id in enumerate(built):
-        payouts.approve(conn, director, payout_id)
-        if index == 0:
-            payouts.mark_paid(conn, director, payout_id, "cash")
-    return len(built)
 
 
 def main(path: Path) -> None:
@@ -487,18 +606,18 @@ def main(path: Path) -> None:
         return
 
     today = date.today()
-    seed_school(conn, director, rng)
     seed_calendar(conn, director)
-    created = seed_students(conn, director, rng)
-    year = live_the_year(conn, director, desk, rng, today)
-    seed_void(conn, director, rng)  # before the payouts lock their months
+    seed_school(conn, director, rng)
+    levels = seed_students(conn, director, rng)
+    # A payment voided in the second week of September, before any payday.
+    year = live_the_year(conn, director, desk, rng, today, levels,
+                         void_on=min(GROUP_START + timedelta(days=10), today))
     seed_changes(conn, director, today)
-    teachers_paid = seed_payouts(conn, director, today)
     conn.close()
-    print(f"{created} students created in {path}: {year.registered} registered for the year, "
-          f"{year.placed} placed in groups, {year.renewed} month(s) renewed, "
+    print(f"{len(levels)} students created in {path}: {year.registered} registered for the "
+          f"year, {year.placed} placed in groups, {year.renewed} month(s) renewed, "
           f"{year.marked} attendance line(s), {year.paid} payment(s) received, "
-          f"{teachers_paid} teacher payout(s)")
+          f"{year.payouts} teacher payout(s)")
 
 
 if __name__ == "__main__":

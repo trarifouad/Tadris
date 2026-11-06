@@ -1,4 +1,5 @@
 import re
+from datetime import timedelta
 
 from tadris.core import dates
 from tadris.core.context import UserContext
@@ -20,6 +21,7 @@ from tadris.repositories import school_years as years_repo
 from tadris.repositories import students as repo
 from tadris.services import audit, counters
 from tadris.services import contacts as contacts_service
+from tadris.services.subscriptions import EXPIRING_DAYS
 
 STATUSES = ("active", "inactive")
 # A query made only of digits and separators is a student number or a phone, kept whole.
@@ -168,17 +170,22 @@ def search(
     conn, ctx: UserContext, query: str = "", status: str | None = "active",
     order: str = "last_name", descending: bool = False, limit: int | None = None,
     offset: int = 0, level_id: int | None = None, group_id: int | None = None,
+    details: bool = True,
 ) -> list[StudentListItem]:
     """Find students by name, number or contact phone. status=None returns every status.
     order: a column of the list (repo.ORDERS); limit/offset read one page of it.
-    level_id: registered at that level in the open school year; group_id: in that group now."""
+    level_id: registered at that level in the open school year; group_id: in that group now.
+    details=False: groups and standing are left out (None), for a picker that shows neither
+    and searches on each key typed."""
     require(ctx, "student.view")
     if status is not None and status not in STATUSES:
         raise ValidationError(t["validation.generic"])
     if order not in repo.ORDERS:
         raise ValidationError(t["validation.generic"])
-    rows = repo.search(conn, _terms(query), status, order, descending, limit, offset,
-                       _level(conn, level_id), group_id)
+    today = dates.today()
+    soon = today + timedelta(days=EXPIRING_DAYS)
+    rows = repo.search(conn, _terms(query), status, dates.iso(today), dates.iso(soon), order,
+                       descending, limit, offset, _level(conn, level_id), group_id, details)
     return [StudentListItem(**dict(row)) for row in rows]
 
 

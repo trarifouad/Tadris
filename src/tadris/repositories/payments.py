@@ -9,6 +9,8 @@ from before then may hold several rows per charge (a later recording spent its c
 its allocations are always summed.
 """
 
+from tadris.repositories.charge_money import paid_on
+
 # The student of a charge, whatever its parent.
 _CHARGE_STUDENT = """
     COALESCE((SELECT r.student_id FROM registrations r WHERE r.id = c.registration_id),
@@ -16,12 +18,7 @@ _CHARGE_STUDENT = """
                 JOIN enrollments e ON e.id = s.enrollment_id
                WHERE s.id = c.subscription_id))
 """
-_CHARGE_PAID = """
-    COALESCE((SELECT SUM(pa.amount) FROM payment_allocations pa
-               WHERE pa.charge_id = c.id
-                 AND NOT EXISTS (SELECT 1 FROM payment_voids v
-                                  WHERE v.payment_id = pa.payment_id)), 0)
-"""
+_CHARGE_PAID = paid_on()
 _CHARGE_COLUMNS = f"""
     c.id, ({_CHARGE_STUDENT}) AS student_id, c.registration_id, c.subscription_id,
     c.description, c.amount, c.due_date, c.status,

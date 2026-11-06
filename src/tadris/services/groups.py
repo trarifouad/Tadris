@@ -239,12 +239,15 @@ def teacher_history(conn, ctx: UserContext, group_id: int) -> list[TeacherPeriod
 
 def release(conn, ctx: UserContext, group_id: int) -> tuple[int, int]:
     """Inside a transaction: a group being closed frees its rooms, its students leave it and
-    what is still planned from today is cancelled. Returns (slots ended, students who
-    left)."""
+    what is still planned from today is cancelled. The closure is kept (its day, the group
+    points to it), with its week as it stood (see timetable.end_group_slots). Returns (slots
+    ended, students who left)."""
     from tadris.services import enrollments  # enrollments depends on this module
 
-    left = enrollments.end_for_closed_group(conn, ctx, group_id)
-    ended = timetable.end_group_slots(conn, ctx, group_id)
+    closure_id = repo.insert_closure(conn, group_id, _today())
+    repo.set_closure(conn, group_id, closure_id)
+    left = enrollments.end_for_closed_group(conn, ctx, group_id, closure_id)
+    ended = timetable.end_group_slots(conn, ctx, group_id, closure_id)
     sessions.cancel_for_closed_group(conn, ctx, group_id)
     return ended, left
 
@@ -273,5 +276,6 @@ def reopen(conn, ctx: UserContext, group_id: int) -> None:
             raise BusinessRuleError(t["group.not_closed"])
         school_years.require_usable(conn, row["school_year_id"])
         repo.set_status(conn, group_id, "active")
+        repo.set_closure(conn, group_id, None)
         audit.log(conn, ctx, "group.reopen", "class_groups", group_id,
                   old={"status": "closed"}, new={"status": "active"})

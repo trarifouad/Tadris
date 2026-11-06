@@ -1,6 +1,6 @@
-"""The payment receipt: an 80 mm ticket for the desk's thermal printer,
-as tall as its content, black only (thermal paper prints grey as dots). The A4 helpers below
-(header, details, signature) are the payout slip's."""
+"""The payment receipt, and the refund receipt laid out the same way: an 80 mm ticket for the
+desk's thermal printer, as tall as its content, black only (thermal paper prints grey as
+dots). The A4 helpers below (header, details, signature) are the payout slip's."""
 
 from dataclasses import dataclass
 from html import escape
@@ -39,21 +39,22 @@ TICKET_MARGIN = 4 * mm  # most 80 mm printers print 72 mm of it
 @dataclass(frozen=True)
 class ReceiptDoc:
     school: School
-    title: str  # « Reçu de paiement »
-    number: str  # R2026-00001
+    title: str  # « Reçu de paiement », « Reçu de remboursement »
+    number: str  # R2026-00001, RB2026-00001
     copy_mark: str  # « DUPLICATA » on a reprint, else ""
     paid_at: str  # « Le 05/11/2026 à 20:49 »
     details: list[tuple[str, str]]  # (label, value): student, payer, method, cashier
     lines: list[tuple[str, str, str]]  # (what, its dates or "", amount)
     total: tuple[str, str]  # (« Total payé », amount)
-    balance: list[tuple[str, str]]  # Reste à payer, À venir...
-    stamp: str  # « PAYÉ » or « ANNULÉ »
+    balance: list[tuple[str, str]]  # Reste à payer, À venir... (none on a refund)
+    stamp: str  # « PAYÉ », « ANNULÉ » or « REMBOURSÉ »
     stamp_date: str  # dd/mm/yyyy
     voided_note: str  # « Reçu annulé le ... : motif », else ""
     thanks: str
     signature: str
     footer: Footer
     note: str = ""  # Paramètres: a line at the foot of the receipt (e.g. fees not refundable)
+    amount_words: str = ""  # the total in words, under it (a refund receipt)
 
 
 class Stamp(Flowable):
@@ -280,9 +281,12 @@ def ticket_story(receipt: ReceiptDoc, usable: float) -> list:
     if receipt.voided_note:
         story += [Spacer(1, 2 * mm), _voided(receipt, usable)]
     story += [_rule(0.4), _details(receipt, usable), _rule(0.4, dash=(2, 2)),
-              _lines(receipt, usable), Spacer(1, 3 * mm), _total(receipt, usable),
-              Spacer(1, 1.5 * mm), _balance(receipt, usable), Spacer(1, 6 * mm),
-              _stamp_and_signature(receipt, usable), Spacer(1, 4 * mm),
+              _lines(receipt, usable), Spacer(1, 3 * mm), _total(receipt, usable)]
+    if receipt.amount_words:
+        story += [Spacer(1, 1.5 * mm), Paragraph(escape(receipt.amount_words), style(8))]
+    if receipt.balance:
+        story += [Spacer(1, 1.5 * mm), _balance(receipt, usable)]
+    story += [Spacer(1, 6 * mm), _stamp_and_signature(receipt, usable), Spacer(1, 4 * mm),
               Paragraph(escape(receipt.thanks), style(8, align=center))]
     if receipt.note:
         story += [Spacer(1, 1 * mm), Paragraph(escape(receipt.note), style(8, align=center))]

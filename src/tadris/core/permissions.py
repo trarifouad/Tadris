@@ -31,6 +31,9 @@ ACTIONS: dict[str, frozenset[str]] = {
     "attendance.save": BOTH,
     "payment.record": BOTH,
     "payment.void": DIRECTOR_ONLY,
+    "refund.request": BOTH,  # ask, and withdraw one's own pending request
+    "refund.decide": DIRECTOR_ONLY,  # approve, reject, withdraw any open request
+    "refund.pay": DIRECTOR_ONLY,  # record the money going back
     "payout.view": DIRECTOR_ONLY,
     "payout.manage": DIRECTOR_ONLY,
     "academic.view": BOTH,

@@ -69,7 +69,7 @@ class StudentPicker(FormDialog):
     def _find(self) -> None:
         query = self.search.text().strip()
         found = students.search(self._conn, self._ctx, query, status="active",
-                                limit=None if not query else SHOWN)
+                                limit=None if not query else SHOWN, details=False)
         if query:
             shown = found
             self.hint.setText(t["picker.none_found"].format(query=query) if not found

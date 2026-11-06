@@ -106,6 +106,33 @@ def test_roster_is_the_group_on_that_day(conn, director, school):
         "Benali Amine", "Benali Lina", "Benali Yanis"]
 
 
+def test_left_before_start_is_not_on_the_entry_day_roster(conn, director, school, monkeypatch):
+    """Left before the entry day: not on that day's roster, and attendance cannot be saved
+    once the day has come."""
+    maths = groups.get(conn, director, school.maths)
+    french = catalog.create(conn, director, "subject", "Français")
+    teacher = teachers.create(conn, director, TeacherInput("Nour"), 6000, date(2026, 9, 1))
+    group = groups.create(conn, director, GroupInput(
+        maths.school_year_id, school.level, french, "F1", 3000, 15, date(2026, 10, 26)),
+        teacher)
+    room = rooms.create(conn, director, "Salle C", 20)
+    timetable.add_slot(conn, director, SlotInput(group, room, 1, "17:00", "18:30",
+                                                 valid_from=date(2026, 10, 26)))
+    sid = students.create(conn, director, StudentInput("Amine", "Khelifi"))
+    registrations.register(conn, director, sid, school.level, 0)
+    enrollment = enrollments.enroll(conn, director, sid, group)
+    enrollments.leave(conn, director, enrollment)
+    assert enrollments.get(conn, director, enrollment).never_started
+    monkeypatch.setattr(dates, "today", lambda: date(2026, 10, 26))
+    sessions.generate(conn, director)
+    monday = session_id(conn, "2026-10-26", group)
+    assert attendance.roster(conn, director, monday) == []
+    assert sessions.get(conn, director, monday).expected == 0
+    with pytest.raises(BusinessRuleError) as exc:
+        attendance.save(conn, director, monday, {enrollment: "present"})
+    assert exc.value.message == t["attendance.not_in_session"]
+
+
 def test_a_student_who_left_that_day_is_still_expected(conn, director, school, on_monday):
     _, enrollment = student(conn, director, school, "Amine")
     enrollments.switch(conn, director, enrollment, school.physics)  # switched on 19/10

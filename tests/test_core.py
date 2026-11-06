@@ -15,10 +15,10 @@ from tadris.core.dates import (
     weekday_1_to_7,
 )
 from tadris.core.errors import PermissionDenied, ValidationError
-from tadris.core.money import format_dzd, parse_dzd
+from tadris.core.money import dzd_inline, format_dzd, parse_dzd
 from tadris.core.percent import apply_rate, format_percent, parse_percent, ratio_bp
 from tadris.core.phones import format_phone, normalize_phone
-from tadris.core.text import clean, fold
+from tadris.core.text import clean, fold, group_title
 from tadris.i18n.fr import t
 
 DIRECTOR = UserContext(user_id=1, username="dir", role="director")
@@ -138,6 +138,8 @@ RECEPTIONIST_DENIED = {
     "enrollment.override",
     "subscription.cancel",
     "payment.void",
+    "refund.decide",
+    "refund.pay",
     "payout.view",
     "payout.manage",
     "teacher.manage",
@@ -243,6 +245,19 @@ def test_format_phone(phone, text):
 ])
 def test_fold(text, folded):
     assert fold(text) == folded
+
+
+def test_an_amount_in_a_sentence_never_splits():
+    assert dzd_inline(2000) == "2\u00a0000\u00a0DA"
+    assert dzd_inline(-1_250_000) == "-1\u00a0250\u00a0000\u00a0DA"
+    assert dzd_inline(2000).replace("\u00a0", " ") == format_dzd(2000)
+
+
+def test_a_group_as_the_screens_name_it():
+    assert group_title({"group_name": "A", "subject": "Maths", "level": "4AM"}) == \
+        "A · Maths 4AM"
+    assert group_title({"name": "B", "subject": "Physique", "level": "Tous niveaux"},
+                       "name") == "B · Physique Tous niveaux"
 
 
 def test_clean_collapses_spaces():

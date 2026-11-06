@@ -18,6 +18,8 @@ STATUS_STYLE = {
     "attendance": {"present": "success", "late": "warning", "absent": "danger", "excused": "info"},
     "payment": {"kept": "success", "voided": "danger"},
     "payout": {"draft": "neutral", "approved": "info", "paid": "success"},
+    "refund": {"pending": "warning", "approved": "info", "paid": "success",
+               "rejected": "danger", "cancelled": "neutral"},
     "message": {"to_send": "info", "opened": "success", "invited": "success",
                 "no_mobile": "neutral"},
     "backup": {"verified": "success", "done": "warning", "running": "info", "failed": "danger"},

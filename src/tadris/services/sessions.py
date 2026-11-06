@@ -6,7 +6,7 @@ from tadris.core import dates
 from tadris.core.context import UserContext
 from tadris.core.errors import BusinessRuleError, NotFound, ValidationError
 from tadris.core.permissions import require
-from tadris.core.text import clean
+from tadris.core.text import clean, group_title
 from tadris.db.errors import atomic, translate
 from tadris.domain.models import Session
 from tadris.i18n.fr import t
@@ -150,7 +150,7 @@ def kept_count(conn, slot_id: int) -> int:
 def _to_session(row) -> Session:
     return Session(
         id=row["id"], group_id=row["group_id"],
-        group_title=f"{row['group_name']} · {row['subject']} {row['level']}",
+        group_title=group_title(row),
         group_name=row["group_name"], slot_id=row["slot_id"], room_id=row["room_id"],
         room=row["room"], teacher_id=row["teacher_id"], teacher=row["teacher"],
         scheduled_teacher_id=row["scheduled_teacher_id"], date=row["date"],

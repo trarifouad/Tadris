@@ -7,7 +7,7 @@ from PySide6.QtWidgets import QLineEdit, QWidget
 
 from tadris.core import dates
 from tadris.core.context import UserContext
-from tadris.core.money import format_dzd
+from tadris.core.money import dzd_inline, format_dzd
 from tadris.domain.models import Enrollment, Subscription
 from tadris.i18n.fr import t
 from tadris.services import groups, subscriptions
@@ -142,7 +142,7 @@ class CancelSubscriptionDialog(FormDialog):
         note = caption(t["cancel_subscription_dialog.caption"].format(
             group=subscription.group_title,
             period=period_text(subscription.start_date, subscription.end_date),
-            price=format_dzd(subscription.price).replace(" ", "\u00a0")))  # never split
+            price=dzd_inline(subscription.price)))
         note.setWordWrap(True)
         self.add(note)
         self.add(labeled(t["cancel_registration_dialog.reason"], self.reason, required=True))

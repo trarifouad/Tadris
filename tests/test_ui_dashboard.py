@@ -14,7 +14,9 @@ from tadris.ui import collect as collect_flow
 from tadris.ui.main_window import MainWindow
 from tadris.ui.pages import dashboard as dashboard_page
 from tadris.ui.pages.dashboard import (
+    CashChart,
     DashboardPage,
+    figure,
     long_date,
     nice_step,
     share_rows,
@@ -132,6 +134,46 @@ def test_the_cash_chart_has_room_for_the_whole_month(qtbot, conn, director, scho
         return chart._index_at(plot.left() + plot.width() / 31 * (day - 0.5))
 
     assert (at(1), at(3), at(18), at(19), at(31)) == (0, 2, 17, -1, -1)
+
+
+@pytest.mark.parametrize("best_day", [4_000, 9_000, 61_000, 180_000, 2_400_000])
+def test_the_cash_charts_scale_is_never_cut(qtbot, best_day):
+    """Every figure of the scale fits left of the plot: « 100 000 » or « 2 500 000 » too, not
+    only « 50 000 » (the scale was cut on the left, « 100 000 » read « 00 000 »)."""
+    from PySide6.QtGui import QFontMetrics
+
+    chart = CashChart()
+    qtbot.addWidget(chart)
+    chart.resize(600, 200)
+    chart.set_days((DayCash("2026-11-01", best_day // 3, True),
+                    DayCash("2026-11-02", best_day, True)), best_day // 2)
+    step, _top = chart._scale
+    plot = chart._plot()
+    metrics = QFontMetrics(chart._font())
+    for k in range(3):
+        assert metrics.horizontalAdvance(figure(k * step)) <= plot.left() - chart.GAP
+    assert plot.left() >= chart.GUTTER and plot.right() == 600
+    if best_day < 5_000:
+        assert plot.left() == chart.GUTTER  # « 5 000 » at the top: the usual width
+
+
+def test_the_cash_chart_works_out_its_scale_once(qtbot, monkeypatch):
+    """Per set of days, not on each mouse move or paint (REVIEW_FIXES, finding 13)."""
+    import tadris.ui.pages.dashboard as board
+
+    worked_out = []
+    real = board.nice_step
+    monkeypatch.setattr(board, "nice_step", lambda top: worked_out.append(top) or real(top))
+    chart = CashChart()
+    qtbot.addWidget(chart)
+    chart.resize(600, 200)
+    chart.set_days((DayCash("2026-11-01", 3000, True), DayCash("2026-11-02", 9000, True)), 6000)
+    assert worked_out[-1] == 9000
+    worked_out.clear()
+    for x in range(60, 600, 20):
+        chart._index_at(x)
+    chart.grab()  # a paint
+    assert worked_out == []
 
 
 def test_receptionist_sees_no_money_and_no_backup(qtbot, conn, desk, school):

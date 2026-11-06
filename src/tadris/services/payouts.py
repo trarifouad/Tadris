@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from tadris.core import dates
 from tadris.core.context import UserContext
@@ -6,6 +6,7 @@ from tadris.core.errors import BusinessRuleError, NotFound, ValidationError
 from tadris.core.money import format_dzd
 from tadris.core.percent import apply_rate
 from tadris.core.permissions import require
+from tadris.core.text import group_title
 from tadris.db.errors import atomic
 from tadris.domain.models import (
     PAYMENT_METHODS,
@@ -22,16 +23,18 @@ from tadris.services import audit, counters
 # A teacher is paid a percentage of the full price of each month (subscription charge) of
 # the groups they taught on the month's first day, whether the student paid or not (section
 # 1 of the plan; there are no discounts). A payout takes every month not paid to the
-# teacher yet and over by a date, today at most: a month is paid once it is done (its end
-# date reached; one still running, or renewed ahead, waits for the payout after it ends),
-# and a month renewed late, in a period already paid, goes into the next payout instead of
-# being lost. One line per group and rate, each at the
+# teacher yet and over by a date: a month is paid once it is done (its end date reached; one
+# still running, or renewed ahead, waits for the payout after it ends), and a month renewed
+# late, in a period already paid, goes into the next payout instead of being lost. The date
+# is today, or up to PAY_AHEAD_DAYS later to pay a little ahead (the 28th for the 30th):
+# the months over by then count, the same way. One line per group and rate, each at the
 # teacher's rate on the months' first day (snapshot), its share rounded down once.
 #
 # Director only. A draft can be built again (it is replaced) or deleted until approved;
 # approved, it is locked (triggers); paid, it gets a number 'PE2026-00001' and its method.
 
 STATUSES_OPEN = ("draft", "approved")
+PAY_AHEAD_DAYS = 15  # a payout's date may be up to this many days after today
 
 
 def _now() -> str:
@@ -48,10 +51,6 @@ def _to_payout(row) -> Payout:
         method=row["method"], paid_by=row["paid_by"], paid_at=row["paid_at"],
         created_at=row["created_at"], months=row["months"],
     )
-
-
-def _title(row) -> str:
-    return f"{row['group_name']} · {row['subject']} {row['level']}"
 
 
 def _require_row(conn, payout_id: int):
@@ -78,7 +77,7 @@ def listing(conn, ctx: UserContext, statuses: tuple[str, ...] = STATUSES_OPEN,
 def lines(conn, ctx: UserContext, payout_id: int) -> list[PayoutLine]:
     require(ctx, "payout.view")
     _require_row(conn, payout_id)
-    return [PayoutLine(id=row["id"], group_id=row["group_id"], group_title=_title(row),
+    return [PayoutLine(id=row["id"], group_id=row["group_id"], group_title=group_title(row),
                        revenue_basis=row["revenue_basis"], percentage_bp=row["percentage_bp"],
                        amount=row["amount"], months=row["months"], students=row["students"])
             for row in repo.lines(conn, payout_id)]
@@ -90,7 +89,7 @@ def months(conn, ctx: UserContext, payout_id: int) -> list[PayoutMonth]:
     _require_row(conn, payout_id)
     return [PayoutMonth(charge_id=row["charge_id"], student_number=row["student_number"],
                         student_name=f"{row['last_name']} {row['first_name']}",
-                        group_title=_title(row), description=row["description"],
+                        group_title=group_title(row), description=row["description"],
                         accrual_date=row["accrual_date"], amount=row["amount"],
                         percentage_bp=row["percentage_bp"])
             for row in repo.months(conn, payout_id)]
@@ -122,13 +121,19 @@ def for_teacher(conn, ctx: UserContext, teacher_id: int) -> list[Payout]:
 
 # ----- building a draft -----
 
+def latest_until() -> date:
+    """The latest date a payout may be made up to: PAY_AHEAD_DAYS after today."""
+    return dates.today() + timedelta(days=PAY_AHEAD_DAYS)
+
+
 def _check_until(until: date) -> str:
-    """A payout counts the months over by the day it is built: up to today at most. A month
-    still running (or renewed ahead) goes into the payout after it ends, nothing is lost."""
-    today = dates.today()
-    if until > today:
+    """A payout counts the months over by its date: today, or a few days ahead at most
+    (latest_until). A month still running then (or renewed ahead) goes into the payout after
+    it ends, nothing is lost."""
+    latest = latest_until()
+    if until > latest:
         raise ValidationError(t["payout.until_too_late"].format(
-            date=dates.display_date(dates.iso(today))))
+            date=dates.display_date(dates.iso(latest)), days=PAY_AHEAD_DAYS))
     return dates.iso(until)
 
 
@@ -201,8 +206,8 @@ def _build(conn, ctx: UserContext, teacher_id: int, until: str) -> int:
 
 
 def build_draft(conn, ctx: UserContext, teacher_id: int, until: date) -> int:
-    """The teacher's draft for every month not paid yet and over by `until` (today at most:
-    only months already done). Their previous draft, if any, is replaced."""
+    """The teacher's draft for every month not paid yet and over by `until` (a few days
+    after today at most: see latest_until). Their previous draft, if any, is replaced."""
     require(ctx, "payout.manage")
     end = _check_until(until)
     with atomic(conn):

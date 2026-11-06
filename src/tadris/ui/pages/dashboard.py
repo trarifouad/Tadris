@@ -351,7 +351,8 @@ class CashChart(QWidget):
     the days open. The mouse picks a day (`hovered`, -1 when it leaves)."""
 
     hovered = Signal(int)
-    GUTTER = 48  # the scale's figures
+    GUTTER = 48  # the scale's figures: at least this wide, wider for a large figure
+    GAP = 10  # between the figures and the plot
     LABELS = 22  # the days' numbers
 
     def __init__(self):
@@ -362,15 +363,38 @@ class CashChart(QWidget):
         self._slots = 0  # the days of the month
         self._average = 0
         self.hover = -1
+        # Worked out once per set of days, not on each paint or mouse move (REVIEW_FIXES,
+        # finding 13): the scale and the room its figures need.
+        self._mono = self._font()
+        self._scale = (0, 0)
+        self._gutter_width = float(self.GUTTER)
+        self._fit_scale()
 
     def set_days(self, days: tuple[DayCash, ...], average: int) -> None:
         self._days, self._average, self.hover = days, average, -1
         self._slots = calendar.monthrange(int(days[0].day[:4]),
                                           int(days[0].day[5:7]))[1] if days else 0
+        self._fit_scale()
         self.update()
 
+    @staticmethod
+    def _font() -> QFont:
+        mono = QFont("IBM Plex Mono")
+        mono.setPixelSize(11)
+        return mono
+
+    def _fit_scale(self) -> None:
+        """The grid's step and top (two steps) for the days shown, and the room for the
+        widest figure of the scale (the top one: « 100 000 » needs more than « 50 000 »),
+        never less than GUTTER."""
+        step = nice_step(max((d.amount for d in self._days), default=0))
+        self._scale = (step, step * 2)
+        widest = QFontMetrics(self._mono).horizontalAdvance(figure(step * 2))
+        self._gutter_width = max(self.GUTTER, widest + self.GAP + 2)
+
     def _plot(self) -> QRectF:
-        return QRectF(self.GUTTER, 8, max(self.width() - self.GUTTER, 1),
+        gutter = self._gutter_width
+        return QRectF(gutter, 8, max(self.width() - gutter, 1),
                       max(self.height() - 8 - self.LABELS, 1))
 
     def _index_at(self, x: float) -> int:
@@ -398,12 +422,9 @@ class CashChart(QWidget):
         tk = tokens()
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        mono = QFont("IBM Plex Mono")
-        mono.setPixelSize(11)
-        painter.setFont(mono)
+        painter.setFont(self._mono)
         plot = self._plot()
-        step = nice_step(max((d.amount for d in self._days), default=0))
-        top = step * 2
+        step, top = self._scale
 
         def y_of(amount: int) -> float:
             return plot.bottom() - amount / top * plot.height()
@@ -413,7 +434,7 @@ class CashChart(QWidget):
             painter.setPen(QPen(QColor(tk["border"]), 1))
             painter.drawLine(plot.left(), y, plot.right(), y)
             painter.setPen(QColor(tk["muted"]))
-            painter.drawText(QRectF(0, y - 8, self.GUTTER - 10, 16),
+            painter.drawText(QRectF(0, y - 8, plot.left() - self.GAP, 16),
                              Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
                              figure(k * step))
         if not self._days:

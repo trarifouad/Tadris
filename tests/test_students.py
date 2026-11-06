@@ -8,7 +8,8 @@ from tadris.core.context import UserContext
 from tadris.core.errors import BusinessRuleError, NotFound, PermissionDenied, ValidationError
 from tadris.domain.models import ContactInput, ContactLink, StudentInput
 from tadris.i18n.fr import t
-from tadris.services import auth, contacts, students
+from tadris.services import auth, contacts, enrollments, students, subscriptions
+from test_reports import School
 
 
 @pytest.fixture(autouse=True)
@@ -241,6 +242,45 @@ def test_search_status_filter_and_list_columns(conn, director, school):
     assert (first.last_name, first.main_contact, first.main_phone) == (
         "Benali", "Karim Benali", "0661902547"
     )
+
+
+def test_list_shows_groups_and_where_each_stands(conn, director, monkeypatch):
+    """The most urgent of the paid groups, as on the Abonnements page; sorted by it."""
+    town = School(conn, director)
+    enrollments.enroll(conn, director, town.chems, town.c, enrolled_on=date(2026, 10, 1))
+    [badis_month] = subscriptions.for_enrollment(conn, director, town.badis_a)
+    subscriptions.cancel(conn, director, badis_month.id, "erreur de saisie")
+
+    def listed():
+        return [(s.first_name, s.groups, s.standing)
+                for s in students.search(conn, director, order="standing")]
+
+    assert listed() == [
+        ("Chems", "B · Physique, C · Arabe", "ended"),  # B is over, C runs
+        ("Badis", "A · Maths", "none"),  # its only month cancelled
+        ("Amine", "A · Maths", "active"),  # renewed for October
+        ("Dalia", "C · Arabe", "active"),
+        ("Farid", None, None),  # no group
+    ]
+    monkeypatch.setattr(dates, "today", lambda: date(2026, 10, 27))  # 1/11 within 7 days
+    assert [standing for _name, _groups, standing in listed()] == [
+        "ended", "none", "expiring", "expiring", None]
+    by_group = students.search(conn, director, order="groups", descending=True)
+    assert [s.first_name for s in by_group] == ["Dalia", "Chems", "Badis", "Amine", "Farid"]
+
+
+def test_a_picker_search_leaves_the_list_columns_out(conn, director):
+    """details=False (the student picker, a search on each key typed): no groups, no
+    standing worked out, unless the order needs them (REVIEW_FIXES, finding 10)."""
+    School(conn, director)
+    light = {s.first_name: (s.groups, s.standing)
+             for s in students.search(conn, director, details=False)}
+    full = {s.first_name: (s.groups, s.standing) for s in students.search(conn, director)}
+    assert set(light) == set(full) and full["Amine"][0] == "A · Maths"
+    assert set(light.values()) == {(None, None)}
+    for order in ("standing", "groups"):
+        assert students.search(conn, director, order=order, details=False) == \
+            students.search(conn, director, order=order)
 
 
 def test_search_escapes_like_wildcards(conn, director, school):

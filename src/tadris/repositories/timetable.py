@@ -60,6 +60,23 @@ def update(conn, slot_id: int, room_id: int, weekday: int, start_time: str,
     )
 
 
+def keep_for_closure(conn, closure_id: int, group_id: int, on: str) -> int:
+    """The group's slots running on `on` or planned to start later, kept with their own
+    dates before the closure ends them (migration 0022). Returns how many."""
+    cur = conn.execute(
+        """
+        INSERT INTO group_closure_slots(closure_id, weekday, start_time, end_time, valid_from,
+                                        valid_to, slot_id)
+        SELECT :closure, weekday, start_time, end_time, valid_from, valid_to, id
+          FROM timetable_slots
+         WHERE group_id = :group AND (valid_to IS NULL OR valid_to > :on)
+         ORDER BY valid_from, weekday, start_time, id
+        """,
+        {"closure": closure_id, "group": group_id, "on": on},
+    )
+    return cur.rowcount
+
+
 def end(conn, slot_id: int, valid_to: str) -> None:
     conn.execute("UPDATE timetable_slots SET valid_to = ? WHERE id = ?", (valid_to, slot_id))
 

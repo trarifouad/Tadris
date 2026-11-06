@@ -32,12 +32,14 @@ from tadris.services import (
     debt,
     enrollments,
     payments,
+    refunds,
     registrations,
     students,
     subscriptions,
 )
 from tadris.ui.contact_dialog import ContactDialog
 from tadris.ui.pages.payments_tab import PaymentsTab
+from tadris.ui.pages.refunds_section import RefundsSection
 from tadris.ui.pages.registration_tab import RegistrationTab
 from tadris.ui.pages.student_attendance_tab import StudentAttendanceTab
 from tadris.ui.pages.student_groups_tab import StudentGroupsTab
@@ -137,6 +139,7 @@ class StudentDetailView(QWidget):
         self.attendance = StudentAttendanceTab(conn, ctx, student_id)
         self.contacts = ContactsTab(conn, ctx, student_id)
         self.all_payments = PaymentsTab(conn, ctx, student_id)  # the window's, whole
+        self.refunds = RefundsSection(conn, ctx, student_id)
         # Each section shows what the others change: groups count, who may enroll, the
         # months an enrollment, a confirmed trial or a switch creates.
         self.registration.changed.connect(self.groups.refresh)
@@ -151,6 +154,10 @@ class StudentDetailView(QWidget):
         self.all_payments.changed.connect(self.registration.refresh)
         self.all_payments.changed.connect(self.subscriptions.refresh)
         self.contacts.changed.connect(self.refresh)
+        # A refund paid frees its month for « Annuler » and blocks the void of its payments.
+        for section in (self.payments, self.all_payments, self.subscriptions):
+            self.refunds.changed.connect(section.refresh)
+        self.refunds.changed.connect(self.refresh_overview)
         # The study card's lines follow every change.
         for section in (self.registration, self.groups, self.subscriptions, self.payments,
                         self.all_payments):
@@ -163,6 +170,7 @@ class StudentDetailView(QWidget):
                                            self.subscriptions, self),
             "payments": SectionWindow(t["overview.window.payments"], self.all_payments,
                                       self),
+            "refunds": SectionWindow(t["overview.window.refunds"], self.refunds, self),
         }
 
         top = QHBoxLayout()
@@ -248,9 +256,14 @@ class StudentDetailView(QWidget):
         follow_current(self.money_views)
         self.open_payments = link_button()
         self.open_payments.clicked.connect(lambda: self.open_window("payments"))
+        # The student's refunds, and « Demander un remboursement », in a window.
+        self.open_refunds = link_button()
+        self.open_refunds.clicked.connect(lambda: self.open_window("refunds"))
         switch = QHBoxLayout()
+        switch.setSpacing(20)
         switch.addWidget(self.money_tabs)
         switch.addStretch()
+        switch.addWidget(self.open_refunds)
         switch.addWidget(self.open_payments)
         body.addLayout(switch)
         body.addWidget(self.money_views)
@@ -318,6 +331,11 @@ class StudentDetailView(QWidget):
         self.study_foot.setVisible(any(counts.values()))
         self.open_payments.setText(t["overview.payments"].format(
             count=payments.count_for_student(self._conn, self._ctx, self.student_id)))
+        # Counted, not the list: it is read when its window opens (REVIEW_FIXES, finding 12).
+        asked = refunds.count_for_student(self._conn, self._ctx, self.student_id)
+        self.open_refunds.setText(t["overview.refunds"].format(count=asked) if asked
+                                  else t["overview.refunds_none"])
+        self.open_refunds.setVisible(bool(asked) or allowed(self._ctx, "refund.request"))
         # Next to the tiles, « Inscrire dans un groupe » stays in the card's head; without
         # any tile, the empty state offers it (one main button per card).
         can_enroll = not self.groups.enroll.isHidden()

@@ -84,8 +84,7 @@ def test_list_shows_columns_and_count(qtbot, conn, director, amine):
     page = StudentsPage(conn, director)
     qtbot.addWidget(page)
     assert table_rows(page.list.table) == [[
-        "2026-0001", "Benali", "Amine", "14/03/2012", "Karim Benali", "0661 90 25 47",
-        t["student_status.active"],
+        "2026-0001", "Benali", "Amine", "14/03/2012", "—", "—", t["student_status.active"],
     ]]
     assert page.list.count.text() == t["students.count"].format(count=1)
     assert visible(page.list.table) and not visible(page.list.empty)
@@ -164,6 +163,24 @@ def test_status_column_is_a_badge(qtbot, conn, director, amine):
     from tadris.ui.theme.delegates import KIND_ROLE
     page = list_view(qtbot, conn, director)
     assert page.table.item(0, 6).data(KIND_ROLE) == "success"
+
+
+def test_groups_and_subscription_columns(qtbot, conn, director):
+    from tadris.ui.theme.delegates import KIND_ROLE
+    school = School(conn, director)
+    page = list_view(qtbot, conn, director)
+    page.table.sortByColumn(5, Qt.SortOrder.AscendingOrder)  # the most urgent first
+    rows = table_rows(page.table)
+    assert [(row[2], row[4], row[5]) for row in rows] == [
+        ("Badis", "A · Maths", t["subscription_line.ended"]),
+        ("Chems", "B · Physique", t["subscription_line.ended"]),
+        ("Amine", "A · Maths", t["subscription_line.active"]),
+        ("Dalia", "C · Arabe", t["subscription_line.active"]),
+        ("Farid", "—", "—"),
+    ]
+    assert page.student_ids()[0] == school.badis
+    assert page.table.item(0, 5).data(KIND_ROLE) == "danger"
+    assert page.table.item(4, 5).data(KIND_ROLE) is None
 
 
 def test_receptionist_sees_new_student_button(qtbot, conn, receptionist):

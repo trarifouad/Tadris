@@ -5,7 +5,7 @@ from tadris.core.context import UserContext
 from tadris.core.errors import BusinessRuleError, NotFound, ValidationError
 from tadris.core.money import format_dzd
 from tadris.core.permissions import require
-from tadris.core.text import clean, fold
+from tadris.core.text import clean, fold, group_title
 from tadris.db.errors import atomic
 from tadris.domain.models import (
     MissingSubscription,
@@ -25,9 +25,9 @@ from tadris.services import audit, debt, payouts
 # Renewal is done by the desk: the next month starts when the previous one ends, or later
 # after a gap, never earlier. A month runs to the same day next month (the last day of a
 # shorter month), and a renewal keeps the cycle's day: 31/01 -> 28/02 -> 31/03. A trial has no subscription. Cancelling (director only) is
-# refused once something was paid on the month (V1 has no refunds: only a void of the payment,
-# by the director, frees it) or once an approved or paid teacher payout counted it; a draft
-# lets it go. A student who leaves a group (or switches, or whose group closes) owes no month
+# refused while money paid on the month is kept (a void of the payment frees it, or a refund
+# handing all of it back; never while a refund request is open) or once an approved or paid
+# teacher payout counted it; a draft lets it go. A student who leaves a group (or switches, or whose group closes) owes no month
 # that starts after their last day: those are cancelled the same way, or kept and listed when
 # they cannot be.
 
@@ -54,20 +54,17 @@ def state_of(row, today: date | None = None) -> str:
     return "active"
 
 
-def _title(row) -> str:
-    return f"{row['group_name']} · {row['subject']} {row['level']}"
-
-
 def _to_subscription(row) -> Subscription:
     return Subscription(
         id=row["id"], enrollment_id=row["enrollment_id"],
         enrollment_status=row["enrollment_status"], student_id=row["student_id"],
         student_number=row["student_number"],
         student_name=f"{row['last_name']} {row['first_name']}", group_id=row["group_id"],
-        group_title=_title(row), renewal_of_id=row["renewal_of_id"], price=row["price"],
+        group_title=group_title(row), renewal_of_id=row["renewal_of_id"], price=row["price"],
         start_date=row["start_date"], end_date=row["end_date"], status=row["status"],
         state=state_of(row), charge_id=row["charge_id"], paid=row["paid"],
-        in_payout=bool(row["in_payout"]),
+        in_payout=bool(row["in_payout"]), refunded=row["refunded"],
+        refund_open=None if row["refund_open"] is None else bool(row["refund_open"]),
     )
 
 
@@ -212,7 +209,7 @@ def next_months(conn, ctx: UserContext, student_id: int) -> list[NextMonths]:
         months = following(latest["start_date"], latest["end_date"], group["year_end"])
         if months:
             result.append(NextMonths(
-                enrollment_id=enrollment["id"], group_id=group["id"], group_title=_title(latest),
+                enrollment_id=enrollment["id"], group_id=group["id"], group_title=group_title(latest),
                 group_name=group["name"], price=group["price"], months=tuple(months)))
     return result
 
@@ -241,7 +238,9 @@ def renew_many(conn, ctx: UserContext, subscription_ids: list[int]) -> list[int]
 # ----- cancel -----
 
 def cancel(conn, ctx: UserContext, subscription_id: int, reason: str) -> None:
-    """Director only. The charge is cancelled with it; the period is free again."""
+    """Director only. The charge is cancelled with it; the period is free again. Refused while
+    money paid on it is kept: a month refunded in full can be cancelled (by hand: a refund
+    never cancels it), not one refunded in part, nor one with a refund request open."""
     require(ctx, "subscription.cancel")
     reason = clean(reason)
     if not reason:
@@ -252,9 +251,11 @@ def cancel(conn, ctx: UserContext, subscription_id: int, reason: str) -> None:
             raise BusinessRuleError(t["subscription.already_cancelled"])
         if row["in_payout"]:
             raise BusinessRuleError(t["subscription.in_payout"])
-        if row["paid"]:
-            raise BusinessRuleError(t["subscription.paid"].format(
-                amount=format_dzd(row["paid"])))
+        if row["refund_open"]:
+            raise BusinessRuleError(t["subscription.refund_open"])
+        kept = row["paid"] - row["refunded"]
+        if kept:
+            raise BusinessRuleError(t["subscription.paid"].format(amount=format_dzd(kept)))
         _cancel_in(conn, ctx, row, reason)
 
 
@@ -267,14 +268,15 @@ def _cancel_in(conn, ctx: UserContext, row, reason: str) -> None:
     repo.set_status(conn, row["id"], "cancelled")
     audit.log(conn, ctx, "subscription.cancel", "subscriptions", row["id"],
               old={"status": row["status"]},
-              new={"status": "cancelled", "reason": reason, "charge_id": row["charge_id"]})
+              new={"status": "cancelled", "reason": reason, "charge_id": row["charge_id"],
+                   **({"refunded": row["refunded"]} if row["refunded"] else {})})
 
 
 # ----- leaving a group -----
 
 def after(conn, ctx: UserContext, enrollment_id: int, last_day: date) -> list[Subscription]:
     """The enrollment's months that start after `last_day`: what leaving the group that day
-    cancels (can_cancel) or keeps (money paid on it, or a teacher paid for it)."""
+    cancels (cancelled_on_leaving) or keeps (money paid on it, or a teacher paid for it)."""
     require(ctx, "student.view")
     return [_to_subscription(row)
             for row in repo.starting_after(conn, enrollment_id, dates.iso(last_day))]
@@ -286,7 +288,7 @@ def release_after(conn, ctx: UserContext, enrollment_id: int, last_day: str,
     `last_day` are cancelled, those that cannot be are kept. Returns (cancelled, kept)."""
     cancelled, kept = [], []
     for row in repo.starting_after(conn, enrollment_id, last_day):
-        if _to_subscription(row).can_cancel:
+        if _to_subscription(row).cancelled_on_leaving:
             _cancel_in(conn, ctx, row, reason)
             cancelled.append(row["id"])
         else:
@@ -334,7 +336,7 @@ def missing(conn, ctx: UserContext) -> list[MissingSubscription]:
             enrollment_id=row["enrollment_id"], student_id=row["student_id"],
             student_number=row["student_number"],
             student_name=f"{row['last_name']} {row['first_name']}", group_id=row["group_id"],
-            group_title=_title(row), enrolled_on=row["enrolled_on"])
+            group_title=group_title(row), enrolled_on=row["enrolled_on"])
         for row in repo.active_without_subscription(conn)
     ]
 

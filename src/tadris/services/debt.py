@@ -15,9 +15,12 @@ from tadris.services import settings
 # them. There is no credit (decided 2026-11-05): a payment pays lines and nothing else, so
 # what a screen shows is what the payments paid, charge by charge. There are no remises: a
 # student owes the full price of each month and fee.
-# Cancelling a charge is refused once something was paid on it, so allocations of valid
-# payments only sit on open charges. A charge is late from its due date (a month from its
-# first day, the fee from the registration day); months renewed ahead are owed, not late.
+# Cancelling a charge is refused while money paid on it is kept: a month refunded in full
+# can be cancelled (0021), its allocations staying on it, all of their money handed back.
+# So allocations of valid payments may sit on a cancelled charge: whatever adds up money
+# paid per charge, per payment or per student counts open charges only, as debt does here.
+# A charge is late from its due date (a month from its first day, the fee from the
+# registration day); months renewed ahead are owed, not late.
 
 
 def _today() -> str:

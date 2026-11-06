@@ -2,10 +2,12 @@
 Élèves page prints; each a Report of raw values (amounts in DA, rates in basis points, ISO
 dates) that the screen, the PDF and the Excel file show alike.
 
-Money (Recettes, Enseignants: the director's). « Facturé » is the months and fees starting in
-the period (accrual date), cancelled ones left out; « Réglé » is what payments not voided paid
-on them, whenever; « Reste dû » the difference; « Encaissé » the money received in the period
-(payments not voided), whatever it paid. A school year's money runs from the day after the
+Money (Recettes, Enseignants: the director's). « Attendu » is the months and fees starting in
+the period (accrual date), cancelled ones left out; « Payé » is what payments not voided paid
+on them, whenever; « Impayé » the difference; « Encaissé » the money received in the period
+(payments not voided), whatever it paid; « Remboursé » the money refunds handed back in the
+period (on the day it went out), a movement of its own: payments are never changed by it, nor
+« Payé », « Impayé » or the teachers' share; « Net encaissé » = Encaissé − Remboursé. A school year's money runs from the day after the
 previous year's last day to its own (year_window): fees and payments taken in the summer
 before it are its. A teacher's share of a month is its full price at the
 rate of the group's teacher on its first day, as payouts count it, rounded down to the dinar
@@ -25,7 +27,7 @@ from tadris import config
 from tadris.core import dates
 from tadris.core.context import UserContext
 from tadris.core.errors import NotFound, ValidationError
-from tadris.core.money import format_dzd
+from tadris.core.money import dzd_inline
 from tadris.core.percent import apply_rate, format_percent, ratio_bp
 from tadris.core.permissions import allowed, require
 from tadris.core.phones import format_phone
@@ -165,16 +167,18 @@ def year_window(conn, year) -> tuple[date, date]:
     return first, date.fromisoformat(year["end_date"])
 
 
-def _year_charges(conn, year) -> tuple[list[date], list, dict[str, int]]:
-    """The year's months (from September, or the summer month money first came in), its
-    charges and the money received, by month."""
+def _year_charges(conn, year) -> tuple[list[date], list, dict[str, int], dict[str, int]]:
+    """The year's months (from September, or the summer month money first came in or went
+    back), its charges, the money received and the money refunded, by month."""
     first, last = (dates.iso(day) for day in year_window(conn, year))
     charges = repo.charges_between(conn, first, last)
     collected = repo.collected_by_month(conn, first, last)
+    refunded = repo.refunded_by_month(conn, first, last)
     earliest = min([date.fromisoformat(year["start_date"])]
                    + [date.fromisoformat(c["accrual_date"]) for c in charges]
-                   + [date.fromisoformat(f"{month}-01") for month in collected])
-    return year_months(earliest, date.fromisoformat(year["end_date"])), charges, collected
+                   + [date.fromisoformat(f"{month}-01") for month in (*collected, *refunded)])
+    return (year_months(earliest, date.fromisoformat(year["end_date"])), charges, collected,
+            refunded)
 
 
 def revenue(conn, ctx: UserContext, year_id: int, view: str = "month") -> Report:
@@ -184,22 +188,25 @@ def revenue(conn, ctx: UserContext, year_id: int, view: str = "month") -> Report
     if view not in ("month", "group"):
         raise ValidationError(t["validation.generic"])
     year = _year(conn, year_id)
-    months, charges, collected = _year_charges(conn, year)
+    months, charges, collected, refunded = _year_charges(conn, year)
     shares = _shares(charges)
     charged = sum(c["amount"] for c in charges)
     settled = sum(c["paid"] for c in charges)
     share = sum(shares.values())
     received = sum(collected.values())
+    handed_back = sum(refunded.values())
     tiles = (
         ReportTile(t["reports.tile.charged"], charged,
                    note=t["reports.tile.charged_note"].format(count=len(charges))),
         ReportTile(t["reports.tile.collected"], received,
-                   note=t["reports.tile.collected_note"]),
+                   note=t["reports.tile.collected_refunds"].format(
+                       refunded=dzd_inline(handed_back), net=dzd_inline(received - handed_back))
+                   if handed_back else t["reports.tile.collected_note"]),
         ReportTile(t["reports.tile.left"], charged - settled,
                    note=t["reports.tile.left_note"].format(
                        rate=_percent(rate_bp(charged - settled, charged)))),
         ReportTile(t["reports.tile.school"], charged - share,
-                   note=t["reports.tile.school_note"].format(share=_dzd(share))),
+                   note=t["reports.tile.school_note"].format(share=dzd_inline(share))),
     )
     by_month: dict[str, list[int]] = {}
     for c in charges:
@@ -222,10 +229,12 @@ def revenue(conn, ctx: UserContext, year_id: int, view: str = "month") -> Report
         for month, key in zip(months, keys, strict=True):
             amount, paid = by_month.get(key, [0, 0])
             part = month_share.get(key, 0)
-            rows.append((month_label(month), amount, paid, amount - paid,
-                         collected.get(key, 0), part, amount - part))
+            came_in, went_back = collected.get(key, 0), refunded.get(key, 0)
+            rows.append((month_label(month), amount, paid, amount - paid, came_in, went_back,
+                         came_in - went_back, part, amount - part))
         columns = (ReportColumn(t["reports.col.month"]),) + _money(
-            "charged", "settled", "left", "collected", "teachers_share", "school_share")
+            "charged", "settled", "left", "collected", "refunded", "net_collected",
+            "teachers_share", "school_share")
         return Report(key="recettes-par-mois", title=t["reports.revenue_month.title"],
                       columns=columns, rows=tuple(rows), total=_total(rows, columns),
                       **common)
@@ -276,11 +285,6 @@ def _total(rows, columns: tuple[ReportColumn, ...], skip: set[int] = frozenset()
         sum(row[index] or 0 for row in rows)
         if column.kind in ("number", "money") and index not in skip else None
         for index, column in enumerate(columns) if index > 0)
-
-
-def _dzd(amount: int) -> str:
-    """An amount in a sentence: it never breaks across two lines."""
-    return format_dzd(amount).replace(" ", "\u00a0")
 
 
 def _percent(bp: int | None) -> str:
@@ -394,7 +398,7 @@ def teacher_summary(conn, ctx: UserContext, year_id: int) -> Report:
             line = held.setdefault(g.teacher_id, [0, 0])
             line[0] += 1
             line[1] += g.enrolled
-    _months, charges, _collected = _year_charges(conn, year)
+    _months, charges, _collected, _refunded = _year_charges(conn, year)
     revenue_of: dict[int, int] = {}
     for c in charges:
         if c["teacher_id"] is not None:
@@ -439,8 +443,8 @@ def teacher_summary(conn, ctx: UserContext, year_id: int) -> Report:
         ReportTile(t["reports.tile.paid"], paid, note=t["reports.tile.paid_note"].format(
             label=year["label"])),
         ReportTile(t["reports.tile.to_pay"], waiting + to_prepare,
-                   note=t["reports.tile.to_pay_note"].format(waiting=_dzd(waiting),
-                                                            prepare=_dzd(to_prepare))),
+                   note=t["reports.tile.to_pay_note"].format(waiting=dzd_inline(waiting),
+                                                            prepare=dzd_inline(to_prepare))),
     )
     on = dates.display_date(dates.iso(today))
     return Report(key="enseignants", title=t["reports.teachers.title"],

@@ -264,6 +264,16 @@ def test_attendance_enrollment_valid_on_date(seeded):
                        "VALUES(1,1,'present',1)")
 
 
+def test_attendance_refused_when_never_started(seeded):
+    add_room(seeded)
+    add_session(seeded, date="2026-09-01")
+    seeded.execute("UPDATE enrollments SET status='left', left_on='2026-09-01', "
+                   "never_started=1 WHERE id=1")
+    with pytest.raises(sqlite3.IntegrityError, match="not valid"):
+        seeded.execute("INSERT INTO attendances(session_id,enrollment_id,status,entered_by) "
+                       "VALUES(1,1,'present',1)")
+
+
 # ----- periods -----
 def test_subscription_overlap(seeded):
     with pytest.raises(sqlite3.IntegrityError, match="overlap"):

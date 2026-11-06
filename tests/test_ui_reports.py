@@ -71,12 +71,12 @@ def test_revenue_tiles_chart_table_and_total(qtbot, conn, director, school):
     page = page_for(qtbot, conn, director)
     view = page.current().view
     assert [(tile.name.text(), tile.value.text()) for tile in view.tiles] == [
-        ("Facturé", "35 000 DA"), ("Encaissé", "17 000 DA"), ("Reste dû", "18 000 DA"),
+        ("Attendu", "35 000 DA"), ("Encaissé", "17 000 DA"), ("Impayé", "18 000 DA"),
         ("Part école", "15 000 DA")]
     assert view.chart.isVisible() and view.bars.labels[:2] == ("sept.", "oct.")
     assert view.table.rowCount() == 10
     assert cells(view.table, 0) == ["Septembre 2026", "24 000", "11 000", "13 000", "0",
-                                    "14 400", "9 600"]
+                                    "0", "0", "14 400", "9 600"]
     assert cells(view.total, 0)[:2] == ["Total", "35 000"]
     assert view.count.text() == "10 lignes"
     # The sheet's head names the report; « DA » is said once, there.

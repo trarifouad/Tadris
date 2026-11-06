@@ -4,6 +4,8 @@ One registration per student and year (unique). The fee charge is the registrati
 open or cancelled; what was paid on it is derived from allocations of payments not voided.
 """
 
+from tadris.repositories.charge_money import paid_on
+
 # The fee charge: the open one of an active registration (none when its fee is 0), the
 # latest one of a cancelled registration. A registration made again has one per attempt.
 _FEE_CHARGE = """
@@ -22,10 +24,7 @@ _COLUMNS = f"""
         AND gl.is_open = 0) AS level_enrollments,
     ({_FEE_CHARGE}) AS fee_charge_id,
     (SELECT c.status FROM charges c WHERE c.id = ({_FEE_CHARGE})) AS fee_charge_status,
-    COALESCE((SELECT SUM(pa.amount) FROM payment_allocations pa
-               WHERE pa.charge_id = ({_FEE_CHARGE})
-                 AND NOT EXISTS (SELECT 1 FROM payment_voids v
-                                  WHERE v.payment_id = pa.payment_id)), 0) AS fee_paid
+    {paid_on(f"({_FEE_CHARGE})")} AS fee_paid
 """
 _FROM = """
     FROM registrations r

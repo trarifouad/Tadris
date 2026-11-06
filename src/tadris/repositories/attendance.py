@@ -1,8 +1,11 @@
 """SQL for attendance: one status per student (enrollment) and session.
 
 A session's students are the group's enrollments valid on its date: entered on or before it,
-and not left before it (left_on is the last day, included).
+and not left before it (left_on is the last day, included). A place left before it started
+is on none of them.
 """
+
+from tadris.repositories.enrollments import on_day
 
 _NOW = "strftime('%Y-%m-%dT%H:%M:%S','now','localtime')"
 
@@ -11,7 +14,7 @@ def roster(conn, session_id: int) -> list:
     """The session's students, by name, with their recorded status (or NULL) and whether no
     month covers the date (paid enrollments only)."""
     return conn.execute(
-        """
+        f"""
         SELECT e.id AS enrollment_id, e.student_id, st.student_number, st.last_name,
                st.first_name, e.status AS enrollment_status, a.status,
                (e.status <> 'trial' AND NOT EXISTS (
@@ -19,9 +22,7 @@ def roster(conn, session_id: int) -> list:
                     WHERE sub.enrollment_id = e.id AND sub.status <> 'cancelled'
                       AND sub.start_date <= s.date AND sub.end_date > s.date)) AS not_renewed
           FROM sessions s
-          JOIN enrollments e ON e.group_id = s.group_id
-                            AND e.enrolled_on <= s.date
-                            AND (e.left_on IS NULL OR e.left_on >= s.date)
+          JOIN enrollments e ON e.group_id = s.group_id AND {on_day()}
           JOIN students st ON st.id = e.student_id
           LEFT JOIN attendances a ON a.session_id = s.id AND a.enrollment_id = e.id
          WHERE s.id = ?

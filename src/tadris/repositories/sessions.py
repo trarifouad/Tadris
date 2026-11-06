@@ -6,6 +6,8 @@ later, with no attendance taken. Pending sessions are discarded and generated ag
 timetable, a teacher or the holidays change; every other session is kept as history.
 """
 
+from tadris.repositories.enrollments import on_day
+
 _PENDING = """
     s.date >= :today AND s.status = 'planned' AND s.source = 'generated'
     AND NOT EXISTS (SELECT 1 FROM attendances a WHERE a.session_id = s.id)
@@ -103,7 +105,7 @@ def between(conn, first: str, last: str) -> list:
 # ----- reading and changing one session -----
 
 _NOW = "strftime('%Y-%m-%dT%H:%M:%S','now','localtime')"
-_COLUMNS = """
+_COLUMNS = f"""
     s.id, s.group_id, g.name AS group_name, sb.name AS subject, l.name AS level,
     g.status AS group_status, s.slot_id, s.room_id, r.name AS room, s.teacher_id,
     t.full_name AS teacher,
@@ -119,7 +121,7 @@ _COLUMNS = """
     (SELECT o.date FROM sessions o WHERE o.id = s.makeup_of_session_id) AS makeup_of_date,
     (SELECT COUNT(*) FROM attendances a WHERE a.session_id = s.id) AS attendance_count,
     (SELECT COUNT(*) FROM enrollments e WHERE e.group_id = s.group_id
-        AND e.enrolled_on <= s.date AND (e.left_on IS NULL OR e.left_on >= s.date)) AS expected
+        AND {on_day()}) AS expected
 """
 _FROM = """
     FROM sessions s
@@ -240,8 +242,8 @@ def students_clash(conn, group_id, day, start, end) -> list:
           JOIN enrollments mine ON mine.student_id = other.student_id AND mine.group_id = :group
           JOIN students st ON st.id = mine.student_id
          WHERE x.group_id <> :group AND {_SAME_TIME}
-           AND mine.enrolled_on <= :day AND (mine.left_on IS NULL OR mine.left_on >= :day)
-           AND other.enrolled_on <= :day AND (other.left_on IS NULL OR other.left_on >= :day)
+           AND {on_day("mine", ":day")}
+           AND {on_day("other", ":day")}
          ORDER BY fold(st.last_name), fold(st.first_name)
         """,
         {"group": group_id, "day": day, "start": start, "end": end, "exclude": None},
@@ -251,8 +253,7 @@ def students_clash(conn, group_id, day, start, end) -> list:
 def enrolled_on(conn, group_id: int, day: str) -> int:
     """Students in the group on that day (trial or paid)."""
     row = conn.execute(
-        "SELECT COUNT(*) FROM enrollments WHERE group_id = ? AND enrolled_on <= ? "
-        "AND (left_on IS NULL OR left_on >= ?)",
+        f"SELECT COUNT(*) FROM enrollments e WHERE e.group_id = ? AND {on_day('e', '?')}",
         (group_id, day, day),
     ).fetchone()
     return int(row[0])

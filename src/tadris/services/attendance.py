@@ -4,6 +4,7 @@ from tadris.core import dates
 from tadris.core.context import UserContext
 from tadris.core.errors import BusinessRuleError, NotFound, ValidationError
 from tadris.core.permissions import require
+from tadris.core.text import group_title
 from tadris.db.errors import atomic
 from tadris.domain.models import (
     ATTENDANCE_STATUSES,
@@ -95,7 +96,7 @@ def for_student(conn, ctx: UserContext, student_id: int, limit: int | None = Non
         AttendanceRecord(session_id=row["session_id"], date=row["date"],
                          start_time=row["start_time"], end_time=row["end_time"],
                          group_id=row["group_id"],
-                         group_title=f"{row['group_name']} · {row['subject']} {row['level']}",
+                         group_title=group_title(row),
                          status=row["status"])
         for row in repo.for_student(conn, student_id, limit, offset)
     ]

@@ -2,7 +2,7 @@
 font with tabular digits (quieter than a monospace), `border` grid lines, the violet at two
 strengths.
 
-BarsChart: a group of bars per label (a month), one per series (« Facturé » soft, « Encaissé »
+BarsChart: a group of bars per label (a month), one per series (« Attendu » soft, « Encaissé »
 full). One month is always picked: the one under the mouse (`hovered`, -1 when it leaves),
 else the `pinned` one (the latest with figures), so the readout never stands empty. A month
 with nothing in it has its name faint.

@@ -4,7 +4,7 @@ from tadris.core import dates
 from tadris.core.context import UserContext
 from tadris.core.errors import BusinessRuleError, NotFound, ValidationError
 from tadris.core.permissions import require
-from tadris.core.text import clean
+from tadris.core.text import clean, group_title
 from tadris.db.errors import atomic
 from tadris.domain.models import Enrollment, GroupCandidate, GroupOption
 from tadris.i18n.fr import t
@@ -28,7 +28,9 @@ from tadris.services import audit, groups, subscriptions
 # date when enrolled as active, from the confirmation when a trial is confirmed, and after a
 # switch from the end of the month running in the old group. Leaving a group (a switch, a
 # group closed) cancels its months that start after the last day, unless money was paid on
-# one or a teacher was paid for it: those are kept (V1 has no refunds) and the audit says so.
+# one or a teacher was paid for it: those are kept and the audit says so. A month kept
+# with money on it can then be refunded, and once refunded in full, cancelled by the
+# director (a refund never cancels a month by itself).
 
 LIVE = ("trial", "active")
 
@@ -47,11 +49,8 @@ def _to_enrollment(row) -> Enrollment:
         enrolled_on=row["enrolled_on"], left_on=row["left_on"],
         switched_from_id=row["switched_from_id"],
         group_level_open=bool(row["group_level_open"]),
+        never_started=bool(row["never_started"]),
     )
-
-
-def _group_title(row) -> str:
-    return f"{row['name']} · {row['subject']} {row['level']}"
 
 
 def get(conn, ctx: UserContext, enrollment_id: int) -> Enrollment:
@@ -162,7 +161,7 @@ def _place(conn, ctx: UserContext, student_id: int, group_id: int, enrolled_on: 
     group = groups_repo.get(conn, group_id, _today())
     if group is None:
         raise NotFound(t["group.not_found"])
-    title = _group_title(group)
+    title = group_title(group, "name")
     year = years_repo.open_year(conn)
     if year is None:
         raise BusinessRuleError(t["registration.no_open_year"])
@@ -278,13 +277,22 @@ def confirm_trial(conn, ctx: UserContext, enrollment_id: int) -> None:
 def leave(conn, ctx: UserContext, enrollment_id: int, left_on: date | None = None,
           reason: str = "") -> None:
     """The student leaves the group (a trial not followed up leaves too). The seat is freed,
-    and the months starting after the last day are cancelled (see release_after)."""
+    and the months starting after the last day are cancelled (see release_after). A place not
+    started yet ends on its entry day, still to come, whatever left_on says: none of it was
+    used, so all of its months are released, those paid kept for a refund in full
+    (REVIEW_FIXES round 2, decision 4)."""
     require(ctx, "enrollment.update")
     with atomic(conn):
         row = _require_live(conn, enrollment_id)
-        end = _end_date(conn, row, left_on)
-        repo.end(conn, enrollment_id, "left", end)
-        cancelled, kept = subscriptions.release_after(conn, ctx, enrollment_id, end, "left")
+        if row["enrolled_on"] > _today():
+            end, release_from = row["enrolled_on"], _today()
+            never_started = True
+        else:
+            end = release_from = _end_date(conn, row, left_on)
+            never_started = False
+        repo.end(conn, enrollment_id, "left", end, never_started)
+        cancelled, kept = subscriptions.release_after(conn, ctx, enrollment_id, release_from,
+                                                      "left")
         audit.log(conn, ctx, "enrollment.leave", "enrollments", enrollment_id,
                   old={"status": row["status"]},
                   new={"status": "left", "left_on": end, "reason": clean(reason) or None,
@@ -333,11 +341,12 @@ def _first_month_after_switch(conn, ctx: UserContext, old_id: int, new_id: int,
         subscriptions.create_in(conn, ctx, new_id, start)
 
 
-def end_for_closed_group(conn, ctx: UserContext, group_id: int) -> int:
-    """Inside a transaction: the students of a group being closed leave it today, and its
-    months starting after today are cancelled (kept when paid). Returns how many left."""
+def end_for_closed_group(conn, ctx: UserContext, group_id: int, closure_id: int) -> int:
+    """Inside a transaction: the students of a group being closed leave it today (ended by
+    that closure), and its months starting after today are cancelled (kept when paid).
+    Returns how many left."""
     today = _today()
-    ended = repo.end_live_for_group(conn, group_id, today)
+    ended = repo.end_live_for_group(conn, group_id, today, closure_id)
     for enrollment_id in ended:
         cancelled, kept = subscriptions.release_after(conn, ctx, enrollment_id, today,
                                                       "group_closed")

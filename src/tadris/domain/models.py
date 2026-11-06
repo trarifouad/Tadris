@@ -60,6 +60,8 @@ class StudentListItem:
     status: str
     main_contact: str | None
     main_phone: str | None
+    groups: str | None  # now (trial or active): "A · Maths, B · Physique"
+    standing: str | None  # the most urgent of its paid groups (models.standing); None: none
 
 
 @dataclass(frozen=True)
@@ -293,6 +295,8 @@ class Enrollment:
     switched_from_id: int | None
     # The group's level is open (« Tous niveaux »): any registration level belongs there.
     group_level_open: bool = False
+    # Left (or closed) before the entry day: on no session, even the entry day itself.
+    never_started: bool = False
 
     @property
     def group_title(self) -> str:
@@ -366,17 +370,38 @@ class Subscription:
     charge_id: int | None  # None for a free group
     paid: int  # by payments not voided
     in_payout: bool  # counted in an approved or paid teacher payout (a draft lets it go)
+    # Read for one month, one student's or one enrollment's months; None from the
+    # school-wide lists, which never decide a cancel.
+    refunded: int | None = 0  # handed back by refunds (paid out)
+    refund_open: bool | None = False  # a refund request pending or approved on it
 
     @property
     def due(self) -> int:
-        """What remains to pay (0 once cancelled or for a free group)."""
+        """What remains to pay (0 once cancelled or for a free group). A refund never
+        changes it: a month refunded stays paid."""
         if self.status == "cancelled" or self.charge_id is None:
             return 0
         return max(self.price - self.paid, 0)
 
     @property
+    def kept(self) -> int:
+        """The money paid on it that the school keeps: paid less what was handed back."""
+        if self.refunded is None:
+            raise ValueError("this list does not read refunds: use subscriptions.get")
+        return self.paid - self.refunded
+
+    @property
     def can_cancel(self) -> bool:
-        """Nothing paid on it (V1 has no refunds) and no teacher paid for it yet."""
+        """The director's « Annuler »: no money kept on it (nothing paid, or all of it handed
+        back), no refund request open, and no teacher paid for it yet."""
+        return (self.status != "cancelled" and not self.kept and not self.refund_open
+                and not self.in_payout)
+
+    @property
+    def cancelled_on_leaving(self) -> bool:
+        """Leaving the group cancels a month to come only if nothing was ever paid on it and
+        no teacher was paid for it: a month refunded in full is kept, for the director to
+        cancel by hand (a refund never cancels a month by itself)."""
         return self.status != "cancelled" and not self.paid and not self.in_payout
 
 
@@ -391,6 +416,11 @@ class MissingSubscription:
     group_id: int
     group_title: str
     enrolled_on: str
+
+
+# The standings, the most urgent first: how a student with several groups reads, and how the
+# students list sorts them (repositories/students.ORDERS["standing"]).
+STANDINGS_BY_URGENCY = ("ended", "none", "expiring", "active")
 
 
 def standing(month: Subscription | None) -> str:
@@ -636,12 +666,16 @@ class Debtor:
 class CashReport:
     """Money received on one day, as the drawer saw it, so a day already counted never
     changes: its payments count unless voided that same day (listed apart); a payment voided
-    on a later day still counts on its own day, and is taken off the day of its void."""
+    on a later day still counts on its own day, and is taken off the day of its void.
+    Refunds are money going out, apart from the payments (never taken off them): « Encaissé »
+    (total) is what came in, « Remboursé » what went back that day, « Net encaissé » the
+    difference."""
 
     day: str
     payments: tuple[Payment, ...]  # every payment of the day, voided ones included
     payouts: tuple["Payout", ...] = ()  # teachers paid that day (the director's view only)
     voided_earlier: tuple[Payment, ...] = ()  # payments of earlier days voided on this day
+    refunds: tuple["Refund", ...] = ()  # refunds whose money went back that day
 
     def voided_here(self, p: Payment) -> bool:
         return p.voided and p.voided_at[:10] == self.day
@@ -683,11 +717,114 @@ class CashReport:
         return sum(p.amount_paid for p in self.payouts)
 
     @property
+    def refunded(self) -> int:
+        """« Remboursé »: the money handed back that day."""
+        return sum(r.amount for r in self.refunds)
+
+    @property
+    def net(self) -> int:
+        """« Net encaissé »: received (total) less handed back."""
+        return self.total - self.refunded
+
+    def refunded_by_method(self) -> dict[str, int]:
+        """Every method, 0 included, in PAYMENT_METHODS order."""
+        totals = dict.fromkeys(PAYMENT_METHODS, 0)
+        for r in self.refunds:
+            totals[r.method] += r.amount
+        return totals
+
+    @property
     def cash_in_drawer(self) -> int:
-        """Cash received minus cash paid to teachers: what the drawer should hold from the
-        day."""
+        """Cash received, less cash paid to teachers and cash handed back by refunds: what the
+        drawer should hold from the day."""
         cash_out = sum(p.amount_paid for p in self.payouts if p.method == "cash")
-        return self.by_method()["cash"] - cash_out
+        return self.by_method()["cash"] - cash_out - self.refunded_by_method()["cash"]
+
+
+# ----- refunds -----
+
+
+@dataclass(frozen=True)
+class SessionsLeft:
+    """The most a refund of a month can give back, before what was already refunded or asked
+    on it: the month's sessions in the timetable (holidays left out), those from
+    counted_from on, and their value: price × left ÷ total, rounded down to the dinar. With no
+    session at all, the price if counted from the month's first day or before (none of it
+    used), else 0. Kept with a request as it was counted then."""
+
+    counted_from: str  # the first day not used (ISO)
+    total: int
+    left: int
+    value: int
+
+
+REFUND_STATUSES = ("pending", "approved", "rejected", "cancelled", "paid")
+
+
+@dataclass(frozen=True)
+class RefundableMonth:
+    """A month paid in full, and the most a new request can ask on it now: the value of its
+    sessions left, never more than was paid, less what refunds already hold on it (asked,
+    approved or handed back, the archive's included: held). Nothing while the student still
+    follows it (still_in)."""
+
+    subscription_id: int
+    charge_id: int
+    group_title: str
+    start_date: str
+    end_date: str  # the day after the last day
+    price: int
+    paid: int
+    held: int
+    sessions: SessionsLeft | None  # None while the student still follows the month
+    max_amount: int
+    still_in: str | None = None  # the group they still follow it in (its own, or after a switch)
+
+
+@dataclass(frozen=True)
+class Refund:
+    """A refund request on a month, with the count behind its maximum as it was asked."""
+
+    id: int
+    charge_id: int
+    subscription_id: int
+    student_id: int
+    student_number: str
+    student_name: str  # "Last First"
+    group_title: str
+    month_start: str
+    month_end: str  # the day after the last day
+    price: int
+    counted_from: str
+    sessions_total: int
+    sessions_left: int
+    sessions_value: int
+    max_amount: int
+    amount_requested: int
+    amount_approved: int | None
+    reason: str
+    status: str  # REFUND_STATUSES
+    requested_by_id: int
+    requested_by: str
+    requested_at: str
+    decided_by: str | None
+    decided_at: str | None
+    cancelled_by: str | None
+    cancelled_at: str | None
+    close_reason: str | None  # why rejected or withdrawn
+    number: str | None  # RB2026-00001, once paid
+    method: str | None
+    paid_by: str | None
+    paid_at: str | None
+
+    @property
+    def amount(self) -> int:
+        """What it holds: the amount approved once decided, else the one asked."""
+        return self.amount_requested if self.amount_approved is None else self.amount_approved
+
+    @property
+    def open(self) -> bool:
+        return self.status in ("pending", "approved")
 
 
 # ----- teacher payouts -----
@@ -869,7 +1006,7 @@ class ReportColumn:
 
 @dataclass(frozen=True)
 class ReportTile:
-    """One of the figures above a report: « Facturé · 412 500 DA »."""
+    """One of the figures above a report: « Attendu · 412 500 DA »."""
 
     label: str
     value: int | None  # None: nothing to show (« — »)
@@ -879,7 +1016,7 @@ class ReportTile:
 
 @dataclass(frozen=True)
 class ReportChart:
-    """bars: a group of bars per label, one per series (« Facturé », « Encaissé »);
+    """bars: a group of bars per label, one per series (« Attendu », « Encaissé »);
     rates: one horizontal bar per label, in basis points."""
 
     kind: str

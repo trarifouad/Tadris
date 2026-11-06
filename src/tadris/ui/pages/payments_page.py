@@ -24,6 +24,7 @@ from tadris.i18n.fr import t
 from tadris.services import debt, groups, payments
 from tadris.ui.collect import collect_many, pick_and_collect
 from tadris.ui.pages.payments_tab import payment_state
+from tadris.ui.pages.refunds_section import RefundsSection
 from tadris.ui.theme.status import kind_for
 from tadris.ui.widgets.common import labeled, primary_button
 from tadris.ui.widgets.date_edit import DateLineEdit
@@ -142,7 +143,8 @@ class DebtorsView(QWidget):
 
 class CashView(QWidget):
     """One day's payments: what came in per method and per cashier; voided ones are listed
-    but not counted."""
+    but not counted. The refunds whose money went back that day are apart, with the net;
+    the director sees what the drawer should hold once teachers and refunds are paid."""
 
     open_student = Signal(int)
 
@@ -173,6 +175,10 @@ class CashView(QWidget):
         self.voided_earlier.setWordWrap(True)
         self.teachers_paid = caption()
         self.teachers_paid.setWordWrap(True)
+        self.refunds = caption()
+        self.refunds.setWordWrap(True)
+        self.net = caption()
+        self.drawer = caption()
         self.list = ListSection([t["cash.col.time"], t["cash.col.receipt"],
                                  t["cash.col.student"], t["cash.col.amount"],
                                  t["cash.col.method"], t["cash.col.cashier"],
@@ -190,6 +196,9 @@ class CashView(QWidget):
         layout.addWidget(self.voided)
         layout.addWidget(self.voided_earlier)
         layout.addWidget(self.teachers_paid)
+        layout.addWidget(self.refunds)
+        layout.addWidget(self.net)
+        layout.addWidget(self.drawer)
         layout.addSpacing(4)
         layout.addWidget(self.list, 1)
 
@@ -221,9 +230,22 @@ class CashView(QWidget):
                                for p in earlier)))
         self.voided_earlier.setVisible(bool(earlier))
         self.teachers_paid.setText(t["cash.teachers_paid"].format(
-            count=len(report.payouts), total=format_dzd(report.paid_to_teachers),
-            drawer=format_dzd(report.cash_in_drawer)))
+            count=len(report.payouts), total=format_dzd(report.paid_to_teachers)))
         self.teachers_paid.setVisible(bool(report.payouts))
+        self.refunds.setText(t["cash.refunds"].format(
+            count=len(report.refunds), total=format_dzd(report.refunded),
+            refunds=", ".join(t["cash.refund_of"].format(
+                number=r.number, student=r.student_name, amount=format_dzd(r.amount),
+                method=t[f"payment_method.{r.method}"]) for r in report.refunds)))
+        self.refunds.setVisible(bool(report.refunds))
+        self.net.setText(t["cash.net"].format(received=format_dzd(report.total),
+                                              refunded=format_dzd(report.refunded),
+                                              net=format_dzd(report.net)))
+        self.net.setVisible(bool(report.refunds))
+        self.drawer.setText(t["cash.drawer"].format(drawer=format_dzd(report.cash_in_drawer)))
+        # Teacher pay is the director's: the desk's drawer would miss the teachers paid.
+        self.drawer.setVisible(allowed(self._ctx, "payout.view")
+                               and bool(report.payouts or report.refunds))
         self._students = {p.id: p.student_id for p in report.payments}
         self.list.set_rows([self._cells(p, report) for p in report.payments])
 
@@ -273,14 +295,18 @@ class PaymentsPage(QWidget):
         intro.setWordWrap(True)
         self.debtors = DebtorsView(conn, ctx)
         self.cash = CashView(conn, ctx)
-        for view in (self.debtors, self.cash):
+        # What waits: requests to decide (the director) and money to hand back.
+        self.refunds = RefundsSection(conn, ctx)
+        for view in (self.debtors, self.cash, self.refunds):
             view.open_student.connect(self.open_student.emit)
+        self.refunds.changed.connect(self._after_refund)  # once: the section already refreshed
         self.debtors.collect.connect(lambda ids: self._after(collect_many(
             self, self._conn, self._ctx, [(student_id, None) for student_id in ids])))
         self.tabs = QTabWidget()
         self.tabs.setDocumentMode(True)
         self.tabs.addTab(padded(self.debtors), t["payments_page.tab.debtors"])
         self.tabs.addTab(padded(self.cash), t["payments_page.tab.cash"])
+        self.tabs.addTab(padded(self.refunds), t["payments_page.tab.refunds_none"])
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 20, 24, 24)
         layout.setSpacing(12)
@@ -295,7 +321,20 @@ class PaymentsPage(QWidget):
         if taken:
             self.refresh()
 
+    def _after_refund(self) -> None:
+        """The queue already reloaded itself; refresh the day's cash and the tab's count. The
+        debtors stay: a refund never changes what is owed."""
+        self.cash.refresh()
+        self._tab_count()
+
     def refresh(self) -> None:
         self.debtors.load_filters()
         self.debtors.refresh()
         self.cash.refresh()
+        self.refunds.refresh()
+        self._tab_count()
+
+    def _tab_count(self) -> None:
+        waiting = self.refunds.count()
+        self.tabs.setTabText(2, t["payments_page.tab.refunds"].format(count=waiting) if waiting
+                             else t["payments_page.tab.refunds_none"])

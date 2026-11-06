@@ -120,9 +120,23 @@ def test_what_is_owed_up_to_the_date(qtbot, conn, director, school):
     view = make_list(qtbot, conn, director)
     assert view.until.text() == "18/10/2026"  # today: every month over by now
     assert rows(view.due.table) == [["Karim Haddad", "2", "6 000 DA", "—"]]
+    assert not shown(view.ahead_note)
     view.until.setText("30/09/2026")  # September's months end on 01/10: not over yet
     assert view.due.table.isHidden() and shown(view.due.empty)
     assert view.due.empty.text() == t["payouts.due_empty"]
+
+
+def test_pay_a_few_days_ahead(qtbot, conn, director, school):
+    view = make_list(qtbot, conn, director)
+    assert view.until.maximum == date(2026, 11, 2)  # 15 days after today
+    school["pupil"]("Yanis", date(2026, 9, 20))  # 20/09 -> 20/10
+    view.until.setText("20/10/2026")
+    assert shown(view.ahead_note) and view.ahead_note.text() == t["payouts.ahead_note"].format(
+        date="20/10/2026")
+    assert rows(view.due.table) == [["Karim Haddad", "3", "9 000 DA", "—"]]
+    view.until.setText("18/10/2026")
+    assert not shown(view.ahead_note)
+    assert rows(view.due.table) == [["Karim Haddad", "2", "6 000 DA", "—"]]
 
 
 def test_the_monthly_run(qtbot, conn, director, school):
@@ -272,10 +286,13 @@ def test_cash_shows_teachers_paid_to_the_director(qtbot, conn, director, desk, s
     qtbot.addWidget(page)
     assert shown(page.cash.teachers_paid)
     assert page.cash.teachers_paid.text() == t["cash.teachers_paid"].format(
-        count=1, total="3 600 DA", drawer="-3 600 DA")
+        count=1, total="3 600 DA")
+    assert shown(page.cash.drawer)
+    assert page.cash.drawer.text() == t["cash.drawer"].format(drawer="-3 600 DA")
     desk_page = PaymentsPage(conn, desk)
     qtbot.addWidget(desk_page)
     assert not shown(desk_page.cash.teachers_paid)
+    assert not shown(desk_page.cash.drawer)
 
 
 def test_in_the_sidebar_for_the_director_only(qtbot, conn, director, desk, school):

@@ -469,6 +469,16 @@ def test_leaving_date_rules(conn, receptionist, school, amine):
     enrollments.leave(conn, receptionist, enrollment_id, date(2026, 10, 1))  # same day is fine
 
 
+def test_a_place_not_started_can_be_left(conn, receptionist, school, amine):
+    """The seat is freed now; the last day recorded is the entry day (REVIEW_FIXES,
+    decision 4)."""
+    enrollment_id = enrollments.enroll(conn, receptionist, amine, school.french)
+    enrollments.leave(conn, receptionist, enrollment_id, date(2026, 10, 1), "Avant la rentrée")
+    e = enrollments.get(conn, receptionist, enrollment_id)
+    assert (e.status, e.left_on, e.never_started) == ("left", "2026-11-02", True)
+    assert last_audit(conn, "enrollment.leave")["left_on"] == "2026-11-02"
+
+
 def test_leaving_date_not_before_a_recorded_attendance(conn, director, receptionist, school,
                                                        amine):
     enrollment_id = enrollments.enroll(conn, receptionist, amine, school.maths,
@@ -600,6 +610,8 @@ def test_closing_a_group_makes_its_students_leave_today(conn, director, receptio
     for enrollment_id in (a, y):
         e = enrollments.get(conn, director, enrollment_id)
         assert (e.status, e.left_on) == ("left", "2026-10-18")
+        assert conn.execute("SELECT closure_id FROM enrollments WHERE id = ?",
+                            (enrollment_id,)).fetchone()[0] is not None
     assert groups.get(conn, director, school.physics).enrolled == 1  # other groups untouched
     entry = last_audit(conn, "group.close")
     assert entry["students_left"] == 2
@@ -611,7 +623,8 @@ def test_closing_a_group_not_started_leaves_on_the_entry_date(conn, director, re
                                                               school, amine):
     enrollment_id = enrollments.enroll(conn, receptionist, amine, school.french)
     groups.close(conn, director, school.french)
-    assert enrollments.get(conn, director, enrollment_id).left_on == "2026-11-02"
+    e = enrollments.get(conn, director, enrollment_id)
+    assert (e.left_on, e.never_started) == ("2026-11-02", True)
 
 
 def test_reopening_a_group_does_not_bring_students_back(conn, director, receptionist, school,

@@ -6,12 +6,9 @@ the fee on the registration day); cancelled charges are left out. A month's teac
 group's teacher on its first day, at their rate that day, as payouts count it.
 """
 
-_PAID = """
-    COALESCE((SELECT SUM(pa.amount) FROM payment_allocations pa
-               WHERE pa.charge_id = c.id
-                 AND NOT EXISTS (SELECT 1 FROM payment_voids v
-                                  WHERE v.payment_id = pa.payment_id)), 0)
-"""
+from tadris.repositories.charge_money import paid_on
+
+_PAID = paid_on()
 
 
 def charges_between(conn, first: str, last: str) -> list:
@@ -46,6 +43,21 @@ def collected_by_month(conn, first: str, last: str) -> dict[str, int]:
           FROM payments p
          WHERE substr(p.paid_at, 1, 10) BETWEEN ? AND ?
            AND NOT EXISTS (SELECT 1 FROM payment_voids v WHERE v.payment_id = p.id)
+         GROUP BY month
+        """,
+        (first, last),
+    ).fetchall()
+    return {row["month"]: row["amount"] for row in rows}
+
+
+def refunded_by_month(conn, first: str, last: str) -> dict[str, int]:
+    """{'YYYY-MM': amount} of the refunds whose money went back in [first, last] (0021; the
+    phase 8 archive counts nowhere). Payments are never touched by them."""
+    rows = conn.execute(
+        """
+        SELECT substr(paid_at, 1, 7) AS month, SUM(amount_approved) AS amount
+          FROM refunds
+         WHERE status = 'paid' AND substr(paid_at, 1, 10) BETWEEN ? AND ?
          GROUP BY month
         """,
         (first, last),

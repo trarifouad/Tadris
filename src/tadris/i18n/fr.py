@@ -129,8 +129,13 @@ t = {
     ),
     "subscription.already_cancelled": "Cet abonnement est déjà annulé.",
     "subscription.paid": (
-        "Cet abonnement a déjà été payé en partie ({amount}) : il ne peut pas être annulé. Si "
-        "ce paiement est une erreur, la direction peut l'annuler d'abord."
+        "Cet abonnement a déjà été payé ({amount} gardés) : il ne peut pas être annulé. Si ce "
+        "paiement est une erreur, la direction peut l'annuler d'abord ; sinon, le mois peut "
+        "être annulé une fois remboursé en entier."
+    ),
+    "subscription.refund_open": (
+        "Une demande de remboursement est en cours sur ce mois : refusez-la ou annulez-la "
+        "d'abord."
     ),
     "subscription.in_payout": (
         "Cet abonnement est déjà compté dans un paiement enseignant approuvé ou payé."
@@ -159,6 +164,37 @@ t = {
     ),
     "payment.reason_required": "Indiquez le motif de l'annulation.",
     "payment.already_voided": "Ce paiement est déjà annulé.",
+    "payment.handed_back": (
+        "De l'argent de ce paiement a été remboursé : il ne peut plus être annulé."
+    ),
+    "payment.refund_open": (
+        "Ce paiement a payé un mois qui a une demande de remboursement en cours : refusez-la "
+        "ou annulez-la d'abord."
+    ),
+    "refund.not_found": "Remboursement introuvable.",
+    "refund.amount_invalid": "Le montant doit être un nombre entier de dinars supérieur à 0.",
+    "refund.reason_required": "Indiquez le motif.",
+    "refund.month_cancelled": "Ce mois est annulé : il n'y a rien à rembourser.",
+    "refund.not_paid_in_full": (
+        "Seul un mois payé en entier peut être remboursé ({paid} payés sur {price})."
+    ),
+    "refund.no_session": (
+        "Ce mois n'a aucune séance à l'emploi du temps, et une partie en a déjà été utilisée : "
+        "il n'y a rien à rembourser."
+    ),
+    "refund.still_enrolled": (
+        "L'élève suit encore le groupe {group} : enregistrez d'abord sa sortie du groupe, "
+        "puis demandez le remboursement."
+    ),
+    "refund.nothing_left": "Il ne reste rien à rembourser sur ce mois.",
+    "refund.above_max": "Le remboursement ne peut pas dépasser {amount} sur ce mois.",
+    "refund.above_asked": "La direction accorde au plus le montant demandé : {amount}.",
+    "refund.not_pending": "Cette demande n'est plus en attente.",
+    "refund.not_approved": "Cette demande doit d'abord être approuvée par la direction.",
+    "refund.closed": "Cette demande est déjà close.",
+    "refund.money_gone": (
+        "Les paiements de ce mois ne contiennent plus assez d'argent pour ce remboursement."
+    ),
     "payout_status.draft": "Brouillon",
     "payout_status.approved": "Approuvé",
     "payout_status.paid": "Payé",
@@ -203,6 +239,10 @@ t = {
         "et pas encore payés à la date choisie, même un mois renouvelé en retard."
     ),
     "payouts.until": "Payer jusqu'au",
+    "payouts.ahead_note": (
+        "Paiement à l'avance : les mois qui se terminent d'ici le {date} sont comptés, même "
+        "s'ils ne sont pas encore terminés aujourd'hui."
+    ),
     "payouts.run": "Préparer les brouillons",
     "payouts.run_done": "{count} brouillon(s) préparé(s)",
     "payouts.due_title": "À préparer",
@@ -268,8 +308,8 @@ t = {
         "par l'enseignant."
     ),
     "payout.until_too_late": (
-        "Un paiement compte les mois déjà terminés : au plus tard jusqu'à aujourd'hui "
-        "({date}). Un mois pas encore terminé ira dans un paiement suivant."
+        "Un paiement compte les mois terminés à sa date : au plus tard le {date} ({days} "
+        "jours d'avance au plus). Un mois pas encore terminé ira dans un paiement suivant."
     ),
     "payout.nothing": (
         "Rien à payer à {teacher} au {date} : aucun mois terminé et pas encore payé."
@@ -365,6 +405,92 @@ t = {
     "receipt.stamp_voided": "ANNULÉ",
     "receipt.thanks": "Conservez ce reçu.",
     "receipt.signature": "Cachet et signature",
+    "refund_status.pending": "En attente",
+    "refund_status.approved": "Approuvé",
+    "refund_status.rejected": "Refusé",
+    "refund_status.cancelled": "Annulé",
+    "refund_status.paid": "Versé",
+    "refunds.col.asked_at": "Demandé le",
+    "refunds.col.student": "Élève",
+    "refunds.col.month": "Mois",
+    "refunds.col.asked": "Demandé",
+    "refunds.col.amount": "Accordé",
+    "refunds.col.status": "Statut",
+    "refunds.col.number": "N°",
+    "refunds.empty": "Aucun remboursement pour cet élève.",
+    "refunds.queue_empty": "Aucune demande de remboursement en attente.",
+    "refunds.request": "Demander un remboursement",
+    "refunds.approve": "Approuver…",
+    "refunds.reject": "Refuser…",
+    "refunds.withdraw": "Annuler la demande…",
+    "refunds.pay": "Enregistrer le versement…",
+    "refunds.print": "Imprimer le reçu",
+    "refunds.requested": "Remboursement demandé : {amount}",
+    "refunds.approved": "Remboursement approuvé : {amount} pour {name}",
+    "refunds.rejected": "Demande de remboursement refusée ({name})",
+    "refunds.withdrawn": "Demande de remboursement annulée ({name})",
+    "refunds.paid": "Remboursement {number} versé : {amount} à {name}",
+    "refund_dialog.title": "Demander un remboursement",
+    "refund_dialog.submit": "Demander",
+    "refund_dialog.month_label": "Mois à rembourser",
+    "refund_dialog.month": "{group}, {period} (au plus {most})",
+    "refund_dialog.count": "{left} séance(s) sur {total} restent à partir du {date} : {value}.",
+    "refund_dialog.count_none": (
+        "Aucune séance à l'emploi du temps ce mois-ci, rien n'en a été utilisé : {value}."
+    ),
+    "refund_dialog.held": "Déjà remboursé ou demandé sur ce mois : {held}.",
+    "refund_dialog.most": "Au plus : {most}.",
+    "refund_dialog.amount": "Montant à rembourser",
+    "refund_dialog.reason": "Motif",
+    "refund_dialog.reason_placeholder": "Départ de l'élève, groupe clôturé…",
+    "refund_dialog.none": (
+        "Aucun mois de cet élève ne peut être remboursé. Seul peut l'être un mois payé en "
+        "entier, une fois l'élève sorti du groupe, s'il en reste des séances (ou, sans aucune "
+        "séance à l'emploi du temps, s'il n'a pas servi). Les frais d'inscription ne sont pas "
+        "remboursables."
+    ),
+    "refund_dialog.still_enrolled": (
+        "L'élève suit encore {groups} : un mois encore suivi n'est remboursable qu'une fois "
+        "la sortie du groupe enregistrée (« Sortir du groupe »)."
+    ),
+    "refund_dialog.summary": (
+        "{student} · {group}, {period}\nDemandé : {asked}, au plus {most} — {count}\n"
+        "Motif : {reason}"
+    ),
+    "refund_dialog.close_reason": "Motif",
+    "approve_refund_dialog.title": "Approuver le remboursement",
+    "approve_refund_dialog.submit": "Approuver",
+    "approve_refund_dialog.amount": "Montant accordé",
+    "approve_refund_dialog.most": "Le montant demandé ou moins : au plus {asked}.",
+    "reject_refund_dialog.title": "Refuser le remboursement",
+    "reject_refund_dialog.submit": "Refuser",
+    "withdraw_refund_dialog.title": "Annuler la demande de remboursement",
+    "withdraw_refund_dialog.submit": "Annuler la demande",
+    "pay_refund_dialog.title": "Enregistrer le versement",
+    "pay_refund_dialog.submit": "Enregistrer et imprimer le reçu",
+    "pay_refund_dialog.caption": (
+        "À faire une fois l'argent rendu à la famille : {amount} à {student} ({group}). "
+        "L'argent est repris des paiements de ce mois, le plus récent d'abord ; les reçus "
+        "de paiement ne changent pas."
+    ),
+    "pay_refund_dialog.method": "Rendu en",
+    "refund_receipt.title": "Reçu de remboursement",
+    "refund_receipt.not_paid": (
+        "Le reçu n'existe qu'une fois le remboursement versé (l'argent rendu)."
+    ),
+    "refund_receipt.method": "Rendu en",
+    "refund_receipt.reason": "Motif",
+    "refund_receipt.origin": "Paiement d'origine",
+    "refund_receipt.origin_value": "{number} du {date}",
+    "refund_receipt.approved_by": "Approuvé par",
+    "refund_receipt.paid_by": "Versé par",
+    "refund_receipt.sessions": "{left} séance(s) sur {total} à partir du {date}",
+    "refund_receipt.sessions_none": "Aucune séance au mois, rien n'en a été utilisé",
+    "refund_receipt.total": "Total remboursé",
+    "refund_receipt.words": "Arrêté à la somme {words}.",  # « de … » or « d'un … »
+    "refund_receipt.stamp": "REMBOURSÉ",
+    "refund_receipt.thanks": "Conservez ce reçu avec le reçu de paiement d'origine.",
+    "refund_receipt.signature": "Signature de la personne qui reçoit l'argent",
     "payment_method.cash": "Espèces",
     "payment_method.transfer": "Virement",
     "payment_method.cheque": "Chèque",
@@ -567,6 +693,43 @@ t = {
         "Le montant versé ne correspond pas aux paiements remboursés."
     ),
     "db.archived_refunds": "Les remboursements archivés ne peuvent pas être modifiés.",
+    "db.refund_fee": "Les frais d'inscription ne sont pas remboursables.",
+    "db.refund_not_paid_in_full": "Seul un mois payé en entier peut être remboursé.",
+    "db.refund_exceeds_sessions": "Le remboursement dépasse la valeur des séances restantes.",
+    "db.refund_status": "Ce remboursement ne peut pas passer à cet état.",
+    "db.refund_has_allocations": (
+        "De l'argent a déjà été repris pour ce remboursement : il ne peut plus être annulé."
+    ),
+    "db.refund_decision_incomplete": "L'approbation doit indiquer qui, quand et le montant.",
+    "db.refund_close_incomplete": (
+        "Un refus ou une annulation doit indiquer qui, quand et le motif."
+    ),
+    "db.refund_payout_incomplete": (
+        "Le versement doit indiquer son numéro, son mode, qui l'a fait et quand."
+    ),
+    "db.refund_step_fields": (
+        "Cette étape ne peut pas renseigner les champs d'une autre étape."
+    ),
+    "db.enrollment_closure_set_once": (
+        "La clôture qui a mis fin à cette inscription ne peut plus être changée."
+    ),
+    "db.never_started_set_once": (
+        "Une inscription sortie avant son premier jour le reste."
+    ),
+    "db.never_started_needs_entry": (
+        "Une inscription sortie avant son premier jour a pour dernier jour son jour d'entrée."
+    ),
+    "db.void_open_refund": (
+        "Ce paiement a payé un mois qui a une demande de remboursement en cours : "
+        "refusez-la ou annulez-la d'abord."
+    ),
+    "db.charge_open_refund": "Une demande de remboursement est en cours sur ce mois.",
+    "db.charge_holds_money": "De l'argent payé sur cette ligne n'a pas été remboursé.",
+    "db.closure_slots_immutable": (
+        "La semaine d'un groupe clôturé, gardée à sa clôture, ne peut pas être modifiée."
+    ),
+    "db.closures_immutable": "La clôture d'un groupe ne peut pas être modifiée.",
+    "db.closure_other_group": "Cette clôture est celle d'un autre groupe.",
     "db.payout_charge_not_open": "Cette charge n'est pas une charge d'abonnement ouverte.",
     "db.payout_amount_mismatch": "Le montant doit être égal à celui de la charge.",
     "db.payout_charge_other_group": "Cette charge appartient à un autre groupe.",
@@ -716,7 +879,8 @@ t = {
     "students.col.last_name": "Nom",
     "students.col.first_name": "Prénom",
     "students.col.birth_date": "Naissance",
-    "students.col.contact": "Contact principal",
+    "students.col.groups": "Groupes",
+    "students.col.subscription": "Abonnement",
     "students.col.phone": "Téléphone",
     "students.col.status": "Statut",
     "students.count": "{count} élève(s)",
@@ -964,15 +1128,17 @@ t = {
     "void_payment_dialog.placeholder": "Ex. : chèque sans provision, erreur de montant",
     "payments_page.title": "Paiements",
     "payments_page.caption": (
-        "Les élèves qui ont un reste à payer (ou seulement ceux en retard) et la caisse du jour. "
-        "Double-cliquez sur un élève pour encaisser ; sélectionnez-en plusieurs (Ctrl ou Maj) "
-        "pour les encaisser à la suite."
+        "Les élèves qui ont un reste à payer (ou seulement ceux en retard), la caisse du jour "
+        "et les remboursements à traiter. Double-cliquez sur un élève pour encaisser ; "
+        "sélectionnez-en plusieurs (Ctrl ou Maj) pour les encaisser à la suite."
     ),
     "debtors.collect": "Encaisser",
     "debtors.collect_many": "Encaisser ({count})",
     "debtors.open": "Voir la fiche",
     "payments_page.tab.debtors": "Reste à payer",
     "payments_page.tab.cash": "Caisse du jour",
+    "payments_page.tab.refunds": "Remboursements à traiter ({count})",
+    "payments_page.tab.refunds_none": "Remboursements à traiter",
     "debtors.state": "État",
     "debtors.state.all": "Reste à payer",
     "debtors.state.late": "En retard",
@@ -991,7 +1157,7 @@ t = {
     "debtors.col.due": "Reste total",
     "debtors.col.since": "Depuis le",
     "debtors.col.days": "Jours",
-    "cash.total": "Caisse du {date} : {total} ({count} paiement(s))",
+    "cash.total": "Caisse du {date} : {total} encaissés ({count} paiement(s))",
     "cash.by_method": "Par mode : {parts}",
     "cash.by_cashier": "Par caissier : {parts}",
     "cash.voided": "Annulés (non comptés) : {count} paiement(s), {total}",
@@ -1001,10 +1167,11 @@ t = {
     ),
     "cash.receipt_of": "{number} du {date}",
     "cash.voided_later": "Compté, annulé le {date}",
-    "cash.teachers_paid": (
-        "Enseignants payés : {count}, {total}. Espèces à avoir en caisse pour la journée : "
-        "{drawer}."
-    ),
+    "cash.teachers_paid": "Enseignants payés : {count}, {total}.",
+    "cash.refunds": "Remboursements versés : {count}, {total} · {refunds}",
+    "cash.refund_of": "{number} {student} {amount} ({method})",
+    "cash.net": "Encaissé {received} − remboursé {refunded} = net encaissé {net}",
+    "cash.drawer": "Espèces à avoir en caisse pour la journée : {drawer}.",
     "cash.empty": "Aucun paiement reçu ce jour-là.",
     "cash.col.time": "Heure",
     "cash.col.receipt": "Reçu",
@@ -1110,10 +1277,13 @@ t = {
     "overview.sessions": "Toutes les présences ({count})",
     "overview.subscriptions": "Tous les abonnements ({count})",
     "overview.payments": "Tous les paiements ({count})",
+    "overview.refunds": "Remboursements ({count})",
+    "overview.refunds_none": "Remboursements",
     "overview.window.groups": "Groupes",
     "overview.window.sessions": "Séances et présences",
     "overview.window.subscriptions": "Abonnements",
     "overview.window.payments": "Paiements",
+    "overview.window.refunds": "Remboursements",
     "enrollment_status.trial": "Essai",
     "enrollment_status.active": "Actif",
     "enrollment_status.left": "Sorti",
@@ -1170,11 +1340,17 @@ t = {
     "leave_dialog.title": "Sortir du groupe",
     "leave_dialog.submit": "Sortir du groupe",
     "leave_dialog.caption": "{name} quitte {group}. Sa place est libérée tout de suite.",
+    "leave_dialog.not_started": (
+        "{name} quitte {group} avant son entrée le {date}. Sa place est libérée tout de suite ; "
+        "le dernier jour enregistré est le jour d'entrée, aucune séance n'ayant eu lieu."
+    ),
     "leave_dialog.date": "Date de sortie",
     "leave_dialog.reason": "Motif (facultatif)",
     "leave_dialog.reason_placeholder": "Ex. : déménagement",
     "leave.months_cancelled": "Mois pas encore commencés, annulés avec la sortie : {months}.",
-    "leave.months_kept": "Mois à venir gardés (pas de remboursement) : {months}.",
+    "leave.months_kept": (
+        "Mois à venir gardés : {months} ; un mois payé peut ensuite être remboursé."
+    ),
     "leave.kept_paid": "déjà payé {amount}",
     "leave.kept_payout": "compté dans une paie enseignant",
     "registration_status.active": "Active",
@@ -2128,11 +2304,15 @@ t = {
     "reports.revenue_month.title": "Recettes par mois",
     "reports.revenue_group.title": "Recettes par groupe",
     "reports.revenue.note": (
-        "Un mois compte dans le mois où il commence, les frais d'inscription le jour de "
-        "l'inscription ; les mois annulés ne comptent pas. Réglé : ce que les paiements non "
-        "annulés ont payé sur eux. Encaissé : l'argent reçu dans le mois. Part enseignants : "
-        "le prix du mois au taux de l'enseignant du groupe ce jour-là, comme la paie. "
-        "L'année compte aussi l'argent reçu l'été d'avant (inscriptions avant la rentrée)."
+        "Attendu : ce que les familles doivent payer ; un mois compte dans le mois où il "
+        "commence, les frais d'inscription le jour de l'inscription, les mois annulés ne "
+        "comptent pas. Payé : ce qui a été payé sur ces mois et frais, même plus tard. "
+        "Impayé : ce que les familles doivent encore. Encaissé : l'argent reçu pendant le "
+        "mois. Remboursé : l'argent rendu aux familles pendant le mois, le jour où il est "
+        "sorti ; il ne change ni l'attendu, ni le payé, ni la part des enseignants. Net "
+        "encaissé : encaissé moins remboursé. Part enseignants : le prix du mois au taux de l'enseignant du groupe ce "
+        "jour-là, comme la paie. L'année compte aussi l'argent reçu l'été d'avant "
+        "(inscriptions avant la rentrée)."
     ),
     "reports.attendance_group.title": "Présences par groupe",
     "reports.attendance_student.title": "Présences par élève",
@@ -2150,20 +2330,22 @@ t = {
     ),
     "reports.students.title": "Liste des élèves",
     "reports.students.note": "En retard : ce qui reste à payer sur les mois et frais échus.",
-    "reports.chart.revenue": "Facturé et encaissé par mois",
+    "reports.chart.revenue": "Attendu et encaissé par mois",
     "reports.chart.attendance": "Taux de présence par groupe",
     "reports.rates.hover": "Survolez une barre pour voir le groupe",
     "reports.rates.lowest": "Les {shown} plus bas sur {count} groupes · survolez une barre",
     "reports.col.month": "Mois",
-    "reports.col.charged": "Facturé",
-    "reports.col.settled": "Réglé",
-    "reports.col.left": "Reste dû",
+    "reports.col.charged": "Attendu",
+    "reports.col.settled": "Payé",
+    "reports.col.left": "Impayé",
     "reports.col.collected": "Encaissé",
+    "reports.col.refunded": "Remboursé",
+    "reports.col.net_collected": "Net encaissé",
     "reports.col.teachers_share": "Part enseignants",
     "reports.col.school_share": "Part école",
     "reports.col.group": "Groupe",
     "reports.col.teacher": "Enseignant",
-    "reports.col.months": "Mois facturés",
+    "reports.col.months": "Mois",
     "reports.col.rate": "Taux",
     "reports.col.present": "Présent",
     "reports.col.absent": "Absent",
@@ -2184,12 +2366,13 @@ t = {
     "reports.col.phone": "Téléphone",
     "reports.col.registered": "Inscrit le",
     "reports.col.overdue": "En retard",
-    "reports.tile.charged": "Facturé",
+    "reports.tile.charged": "Attendu",
     "reports.tile.charged_note": "{count} mois et frais d'inscription",
     "reports.tile.collected": "Encaissé",
     "reports.tile.collected_note": "Argent reçu pendant l'année",
-    "reports.tile.left": "Reste dû",
-    "reports.tile.left_note": "{rate} du facturé",
+    "reports.tile.collected_refunds": "Remboursé {refunded} · net encaissé {net}",
+    "reports.tile.left": "Impayé",
+    "reports.tile.left_note": "{rate} de l'attendu",
     "reports.tile.school": "Part école",
     "reports.tile.school_note": "Après {share} aux enseignants",
     "reports.tile.rate": "Taux de présence",
@@ -2296,6 +2479,11 @@ t = {
     "audit.action.payment.apply_credit": "Avoir utilisé",  # entries before 2026-11-05
     "audit.action.payment.record": "Paiement enregistré",
     "audit.action.payment.void": "Paiement annulé",
+    "audit.action.refund.approve": "Remboursement approuvé",
+    "audit.action.refund.cancel": "Demande de remboursement annulée",
+    "audit.action.refund.pay": "Remboursement versé",
+    "audit.action.refund.reject": "Remboursement refusé",
+    "audit.action.refund.request": "Remboursement demandé",
     "audit.action.payout.approve": "Paiement enseignant approuvé",
     "audit.action.payout.build": "Brouillon de paiement enseignant",
     "audit.action.payout.delete": "Brouillon de paiement enseignant supprimé",
@@ -2360,6 +2548,7 @@ t = {
     "audit.entity.students": "Élève",
     "audit.entity.subjects": "Matière",
     "audit.entity.subscriptions": "Mois",
+    "audit.entity.refunds": "Remboursement",
     "audit.entity.teacher_payouts": "Paiement enseignant",
     "audit.entity.teachers": "Enseignant",
     "audit.entity.timetable_slots": "Créneau",
@@ -2368,6 +2557,16 @@ t = {
     "audit.key.allocations": "Répartition",
     "audit.key.amount": "Montant",
     "audit.key.amount_due": "À payer",
+    "audit.key.amount_requested": "Demandé",
+    "audit.key.amount_approved": "Accordé",
+    "audit.key.max_amount": "Au plus",
+    "audit.key.held_before": "Déjà retenu sur le mois",
+    "audit.key.archived": "Déjà remboursé (archive)",
+    "audit.key.counted_from": "Compté à partir du",
+    "audit.key.sessions_total": "Séances du mois",
+    "audit.key.sessions_left": "Séances restantes",
+    "audit.key.sessions_value": "Valeur des séances restantes",
+    "audit.key.refunded": "Remboursé",
     "audit.key.base_amount": "Recettes",
     "audit.key.birth_date": "Naissance",
     "audit.key.can_receive_sms": "Reçoit les SMS",
@@ -2450,6 +2649,7 @@ t = {
     "audit.status.approved": "Approuvé",
     "audit.status.paid": "Payé",
     "audit.status.pending": "En attente",
+    "audit.status.rejected": "Refusé",
     "audit.status.open": "Ouverte",
     "audit.status.closed": "Clôturée",
     "audit.status.disabled": "Désactivé",

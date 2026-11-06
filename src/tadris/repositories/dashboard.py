@@ -5,12 +5,9 @@ allocated to it; a charge counts in the month of its accrual date (a month on it
 the fee on the registration day); cancelled charges are left out.
 """
 
-_PAID = """
-    COALESCE((SELECT SUM(pa.amount) FROM payment_allocations pa
-               WHERE pa.charge_id = c.id
-                 AND NOT EXISTS (SELECT 1 FROM payment_voids v
-                                  WHERE v.payment_id = pa.payment_id)), 0)
-"""
+from tadris.repositories.charge_money import paid_on
+
+_PAID = paid_on()
 
 
 def charged_between(conn, first: str, last: str) -> tuple[int, int]:

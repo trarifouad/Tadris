@@ -6,8 +6,8 @@ from pathlib import Path
 from tadris import config
 from tadris.core import dates
 from tadris.core.context import UserContext
-from tadris.core.errors import NotFound
-from tadris.core.money import format_dzd
+from tadris.core.errors import BusinessRuleError, NotFound
+from tadris.core.money import format_dzd, of_dzd_in_words
 from tadris.core.percent import format_percent
 from tadris.core.permissions import require
 from tadris.core.text import fold
@@ -26,12 +26,14 @@ from tadris.domain.models import ATTENDANCE_STATUSES
 from tadris.i18n.fr import t
 from tadris.repositories import payments as payments_repo
 from tadris.repositories import print_log
+from tadris.repositories import refunds as refunds_repo
 from tadris.services import (
     attendance,
     debt,
     groups,
     payments,
     payouts,
+    refunds,
     sessions,
     settings,
 )
@@ -43,6 +45,7 @@ from tadris.services import (
 SESSION_SHEET = "attendance_session"
 WEEK_SHEET = "attendance_week"
 RECEIPT = "receipt"
+REFUND_RECEIPT = "refund"
 PAYOUT_SLIP = "payout"
 LETTERS = {"present": "P", "late": "R", "absent": "A", "excused": "E"}
 
@@ -218,6 +221,61 @@ def receipt_content(conn, ctx: UserContext, receipt_id: int) -> ReceiptDoc:
         stamp=t["receipt.stamp_voided"] if p.voided else t["receipt.stamp_paid"],
         stamp_date=paid_on, voided_note=voided_note, thanks=t["receipt.thanks"],
         signature=t["receipt.signature"], footer=footer_for(ctx), note=_receipt_note(conn))
+
+
+# ----- refund receipts -----
+
+def refund_receipt(conn, ctx: UserContext, refund_id: int, out_dir: Path | None = None) -> Path:
+    """The receipt of a refund whose money went back (paid): never of a request still
+    pending or approved, nor of a closed one. Printed again, it says DUPLICATA. The payment
+    receipts it refers to are never changed."""
+    require(ctx, "print.document")
+    doc = refund_receipt_content(conn, ctx, refund_id)
+    path = build_receipt(doc, (out_dir or config.documents_dir())
+                         / f"remboursement_{doc.number}.pdf")
+    _log(conn, ctx, REFUND_RECEIPT, refund_id)
+    return path
+
+
+def refund_receipt_content(conn, ctx: UserContext, refund_id: int) -> ReceiptDoc:
+    """The ticket of a paid refund, laid out as a payment receipt: the student, how the money
+    went back and why, the payment receipts it came from, who approved and who handed it
+    over; the month and its sessions left; the amount in figures and in words; a line for
+    the person who takes the money to sign."""
+    r = refunds.get(conn, ctx, refund_id)
+    if r.status != "paid":
+        raise BusinessRuleError(t["refund_receipt.not_paid"])
+    paid_on = dates.display_date(r.paid_at)
+    origins = ", ".join(t["refund_receipt.origin_value"].format(
+        number=row["receipt_number"] or "—", date=dates.display_date(row["paid_at"]))
+        for row in refunds_repo.taken_from(conn, refund_id))
+    details = [
+        (t["receipt.student"], t["receipt.student_value"].format(name=r.student_name,
+                                                                 number=r.student_number)),
+        (t["refund_receipt.method"], t[f"payment_method.{r.method}"]),
+        (t["refund_receipt.reason"], r.reason),
+        (t["refund_receipt.origin"], origins),
+        (t["refund_receipt.approved_by"], r.decided_by or "—"),
+        (t["refund_receipt.paid_by"], r.paid_by or "—"),
+    ]
+    month = t["receipt.month"].format(start=dates.display_date(r.month_start),
+                                      end=dates.display_date(r.month_end))
+    sessions_left = t["refund_receipt.sessions"].format(
+        left=r.sessions_left, total=r.sessions_total,
+        date=dates.display_date(r.counted_from)) if r.sessions_total else t[
+        "refund_receipt.sessions_none"]
+    return ReceiptDoc(
+        school=school_of(conn), title=t["refund_receipt.title"], number=r.number,
+        copy_mark=(t["receipt.duplicate"] if print_log.count(conn, REFUND_RECEIPT, refund_id)
+                   else ""),
+        paid_at=t["receipt.paid_at"].format(date=paid_on, time=r.paid_at[11:16]),
+        details=details, lines=[(r.group_title, f"{month} · {sessions_left}",
+                                 format_dzd(r.amount))],
+        total=(t["refund_receipt.total"], format_dzd(r.amount)), balance=[],
+        stamp=t["refund_receipt.stamp"], stamp_date=paid_on, voided_note="",
+        thanks=t["refund_receipt.thanks"], signature=t["refund_receipt.signature"],
+        footer=footer_for(ctx),
+        amount_words=t["refund_receipt.words"].format(words=of_dzd_in_words(r.amount)))
 
 
 # ----- teacher payout slips -----

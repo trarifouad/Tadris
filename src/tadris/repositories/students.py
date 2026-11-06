@@ -1,10 +1,39 @@
 """SQL for students. No permissions, no transactions, no audit: the service owns those."""
 
+from tadris.domain.models import STANDINGS_BY_URGENCY
+
 _NOW = "strftime('%Y-%m-%dT%H:%M:%S','now','localtime')"
 
 _LIST_COLUMNS = """
     s.id, s.student_number, s.first_name, s.last_name, s.birth_date, s.status,
     c.full_name AS main_contact, c.phone AS main_phone
+"""
+# The list's own columns: the student's groups now (trial or active), « A · Maths, B · Physique »;
+# and where they stand on their subscriptions, read as on the Abonnements page from each paid
+# group's latest month: the most urgent of ended (over, not renewed), none (no month left),
+# expiring (ends by `soon`) and active; NULL with no paid group. Two parameters: today, soon.
+# The ranking is models.STANDINGS_BY_URGENCY, the most urgent first, for both the column and
+# its order (_URGENCY): written once.
+_RANK = {standing: rank for rank, standing in enumerate(STANDINGS_BY_URGENCY, 1)}
+_GROUPS_AND_STANDING = f"""
+    (SELECT GROUP_CONCAT(name, ', ') FROM (
+         SELECT g.name || ' · ' || sb.name AS name
+           FROM enrollments e
+           JOIN class_groups g ON g.id = e.group_id
+           JOIN subjects sb ON sb.id = g.subject_id
+          WHERE e.student_id = s.id AND e.status IN ('trial', 'active')
+          ORDER BY fold(g.name), fold(sb.name))) AS groups,
+    (SELECT CASE MIN(CASE WHEN x.last_end IS NULL THEN {_RANK["none"]}
+                          WHEN x.last_end <= ? THEN {_RANK["ended"]}
+                          WHEN x.last_end <= ? THEN {_RANK["expiring"]}
+                          ELSE {_RANK["active"]} END)
+                 {" ".join(f"WHEN {rank} THEN '{name}'" for name, rank in _RANK.items())} END
+       FROM (SELECT (SELECT MAX(m.end_date) FROM subscriptions m
+                      WHERE m.enrollment_id = e.id AND m.status <> 'cancelled') AS last_end
+               FROM enrollments e
+               JOIN class_groups g ON g.id = e.group_id
+              WHERE e.student_id = s.id AND e.status = 'active' AND g.status <> 'closed') x
+    ) AS standing
 """
 _LIST_FROM = """
     FROM students s
@@ -61,6 +90,10 @@ def set_status(conn, student_id: int, status: str) -> None:
     )
 
 
+# The most urgent standing first (models.STANDINGS_BY_URGENCY), then no paid group.
+_URGENCY = ("CASE standing "
+            + " ".join(f"WHEN '{name}' THEN {rank}" for name, rank in _RANK.items())
+            + f" ELSE {len(_RANK) + 1} END")
 # The orders the students list offers, by column: a whitelist, never text from outside.
 # The student number ends each one, so a page boundary never splits two equal rows.
 ORDERS = {
@@ -68,8 +101,9 @@ ORDERS = {
     "last_name": ["fold(s.last_name)", "fold(s.first_name)", "s.student_number"],
     "first_name": ["fold(s.first_name)", "fold(s.last_name)", "s.student_number"],
     "birth_date": ["COALESCE(s.birth_date, '')", "s.student_number"],
-    "contact": ["fold(COALESCE(c.full_name, ''))", "s.student_number"],
-    "phone": ["COALESCE(c.phone, '')", "s.student_number"],
+    "groups": ["fold(COALESCE(groups, ''))", "fold(s.last_name)", "fold(s.first_name)",
+               "s.student_number"],
+    "standing": [_URGENCY, "fold(s.last_name)", "fold(s.first_name)", "s.student_number"],
     "status": ["s.status", "fold(s.last_name)", "fold(s.first_name)", "s.student_number"],
 }
 
@@ -115,24 +149,35 @@ def _where(terms: list[tuple[str, str | None]], status: str | None,
     return (f"WHERE {' AND '.join(where)}" if where else ""), params
 
 
-def search(conn, terms: list[tuple[str, str | None]], status: str | None,
-           order: str = "last_name", descending: bool = False, limit: int | None = None,
-           offset: int = 0, level: tuple[int, int] | None = None,
-           group_id: int | None = None) -> list:
-    """Students matching every term, in `order` (a key of ORDERS); limit/offset: one page."""
+# The orders that read the list's own columns: they need them worked out.
+NEEDS_DETAILS = ("groups", "standing")
+
+
+def search(conn, terms: list[tuple[str, str | None]], status: str | None, today: str,
+           soon: str, order: str = "last_name", descending: bool = False,
+           limit: int | None = None, offset: int = 0, level: tuple[int, int] | None = None,
+           group_id: int | None = None, details: bool = True) -> list:
+    """Students matching every term, in `order` (a key of ORDERS); limit/offset: one page.
+    today, soon: where each stands on its subscriptions (a month ending by `soon` is
+    expiring). details=False: groups and standing are NULL, not worked out (a picker that
+    shows neither), unless the order needs them."""
     clause, params = _where(terms, status, level, group_id)
     direction = " DESC" if descending else ""
     order_by = ", ".join(part + direction for part in ORDERS[order])
     page = "" if limit is None else f"LIMIT {int(limit)} OFFSET {int(offset)}"
+    if details or order in NEEDS_DETAILS:
+        extra, extra_params = _GROUPS_AND_STANDING, [today, soon]
+    else:
+        extra, extra_params = "NULL AS groups, NULL AS standing", []
     return conn.execute(
         f"""
-        SELECT {_LIST_COLUMNS}
+        SELECT {_LIST_COLUMNS}, {extra}
         {_LIST_FROM}
         {clause}
         ORDER BY {order_by}
         {page}
         """,
-        params,
+        [*extra_params, *params],
     ).fetchall()
 
 

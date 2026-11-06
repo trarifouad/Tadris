@@ -207,9 +207,12 @@ def remove_slot(conn, ctx: UserContext, slot_id: int) -> None:
         _end(conn, ctx, row, today)
 
 
-def end_group_slots(conn, ctx: UserContext, group_id: int) -> int:
-    """Inside a transaction: end every running or future slot of a group (group closed)."""
+def end_group_slots(conn, ctx: UserContext, group_id: int, closure_id: int) -> int:
+    """Inside a transaction: end every running or future slot of a group (group closed). They
+    are kept first as they stand, with the closure (group_closure_slots): a refund counts
+    them as going on after it."""
     today = _today()
+    repo.keep_for_closure(conn, closure_id, group_id, today)
     rows = repo.for_group(conn, group_id, today)
     for row in rows:
         _end(conn, ctx, row, today)

@@ -10,7 +10,8 @@ Tadris runs on a single computer with no internet connection. It replaces paper 
 
 - **Subscriptions are monthly.** The group price is copied onto the subscription at creation. `end_date = start_date + 1 month`. Student absence never extends or changes a subscription.
 - **Money is whole DZD integers.** Debt is always derived (charges minus valid allocations). There is no stored running-balance column.
-- **Payments are immutable.** A payment recorded by mistake is voided by the director (`payment_voids`), never edited or made negative. No discounts and no refunds in V1.
+- **Payments are immutable.** A payment recorded by mistake is voided by the director (`payment_voids`), never edited or made negative. No discounts.
+- **Refunds are their own money movement.** Only a month paid in full, never the registration fee, once the student has left the group (switches followed), for at most the value of its sessions left (the timetable minus holidays; a group closed by the school keeps its week as it stood). The desk asks, the director approves (the amount asked or less) or rejects and records the money going back, with a numbered receipt (`RB2026-00001`). A refund never changes the payment, what is owed or teacher pay; the cash of the day and Recettes show encaissé, remboursé and net encaissé.
 - **Teacher pay** is a percentage of group revenue on an accrual basis: the full subscription price of the month, whether or not the student has paid yet. Rates and prices are snapshots.
 - **One free trial** per student, ever. No hard deletes; status changes instead.
 - **Everything is audited.** Every write runs in one transaction with its `audit_log` entry; the director reads them in the Journal.
@@ -22,6 +23,7 @@ Tadris runs on a single computer with no internet connection. It replaces paper 
 - Attendance for generated sessions (does not change subscription dates), printable sheets
 - Monthly subscriptions, renewals, numbered receipts (80 mm thermal tickets)
 - Partial payments, derived debt, director voids, the day's cash
+- Refunds: requested from the student's page once the student has left the group, decided and paid by the director (the queue on Paiements), with an 80 mm refund receipt
 - Teacher payouts as a percentage of accrued group revenue, with signed slips
 - Dashboard: today's sessions, money received, late payers, free places, the day's backup
 - WhatsApp messages to parents (click to chat: Tadris itself sends nothing)
@@ -110,7 +112,7 @@ The UI never touches the database. Services open `BEGIN IMMEDIATE` transactions 
 See `PLAN.md` for phases and `DESIGN.md` for the UI system.
 
 - **V1:** single-computer desktop app, French UI, monthly subscriptions
-- **Later:** refunds, debt by age, Arabic (RTL), multi-machine sync, parent portal
+- **Later:** refunds of the registration fee and of months paid in part, debt by age, Arabic (RTL), multi-machine sync, parent portal
 
 ## License
 

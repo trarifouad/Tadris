@@ -103,6 +103,18 @@ def set_status(conn, group_id: int, status: str) -> None:
     )
 
 
+def insert_closure(conn, group_id: int, on: str) -> int:
+    """A closure of the group on that day (migration 0022). Returns its id."""
+    cur = conn.execute("INSERT INTO group_closures(group_id, closed_on) VALUES (?, ?)",
+                       (group_id, on))
+    return int(cur.lastrowid)
+
+
+def set_closure(conn, group_id: int, closure_id: int | None) -> None:
+    """The closure the group is under (NULL once reopened)."""
+    conn.execute("UPDATE class_groups SET closure_id = ? WHERE id = ?", (closure_id, group_id))
+
+
 def name_taken(conn, year_id: int, name: str, exclude_id: int | None) -> bool:
     row = conn.execute(
         "SELECT 1 FROM class_groups "

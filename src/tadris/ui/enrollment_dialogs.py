@@ -41,9 +41,11 @@ VISIBLE_ROWS = 6
 def months_after_note(conn, ctx: UserContext, enrollment: Enrollment,
                       last_day) -> str:
     """What leaving the group on `last_day` does to its months to come: cancelled, or kept
-    when money was paid on them or a teacher was paid for them (V1 has no refunds)."""
+    when money was paid on them (even if refunded since) or a teacher was paid for them."""
     if last_day is None or enrollment.status != "active":
         return ""
+    if enrollment.enrolled_on > dates.iso(dates.today()):
+        last_day = dates.today()  # the seat is freed now; the last day is still the entry day
     months = subscriptions.after(conn, ctx, enrollment.id, last_day)
 
     def kept(m: Subscription) -> str:
@@ -53,10 +55,10 @@ def months_after_note(conn, ctx: UserContext, enrollment: Enrollment,
 
     parts = []
     cancelled = [f"{dates.short_period(m.start_date, m.end_date)} ({format_dzd(m.price)})"
-                 for m in months if m.can_cancel]
+                 for m in months if m.cancelled_on_leaving]
     if cancelled:
         parts.append(t["leave.months_cancelled"].format(months=", ".join(cancelled)))
-    held = [kept(m) for m in months if not m.can_cancel]
+    held = [kept(m) for m in months if not m.cancelled_on_leaving]
     if held:
         parts.append(t["leave.months_kept"].format(months=", ".join(held)))
     return " ".join(parts)
@@ -353,28 +355,35 @@ class LeaveDialog(FormDialog):
         super().__init__(t["leave_dialog.title"], t["leave_dialog.submit"], parent=parent)
         self._conn, self._ctx, self._enrollment = conn, ctx, enrollment
         self.submit.setProperty("variant", "danger")
+        self._not_started = enrollment.enrolled_on > dates.iso(dates.today())
         self.date = DateLineEdit(maximum=dates.today())
         self.date.set_value(dates.today())
         self.reason = QLineEdit()
         self.reason.setPlaceholderText(t["leave_dialog.reason_placeholder"])
-        note = caption(t["leave_dialog.caption"].format(name=enrollment.student_name,
-                                                        group=enrollment.group_title))
+        caption_key = "leave_dialog.not_started" if self._not_started else "leave_dialog.caption"
+        note = caption(t[caption_key].format(name=enrollment.student_name,
+                                             group=enrollment.group_title,
+                                             date=dates.display_date(enrollment.enrolled_on)))
         note.setWordWrap(True)
         self.add(note)
-        self.add(row(labeled(t["leave_dialog.date"], self.date, required=True),
-                     labeled(t["leave_dialog.reason"], self.reason)))
+        if self._not_started:
+            self.add(labeled(t["leave_dialog.reason"], self.reason))
+        else:
+            self.add(row(labeled(t["leave_dialog.date"], self.date, required=True),
+                         labeled(t["leave_dialog.reason"], self.reason)))
+            self.date.textChanged.connect(lambda _text: self._months())
         self.months_note = caption()
         self.months_note.setWordWrap(True)
         self.add(self.months_note)
-        self.date.textChanged.connect(lambda _text: self._months())
         self._months()
-        self.finish(self.date)
+        self.finish(self.reason if self._not_started else self.date)
 
     def _months(self) -> None:
-        note = months_after_note(self._conn, self._ctx, self._enrollment, self.date.value())
+        last = dates.today() if self._not_started else self.date.value()
+        note = months_after_note(self._conn, self._ctx, self._enrollment, last)
         self.months_note.setText(note)
         self.months_note.setVisible(bool(note))
 
     def save(self) -> None:
-        enrollments.leave(self._conn, self._ctx, self._enrollment.id, required_date(self.date),
-                          self.reason.text())
+        on = None if self._not_started else required_date(self.date)
+        enrollments.leave(self._conn, self._ctx, self._enrollment.id, on, self.reason.text())

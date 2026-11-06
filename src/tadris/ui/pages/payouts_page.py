@@ -67,10 +67,14 @@ class PayoutListView(QWidget):
         title.setObjectName("pageTitle")
         intro = caption(t["payouts.caption"])
         intro.setWordWrap(True)
-        # Today by default: every month over by today. Never later (months still running).
-        self.until = DateLineEdit(maximum=dates.today())
+        # Today by default: every month over by today. A few days later pays ahead (the 28th
+        # for the 30th): the months over by that date count.
+        self.until = DateLineEdit(maximum=payouts.latest_until())
         self.until.set_value(dates.today())
         self.until.textChanged.connect(lambda _text: self._load_due())
+        self.ahead_note = caption()
+        self.ahead_note.setWordWrap(True)
+        self.ahead_note.hide()
         self.run = primary_button(t["payouts.run"])
         self.run.setDefault(False)
         self.run.clicked.connect(self._run)
@@ -126,6 +130,7 @@ class PayoutListView(QWidget):
         layout.addWidget(title)
         layout.addWidget(intro)
         layout.addLayout(controls)
+        layout.addWidget(self.ahead_note)
         layout.addWidget(self.error)
         layout.addWidget(self.due, 2)
         layout.addWidget(self.list, 3)
@@ -137,6 +142,10 @@ class PayoutListView(QWidget):
 
     def _load_due(self) -> None:
         until = self.until.value()
+        ahead = until is not None and until > dates.today()
+        self.ahead_note.setText(t["payouts.ahead_note"].format(
+            date=dates.display_date(dates.iso(until))) if ahead else "")
+        self.ahead_note.setVisible(ahead)
         self.run.setEnabled(until is not None)
         if until is None:
             return

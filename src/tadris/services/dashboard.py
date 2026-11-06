@@ -15,7 +15,7 @@ from tadris.services import debt, groups, sessions, settings, subscriptions
 # The month's money: « Facturé » is the months and fees starting in the month (accrual date),
 # cancelled ones left out; « Réglé » is what payments not voided paid on them, whenever it was
 # paid; « Encaissé » is the money received in the month (payments not voided), whatever it
-# paid. V1 has no refunds (archived since 0015).
+# paid. Refunds (0021) do not change « Encaissé » here: they leave the day's cash and Recettes.
 
 TOP_DEBTORS = 20  # the dashboard shows as many as fit
 

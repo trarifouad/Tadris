@@ -286,7 +286,22 @@ def test_leave_dialog_says_what_happens_to_the_months_to_come(qtbot, conn, recep
         months="18 nov. → 18 déc. (déjà payé 1 000 DA)")
 
 
-# ----- the student page ties both tabs -----
+def test_leave_dialog_before_the_group_starts(qtbot, conn, receptionist, school, amine):
+    """No date to pick: the last day recorded is the entry day, the seat is freed now."""
+    from PySide6.QtWidgets import QLabel
+
+    enrollment_id = enrollments.enroll(conn, receptionist, amine, school.french)
+    e = enrollments.get(conn, receptionist, enrollment_id)
+    dialog = LeaveDialog(conn, receptionist, e)
+    qtbot.addWidget(dialog)
+    assert dialog._not_started
+    expected = t["leave_dialog.not_started"].format(
+        name=e.student_name, group=e.group_title, date="02/11/2026")
+    assert any(isinstance(w, QLabel) and w.text() == expected
+               for w in dialog.findChildren(QLabel))
+    dialog.reason.setText("Avant la rentrée")
+    dialog._submit()
+    assert enrollments.get(conn, receptionist, enrollment_id).left_on == "2026-11-02"
 
 def test_tabs_refresh_each_other(qtbot, conn, receptionist, school, amine, monkeypatch):
     def fill(dialog):

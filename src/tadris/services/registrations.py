@@ -138,8 +138,8 @@ def change_level(conn, ctx: UserContext, registration_id: int, level_id: int) ->
 
 
 def cancel(conn, ctx: UserContext, registration_id: int, reason: str) -> None:
-    """Director only. Refused while the student is in a group of the year or while part of
-    something was paid on the fee (V1 has no refunds). The open fee charge is cancelled with
+    """Director only. Refused while the student is in a group of the year or while anything
+    was paid on the fee (the fee is never refunded). The open fee charge is cancelled with
     it."""
     require(ctx, "registration.cancel")
     reason = clean(reason)

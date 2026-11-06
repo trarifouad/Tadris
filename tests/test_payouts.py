@@ -420,16 +420,13 @@ def test_the_same_period_twice(conn, director, school):
 
 
 def test_a_payout_takes_only_the_months_over_by_its_day(conn, director, school, monkeypatch):
-    """Decided 2026-11-06: a month is paid once it is over. On 18/10, up to 18/10 at most: the
-    month from 01/09 is over, the one from 01/10 still runs; November, renewed ahead, waits
-    for the payout after it ends. Nothing is lost."""
+    """Decided 2026-11-06: a month is paid once it is over. On 18/10, up to 18/10: the month
+    from 01/09 is over, the one from 01/10 still runs; November, renewed ahead, waits for the
+    payout after it ends. Nothing is lost."""
     school.pupils(school.a, 1)  # 01/09 -> 01/10
     [enrollment] = school.pupils(school.a, 1, on=date(2026, 10, 1))  # 01/10 -> 01/11
     [october] = subscriptions.for_enrollment(conn, director, enrollment)
     subscriptions.renew(conn, director, october.id)  # 01/11 -> 01/12, ahead
-    with pytest.raises(ValidationError) as caught:
-        payouts.build_draft(conn, director, school.karim, OCT_DONE)
-    assert caught.value.message == t["payout.until_too_late"].format(date="18/10/2026")
     p = payouts.get(conn, director, payouts.build_draft(conn, director, school.karim, TODAY))
     assert (p.months, p.period_start, p.period_end) == (1, "2026-09-01", "2026-10-18")
     payouts.approve(conn, director, p.id)
@@ -442,6 +439,27 @@ def test_a_payout_takes_only_the_months_over_by_its_day(conn, director, school, 
     last = payouts.get(conn, director, payouts.build_draft(conn, director, school.karim,
                                                            date(2026, 12, 1)))
     assert (last.period_start, last.months) == ("2026-11-01", 1)
+
+
+def test_a_payout_made_a_few_days_ahead(conn, director, school):
+    """On 18/10, paid up to 20/10: the month 20/09 -> 20/10 counts though it still runs two
+    days; the one from 01/10 ends on 01/11, after: it waits. 15 days ahead at most."""
+    school.pupils(school.a, 1, on=date(2026, 9, 20))
+    school.pupils(school.a, 1, on=date(2026, 10, 1))
+    assert payouts.latest_until() == date(2026, 11, 2)
+    p = payouts.get(conn, director, payouts.build_draft(conn, director, school.karim,
+                                                        date(2026, 10, 20)))
+    assert (p.months, p.period_start, p.period_end, p.amount_due) == (
+        1, "2026-09-20", "2026-10-20", 3600)
+    payouts.approve(conn, director, p.id)
+    assert payouts.mark_paid(conn, director, p.id, "cash") == "PE2026-00001"
+    assert payouts.get(conn, director, p.id).paid_at.startswith("2026-10-18")  # paid today
+    with pytest.raises(ValidationError) as caught:
+        payouts.build_draft(conn, director, school.karim, date(2026, 11, 3))
+    assert caught.value.message == t["payout.until_too_late"].format(date="02/11/2026",
+                                                                    days=15)
+    later = payouts.build_draft(conn, director, school.karim, date(2026, 11, 2))
+    assert payouts.get(conn, director, later).months == 1  # the month from 01/10, now
 
 
 def test_delete_a_draft(conn, director, school):

@@ -1,17 +1,17 @@
 """SQL for subscriptions: one month of an enrollment, half-open [start_date, end_date), with its
 charge. The price is a snapshot of the group's price. What was paid on the charge is derived
-from allocations of payments not voided.
+from allocations of payments not voided; what refunds handed back of it, from their
+allocations.
 """
+
+from tadris.repositories.charge_money import handed_back_on, paid_on
 
 _NOW = "strftime('%Y-%m-%dT%H:%M:%S','now','localtime')"
 
-_PAID = """
-    COALESCE((SELECT SUM(pa.amount) FROM payment_allocations pa
-               WHERE pa.charge_id = c.id
-                 AND NOT EXISTS (SELECT 1 FROM payment_voids v
-                                  WHERE v.payment_id = pa.payment_id)), 0)
-"""
-_COLUMNS = f"""
+_PAID = paid_on()
+# What refunds handed back from the charge's payments (0021; the archive, 0015, too).
+_REFUNDED = handed_back_on()
+_BASE_COLUMNS = f"""
     s.id, s.enrollment_id, e.status AS enrollment_status, e.student_id, st.student_number,
     st.last_name, st.first_name,
     e.group_id, g.name AS group_name, sb.name AS subject, l.name AS level,
@@ -22,6 +22,16 @@ _COLUMNS = f"""
               JOIN teacher_payouts tp ON tp.id = pl.payout_id
              WHERE plc.charge_id = c.id AND tp.status <> 'draft') AS in_payout
 """
+# What refunds did and hold on the month: read for one month, one student's or one
+# enrollment's months, where a cancel is decided or recorded (the months window's
+# « Annuler », leaving a group). The school-wide lists (the Abonnements page, the renewals,
+# the latest month) leave them NULL (REVIEW_FIXES, finding 11).
+_COLUMNS_WITH_REFUNDS = f"""{_BASE_COLUMNS},
+    {_REFUNDED} AS refunded,
+    EXISTS (SELECT 1 FROM refunds r WHERE r.charge_id = c.id
+                                      AND r.status IN ('pending', 'approved')) AS refund_open
+"""
+_COLUMNS = f"{_BASE_COLUMNS}, NULL AS refunded, NULL AS refund_open"
 _FROM = """
     FROM subscriptions s
     JOIN enrollments e ON e.id = s.enrollment_id
@@ -34,20 +44,22 @@ _FROM = """
 
 
 def get(conn, subscription_id: int):
-    return conn.execute(f"SELECT {_COLUMNS} {_FROM} WHERE s.id = ?",
+    return conn.execute(f"SELECT {_COLUMNS_WITH_REFUNDS} {_FROM} WHERE s.id = ?",
                         (subscription_id,)).fetchone()
 
 
 def for_student(conn, student_id: int) -> list:
     return conn.execute(
-        f"SELECT {_COLUMNS} {_FROM} WHERE e.student_id = ? ORDER BY s.start_date DESC, s.id DESC",
+        f"SELECT {_COLUMNS_WITH_REFUNDS} {_FROM} WHERE e.student_id = ? "
+        "ORDER BY s.start_date DESC, s.id DESC",
         (student_id,),
     ).fetchall()
 
 
 def for_enrollment(conn, enrollment_id: int) -> list:
     return conn.execute(
-        f"SELECT {_COLUMNS} {_FROM} WHERE s.enrollment_id = ? ORDER BY s.start_date, s.id",
+        f"SELECT {_COLUMNS_WITH_REFUNDS} {_FROM} WHERE s.enrollment_id = ? "
+        "ORDER BY s.start_date, s.id",
         (enrollment_id,),
     ).fetchall()
 
@@ -64,7 +76,8 @@ def latest(conn, enrollment_id: int):
 def starting_after(conn, enrollment_id: int, day: str) -> list:
     """The enrollment's months (not cancelled) that start after `day`, in order."""
     return conn.execute(
-        f"SELECT {_COLUMNS} {_FROM} WHERE s.enrollment_id = ? AND s.status <> 'cancelled' "
+        f"SELECT {_COLUMNS_WITH_REFUNDS} {_FROM} WHERE s.enrollment_id = ? "
+        "AND s.status <> 'cancelled' "
         "AND s.start_date > ? ORDER BY s.start_date",
         (enrollment_id, day),
     ).fetchall()

@@ -1,6 +1,8 @@
 import pytest
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEvent, QObject, Qt
+from PySide6.QtWidgets import QApplication, QTabWidget, QWidget
 
+from tadris.core.context import UserContext
 from tadris.i18n.fr import t
 from tadris.services import auth
 from tadris.ui.login_dialog import LoginDialog
@@ -114,6 +116,83 @@ def test_see_all_can_go_back_to_the_dashboard(qtbot, window):
     qtbot.mouseClick(window.back_button, Qt.MouseButton.LeftButton)
     assert current(window) == "dashboard"
     assert window.back_bar.isHidden()
+
+
+class WindowsShown(QObject):
+    """Every window shown other than `main`: a page's part shown before it has a parent
+    flashes on screen as a small window of its own."""
+
+    def __init__(self, main):
+        super().__init__()
+        self.main = main
+        self.seen: list[str] = []
+
+    def eventFilter(self, obj, event):
+        if (event.type() == QEvent.Type.Show and isinstance(obj, QWidget) and obj.isWindow()
+                and obj is not self.main):
+            self.seen.append(f"{type(obj).__name__} {obj.objectName()!r}")
+        return False
+
+
+@pytest.mark.parametrize("role", ["director", "receptionist"])
+def test_no_page_flashes_a_window_while_it_opens(qtbot, conn, director, role):
+    if role == "receptionist":
+        auth.create_user(conn, director, "accueil", "password2", "receptionist")
+    user, password = ("directeur", "password1") if role == "director" else ("accueil", "password2")
+    ctx = auth.login(conn, user, password)
+    window = MainWindow(conn, ctx)
+    qtbot.addWidget(window)
+    window.show()
+    spy = WindowsShown(window)
+    QApplication.instance().installEventFilter(spy)
+    try:
+        for _round in range(2):  # built on the first visit, refreshed on the next
+            for button in window.nav_buttons.values():
+                button.click()
+    finally:
+        QApplication.instance().removeEventFilter(spy)
+    assert spy.seen == []
+
+
+def test_no_profile_flashes_a_window_when_opened(qtbot, seeded):
+    """Detail pages must not show actions as top-level windows before their page owns them."""
+    window = MainWindow(seeded, UserContext(1, "u", "director"))
+    qtbot.addWidget(window)
+    window.show()
+    spy = WindowsShown(window)
+    QApplication.instance().installEventFilter(spy)
+    try:
+        for key in ("groups", "teachers"):
+            window.nav_buttons[key].click()
+            page = window.pages.currentWidget()
+            table = page.list.list.table
+            table.activated.emit(table.model().index(0, 0))
+            QApplication.processEvents()
+    finally:
+        QApplication.instance().removeEventFilter(spy)
+    assert spy.seen == []
+
+
+@pytest.mark.parametrize("role", ["director", "receptionist"])
+def test_no_profile_flashes_a_window_while_it_opens(qtbot, seeded, role):
+    user_id = seeded.execute("SELECT id FROM users WHERE username = 'u'").fetchone()[0]
+    window = MainWindow(seeded, UserContext(user_id=user_id, username="u", role=role))
+    qtbot.addWidget(window)
+    window.show()
+    spy = WindowsShown(window)
+    QApplication.instance().installEventFilter(spy)
+    try:
+        for key in ("students", "groups", "teachers"):
+            if key not in window.nav_buttons:
+                continue
+            window.open_item(key, 1)
+            detail = window.pages.widget(window._slots[key]).detail
+            for tabs in detail.findChildren(QTabWidget):
+                for index in range(tabs.count()):
+                    tabs.setCurrentIndex(index)
+    finally:
+        QApplication.instance().removeEventFilter(spy)
+    assert spy.seen == []
 
 
 def test_links_stack_and_unwind(window):

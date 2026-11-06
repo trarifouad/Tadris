@@ -11,13 +11,15 @@ from tadris.domain.models import PAYMENT_METHODS, Refund, RefundableMonth, Sessi
 from tadris.i18n.fr import t
 from tadris.repositories import holidays as holidays_repo
 from tadris.repositories import refunds as repo
-from tadris.services import audit, counters
+from tadris.services import audit, counters, payouts
 from tadris.services.enrollments import LIVE
 
 # Refunds in V1 (decided 2026-11-06; PLAN « Refunds in V1 », migrations 0021 and 0022). A
 # refund hands back money paid on one month paid in full, never the registration fee, for at
-# most the value of the month's sessions left. It never changes what is owed nor teacher pay:
-# the month stays open and paid; once refunded in full, the director may cancel it by hand.
+# most the value of the month's sessions left. It never changes what is owed: the month stays
+# open and paid; once refunded in full, the director may cancel it by hand. The teacher is
+# paid on what the school keeps of the month (0025): a request lets the month go from a
+# teacher's draft until it is decided, and a refund paid lowers the month's basis.
 #
 # The steps, each in one transaction with its audit line: the desk or the director asks
 # (pending), with a reason and an amount up to the maximum, counted then and kept with the
@@ -383,6 +385,7 @@ def request(conn, ctx: UserContext, subscription_id: int, amount: int, reason: s
         refund_id = repo.insert(conn, charge["id"], counted.counted_from, counted.total,
                                 counted.left, counted.value, most, amount, reason,
                                 ctx.user_id, _now())
+        payouts.drop_month(conn, ctx, charge["id"])
         audit.log(conn, ctx, "refund.request", "refunds", refund_id, new={
             "subscription_id": subscription_id, "charge_id": charge["id"], "amount": amount,
             "max_amount": most, "held_before": held, "reason": reason,
@@ -478,6 +481,7 @@ def pay_out(conn, ctx: UserContext, refund_id: int, method: str) -> str:
             left -= part
         number = refund_number(conn)
         repo.mark_paid(conn, refund_id, number, method, ctx.user_id, _now())
+        payouts.refund_paid(conn, ctx, row["charge_id"])
         audit.log(conn, ctx, "refund.pay", "refunds", refund_id,
                   old={"status": "approved"},
                   new={"status": "paid", "number": number, "amount": amount,

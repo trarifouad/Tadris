@@ -143,14 +143,15 @@ def _money(*keys: str) -> tuple[ReportColumn, ...]:
 
 
 def _shares(charges) -> dict[tuple[str, int, int], int]:
-    """The teachers' share, rounded down once per (month, group, teacher) and rate:
+    """The teachers' share of what the school keeps (price less refunds, as payouts count
+    it), rounded down once per (month, group, teacher) and rate:
     {(month, group_id, teacher_id): share}."""
     amounts: dict[tuple[str, int, int, int], int] = {}
     for c in charges:
         if c["group_id"] is None or c["percentage_bp"] is None:
             continue
         key = (c["accrual_date"][:7], c["group_id"], c["teacher_id"], c["percentage_bp"])
-        amounts[key] = amounts.get(key, 0) + c["amount"]
+        amounts[key] = amounts.get(key, 0) + c["amount"] - c["refunded"]
     shares: dict[tuple[str, int, int], int] = {}
     for (month, group_id, teacher_id, bp), amount in amounts.items():
         key = (month, group_id, teacher_id)
@@ -193,6 +194,7 @@ def revenue(conn, ctx: UserContext, year_id: int, view: str = "month") -> Report
     charged = sum(c["amount"] for c in charges)
     settled = sum(c["paid"] for c in charges)
     share = sum(shares.values())
+    kept = charged - sum(c["refunded"] for c in charges)
     received = sum(collected.values())
     handed_back = sum(refunded.values())
     tiles = (
@@ -205,14 +207,15 @@ def revenue(conn, ctx: UserContext, year_id: int, view: str = "month") -> Report
         ReportTile(t["reports.tile.left"], charged - settled,
                    note=t["reports.tile.left_note"].format(
                        rate=_percent(rate_bp(charged - settled, charged)))),
-        ReportTile(t["reports.tile.school"], charged - share,
+        ReportTile(t["reports.tile.school"], kept - share,
                    note=t["reports.tile.school_note"].format(share=dzd_inline(share))),
     )
     by_month: dict[str, list[int]] = {}
     for c in charges:
-        line = by_month.setdefault(c["accrual_date"][:7], [0, 0])
+        line = by_month.setdefault(c["accrual_date"][:7], [0, 0, 0])
         line[0] += c["amount"]
         line[1] += c["paid"]
+        line[2] += c["refunded"]
     month_share: dict[str, int] = {}
     for (month, _group, _teacher), value in shares.items():
         month_share[month] = month_share.get(month, 0) + value
@@ -220,18 +223,18 @@ def revenue(conn, ctx: UserContext, year_id: int, view: str = "month") -> Report
     chart = ReportChart(
         "bars", t["reports.chart.revenue"],
         tuple(t[f"month_short.{m.month}"] for m in months),
-        ((t["reports.tile.charged"], tuple(by_month.get(k, [0, 0])[0] for k in keys)),
+        ((t["reports.tile.charged"], tuple(by_month.get(k, [0, 0, 0])[0] for k in keys)),
          (t["reports.tile.collected"], tuple(collected.get(k, 0) for k in keys))))
     common = {"tiles": tiles, "chart": chart, "note": t["reports.revenue.note"],
               "period": t["reports.year"].format(label=year["label"])}
     if view == "month":
         rows = []
         for month, key in zip(months, keys, strict=True):
-            amount, paid = by_month.get(key, [0, 0])
+            amount, paid, handed = by_month.get(key, [0, 0, 0])
             part = month_share.get(key, 0)
             came_in, went_back = collected.get(key, 0), refunded.get(key, 0)
             rows.append((month_label(month), amount, paid, amount - paid, came_in, went_back,
-                         came_in - went_back, part, amount - part))
+                         came_in - went_back, part, amount - handed - part))
         columns = (ReportColumn(t["reports.col.month"]),) + _money(
             "charged", "settled", "left", "collected", "refunded", "net_collected",
             "teachers_share", "school_share")
@@ -246,9 +249,10 @@ def _revenue_by_group(conn, ctx: UserContext, charges, shares, year, common) -> 
     lines: dict[int | None, dict] = {}
     for c in charges:
         line = lines.setdefault(c["group_id"], {"months": 0, "charged": 0, "settled": 0,
-                                                "rates": set(), "share": 0})
+                                                "rates": set(), "share": 0, "refunded": 0})
         line["months"] += 1
         line["charged"] += c["amount"]
+        line["refunded"] += c["refunded"]
         line["settled"] += c["paid"]
         if c["percentage_bp"] is not None:
             line["rates"].add(c["percentage_bp"])
@@ -264,7 +268,7 @@ def _revenue_by_group(conn, ctx: UserContext, charges, shares, year, common) -> 
         rate = next(iter(line["rates"])) if len(line["rates"]) == 1 else None
         rows.append((title, group.teacher if group else None, line["months"],
                      line["charged"], line["settled"], line["charged"] - line["settled"],
-                     rate, line["share"], line["charged"] - line["share"]))
+                     rate, line["share"], line["charged"] - line["refunded"] - line["share"]))
         ids.append(key)
     columns = (ReportColumn(t["reports.col.group"]), ReportColumn(t["reports.col.teacher"]),
                ReportColumn(t["reports.col.months"], "number"))

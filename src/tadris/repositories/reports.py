@@ -3,21 +3,25 @@
 Money follows the payments repository: what was paid on a charge is what payments not voided
 allocated to it; a charge counts in the month of its accrual date (a month on its first day,
 the fee on the registration day); cancelled charges are left out. A month's teacher is the
-group's teacher on its first day, at their rate that day, as payouts count it.
+group's teacher on its first day, at their rate that day, as payouts count it: on its price
+less what refunds handed back of it.
 """
 
-from tadris.repositories.charge_money import paid_on
+from tadris.repositories.charge_money import handed_back_on, paid_on
 
 _PAID = paid_on()
+_REFUNDED = handed_back_on()
 
 
 def charges_between(conn, first: str, last: str) -> list:
-    """Charges not cancelled with an accrual date in [first, last]: amount, paid, the group
+    """Charges not cancelled with an accrual date in [first, last]: amount, paid, refunded
+    (handed back of it by refunds and the archive), the group
     of a month (NULL for a registration fee), and the teacher and their rate on the month's
     first day (NULL when there is none)."""
     return conn.execute(
         f"""
-        SELECT c.id, c.accrual_date, c.amount, {_PAID} AS paid, e.group_id,
+        SELECT c.id, c.accrual_date, c.amount, {_PAID} AS paid, {_REFUNDED} AS refunded,
+               e.group_id,
                gt.teacher_id, r.percentage_bp
           FROM charges c
           LEFT JOIN subscriptions s ON s.id = c.subscription_id

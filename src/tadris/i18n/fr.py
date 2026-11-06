@@ -2309,9 +2309,10 @@ t = {
         "comptent pas. Payé : ce qui a été payé sur ces mois et frais, même plus tard. "
         "Impayé : ce que les familles doivent encore. Encaissé : l'argent reçu pendant le "
         "mois. Remboursé : l'argent rendu aux familles pendant le mois, le jour où il est "
-        "sorti ; il ne change ni l'attendu, ni le payé, ni la part des enseignants. Net "
-        "encaissé : encaissé moins remboursé. Part enseignants : le prix du mois au taux de l'enseignant du groupe ce "
-        "jour-là, comme la paie. L'année compte aussi l'argent reçu l'été d'avant "
+        "sorti ; il ne change ni l'attendu, ni le payé. Net encaissé : encaissé moins "
+        "remboursé. Part enseignants : le prix du mois moins ce qui en a été remboursé, au "
+        "taux de l'enseignant du groupe ce jour-là, comme la paie. Part école : le reste de "
+        "ce que l'école garde. L'année compte aussi l'argent reçu l'été d'avant "
         "(inscriptions avant la rentrée)."
     ),
     "reports.attendance_group.title": "Présences par groupe",
@@ -2684,6 +2685,7 @@ t = {
     "audit.action.clock.behind": "Date de l'ordinateur antérieure acceptée",
     "audit.action.clock.ahead": "Date de l'ordinateur acceptée (saut en avant)",
     "audit.action.payout.drop_month": "Mois retiré d'un brouillon enseignant",
+    "audit.action.payout.refund_month": "Mois remboursé recalculé dans un brouillon enseignant",
     "audit.action.whatsapp_group.link": "Groupe WhatsApp lié",
     "audit.action.whatsapp_group.unlink": "Groupe WhatsApp retiré",
     "audit.entity.app": "Application",

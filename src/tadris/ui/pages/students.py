@@ -83,7 +83,6 @@ class StudentListView(QWidget):
         self.new_student = primary_button(t["students.new"])
         self.new_student.setDefault(False)
         self.new_student.clicked.connect(self._create)
-        self.new_student.setVisible(allowed(ctx, "student.create"))
         self.save_as = link(t["reports.save_as"])
         self.save_as.clicked.connect(self._save_as)
         self.pdf = export_button(t["reports.export_pdf"], "file-text")
@@ -96,7 +95,6 @@ class StudentListView(QWidget):
         head.addWidget(heading)
         head.addStretch()
         for widget in (self.save_as, self.pdf, self.excel):
-            widget.setVisible(exports)
             head.addWidget(widget, 0, Qt.AlignmentFlag.AlignVCenter)
         head.addSpacing(8)
         head.addWidget(self.new_student)
@@ -157,6 +155,10 @@ class StudentListView(QWidget):
         layout.setContentsMargins(24, 22, 24, 24)
         layout.setSpacing(16)
         layout.addLayout(head)
+        # Once the header is in the page: a button shown before it has a parent opens as a window.
+        self.new_student.setVisible(allowed(ctx, "student.create"))
+        for widget in (self.save_as, self.pdf, self.excel):
+            widget.setVisible(exports)
         layout.addWidget(self.banner)
         layout.addLayout(filters)
         layout.addWidget(self.table, 1)

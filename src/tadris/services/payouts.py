@@ -20,9 +20,12 @@ from tadris.repositories import payouts as repo
 from tadris.repositories import teachers as teachers_repo
 from tadris.services import audit, counters
 
-# A teacher is paid a percentage of the full price of each month (subscription charge) of
-# the groups they taught on the month's first day, whether the student paid or not (section
-# 1 of the plan; there are no discounts). A payout takes every month not paid to the
+# A teacher is paid a percentage of each month (subscription charge) of the groups they
+# taught on the month's first day, whether the student paid or not (section 1 of the plan;
+# there are no discounts): of its price less what refunds handed back of it (decided
+# 2026-11-06, 0025). A month with a refund request open waits for its decision, one refunded
+# in full is owed nothing; a refund paid on a month a draft holds works its line out again
+# (refund_paid). A payout takes every month not paid to the
 # teacher yet and over by a date: a month is paid once it is done (its end date reached; one
 # still running, or renewed ahead, waits for the payout after it ends), and a month renewed
 # late, in a period already paid, goes into the next payout instead of being lost. The date
@@ -241,16 +244,32 @@ def run(conn, ctx: UserContext, until: date) -> tuple[list[int], list[str]]:
 
 
 def drop_month(conn, ctx: UserContext, charge_id: int) -> int | None:
-    """Inside the caller's transaction, before the month's charge is cancelled: the draft
-    that counts the month lets it go, so no draft pays a month no longer owed. Its line and
-    the draft's totals are worked out again (the period stays as built); a line left without
-    a month goes, and the draft too once nothing is left to pay. Returns the draft's id, None
-    when no draft counts the month. Approved and paid payouts never change (triggers)."""
+    """Inside the caller's transaction, before the month's charge is cancelled (or a refund
+    is asked on it): the draft that counts the month lets it go, so no draft pays a month no
+    longer owed. Its line and the draft's totals are worked out again (the period stays as
+    built); a line left without a month goes, and the draft too once nothing is left to pay.
+    Returns the draft's id, None when no draft counts the month. Approved and paid payouts
+    never change (triggers)."""
+    return _rework(conn, ctx, charge_id, "payout.drop_month")
+
+
+def refund_paid(conn, ctx: UserContext, charge_id: int) -> int | None:
+    """Inside the caller's transaction, after a refund on the month was paid out: the draft
+    that counts the month counts it again on what the school now keeps of it (let go when
+    nothing is left). Returns the draft's id, None when no draft counts the month.
+    Approved and paid payouts never change: the teacher keeps what they hold."""
+    return _rework(conn, ctx, charge_id, "payout.refund_month")
+
+
+def _rework(conn, ctx: UserContext, charge_id: int, action: str) -> int | None:
     held = repo.draft_holding(conn, charge_id)
     if held is None:
         return None
     payout_id, line_id = held["payout_id"], held["line_id"]
     repo.delete_month(conn, line_id, charge_id)
+    kept = repo.kept_on(conn, charge_id) if action == "payout.refund_month" else 0
+    if kept > 0:
+        repo.insert_month(conn, line_id, charge_id, kept)
     revenue = repo.line_revenue(conn, line_id)
     if revenue:
         repo.set_line(conn, line_id, revenue, apply_rate(revenue, held["percentage_bp"]))
@@ -261,9 +280,10 @@ def drop_month(conn, ctx: UserContext, charge_id: int) -> int | None:
         repo.set_totals(conn, payout_id, base, due)
     else:
         repo.delete_draft(conn, payout_id)
-    audit.log(conn, ctx, "payout.drop_month", "teacher_payouts", payout_id,
+    audit.log(conn, ctx, action, "teacher_payouts", payout_id,
               old={"amount_due": held["amount_due"]},
-              new={"charge_id": charge_id, "amount_due": due, "deleted": due <= 0})
+              new={"charge_id": charge_id, "amount_due": due, "deleted": due <= 0,
+                   **({"kept": kept} if action == "payout.refund_month" else {})})
     return payout_id
 
 

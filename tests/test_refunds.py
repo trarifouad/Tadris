@@ -24,6 +24,7 @@ from tadris.services import (
     groups,
     holidays,
     payments,
+    payouts,
     refunds,
     registrations,
     rooms,
@@ -235,7 +236,7 @@ def test_a_month_without_a_session(conn, school):
 
 def test_a_partial_refund(conn, school):
     """2 000 of the 3 000 left go back. The month stays paid and owes nothing; it counts for
-    the teacher as before; it cannot be cancelled (4 000 kept)."""
+    the teacher on what the school keeps; it cannot be cancelled (4 000 kept)."""
     payment = paid_september(school)
     refund = ask(school, school.september, 2000)
     assert refunds.get(conn, school.desk, refund).status == "pending"
@@ -255,7 +256,59 @@ def test_a_partial_refund(conn, school):
         subscriptions.cancel(conn, school.boss, school.september, "Départ")
     owed = payouts_repo.owed(conn, school.teacher, "2026-10-01")
     assert [(row["charge_id"], row["amount"]) for row in owed] == [
-        (september.charge_id, 6000)]  # the teacher's month, at its full price
+        (september.charge_id, 4000)]  # the teacher's month, less what went back
+
+
+def test_a_month_with_a_request_open_waits_for_the_teacher(conn, school):
+    """Asked, the month leaves the teacher's draft and is owed nothing until decided; once
+    paid out, it is owed again on what the school keeps."""
+    paid_september(school)
+    school.today.day = date(2026, 10, 1)
+    payouts.build_draft(conn, school.boss, school.teacher, date(2026, 10, 1))
+    refund = ask(school, school.september, 2000, on=date(2026, 9, 16))
+    school.today.day = date(2026, 10, 1)
+    assert payouts_repo.draft_of(conn, school.teacher) is None  # its only month went
+    assert payouts_repo.owed(conn, school.teacher, "2026-10-01") == []
+    done(school, refund)
+    [row] = payouts_repo.owed(conn, school.teacher, "2026-10-01")
+    assert row["amount"] == 4000
+    payout = payouts.build_draft(conn, school.boss, school.teacher, date(2026, 10, 1))
+    assert payouts.get(conn, school.boss, payout).amount_due == 2400  # 60 % of 4 000
+
+
+def test_an_approved_request_still_holds_the_month_back(conn, school):
+    paid_september(school)
+    refund = ask(school, school.september, 2000)
+    refunds.approve(conn, school.boss, refund)
+    school.today.day = date(2026, 10, 1)
+    assert payouts_repo.owed(conn, school.teacher, "2026-10-01") == []
+    refunds.pay_out(conn, school.boss, refund, "cash")
+    payout = payouts.build_draft(conn, school.boss, school.teacher, date(2026, 10, 1))
+    [line] = payouts.lines(conn, school.boss, payout)
+    assert (line.revenue_basis, line.amount) == (4000, 2400)
+
+
+def test_a_refund_paid_on_a_month_a_draft_holds_lowers_its_line(conn, school, monkeypatch):
+    """A draft built before 0025 may still hold a month with a request open (the request
+    did not let it go then): paid out, the line counts what the school now keeps."""
+    paid_september(school)
+    school.today.day = date(2026, 10, 1)
+    payout = payouts.build_draft(conn, school.boss, school.teacher, date(2026, 10, 1))
+    with monkeypatch.context() as patch:
+        patch.setattr(payouts, "drop_month", lambda *args: None)
+        refund = ask(school, school.september, 2000)
+    refunds.approve(conn, school.boss, refund)
+    refunds.pay_out(conn, school.boss, refund, "cash")
+    [line] = payouts.lines(conn, school.boss, payout)
+    assert (line.revenue_basis, line.amount) == (4000, 2400)
+    assert payouts.get(conn, school.boss, payout).amount_due == 2400
+
+
+def test_a_month_refunded_in_full_pays_the_teacher_nothing(conn, school):
+    october = paid_october(school)
+    done(school, ask(school, october, 6000))
+    owed = payouts_repo.owed(conn, school.teacher, "2026-11-01")
+    assert month(school, october).charge_id not in {row["charge_id"] for row in owed}
 
 
 def test_a_second_request_after_a_partial_refund(conn, school):

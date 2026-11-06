@@ -51,7 +51,6 @@ class TimetablePage(QWidget):
         self.new_slot = primary_button(t["timetable.new"])
         self.new_slot.setDefault(False)
         self.new_slot.clicked.connect(lambda: self._create())
-        self.new_slot.setVisible(self.plans)
         head = QHBoxLayout()
         head.addWidget(heading)
         head.addStretch()
@@ -93,6 +92,8 @@ class TimetablePage(QWidget):
         layout.setContentsMargins(24, 22, 24, 24)
         layout.setSpacing(16)
         layout.addLayout(head)
+        # Once the header is in the page: a button shown before it has a parent opens as a window.
+        self.new_slot.setVisible(self.plans)
         layout.addLayout(controls)
         layout.addWidget(self.error)
         layout.addWidget(self.hint)

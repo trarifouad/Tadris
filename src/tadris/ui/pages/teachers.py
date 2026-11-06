@@ -63,7 +63,6 @@ class TeacherListView(QWidget):
         self.new_teacher = primary_button(t["teachers.new"])
         self.new_teacher.setDefault(False)
         self.new_teacher.clicked.connect(self._create)
-        self.new_teacher.setVisible(self.sees_rates)
         head = QHBoxLayout()
         head.addWidget(heading)
         head.addStretch()
@@ -99,6 +98,8 @@ class TeacherListView(QWidget):
         layout.setContentsMargins(24, 22, 24, 24)
         layout.setSpacing(16)
         layout.addLayout(head)
+        # Once the header is in the page: a button shown before it has a parent opens as a window.
+        self.new_teacher.setVisible(self.sees_rates)
         layout.addLayout(filters)
         layout.addWidget(self.list, 1)
         layout.addWidget(self.count)
@@ -171,8 +172,6 @@ class TeacherDetailView(QWidget):
         self.deactivate.clicked.connect(self._deactivate)
         self.reactivate = self.header.add_action(QPushButton(t["action.activate"]))
         self.reactivate.clicked.connect(self._reactivate)
-        for button in (self.edit, self.deactivate, self.reactivate):
-            button.setVisible(manages)
 
         self.groups = ListSection([
             t["groups.col.name"], t["groups.col.subject"], t["groups.col.level"],
@@ -200,6 +199,10 @@ class TeacherDetailView(QWidget):
         layout.addWidget(self.error)
         layout.addWidget(self.header)
         layout.addWidget(self.tabs, 1)
+        # The header must belong to the detail page before its action buttons are shown.
+        # Otherwise Qt can briefly treat an unowned button as a top-level window.
+        for button in (self.edit, self.deactivate, self.reactivate):
+            button.setVisible(manages)
         self.refresh()
 
     def refresh(self) -> None:
@@ -271,4 +274,3 @@ class TeacherDetailView(QWidget):
         self.error.clear_error()
         self.refresh()
         toast(self, t[message_key].format(name=self.teacher.full_name))
-

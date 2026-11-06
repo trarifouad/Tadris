@@ -65,7 +65,6 @@ class GroupListView(QWidget):
         self.new_group = primary_button(t["groups.new"])
         self.new_group.setDefault(False)
         self.new_group.clicked.connect(self._create)
-        self.new_group.setVisible(self.manages)
         head = QHBoxLayout()
         head.addWidget(heading)
         head.addStretch()
@@ -111,6 +110,8 @@ class GroupListView(QWidget):
         layout.setContentsMargins(24, 22, 24, 24)
         layout.setSpacing(16)
         layout.addLayout(head)
+        # Once the header is in the page: a button shown before it has a parent opens as a window.
+        self.new_group.setVisible(self.manages)
         layout.addLayout(filters)
         layout.addWidget(self.list, 1)
         layout.addWidget(self.count)

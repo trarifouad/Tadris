@@ -534,10 +534,8 @@ class ContactsTab(QWidget):
         toolbar.setSpacing(8)
         for button in (self.edit, self.make_main, self.unlink):
             toolbar.addWidget(button)
-            button.setVisible(can_edit)
         toolbar.addStretch()
         toolbar.addWidget(self.add)
-        self.add.setVisible(can_edit)
 
         self.table = ruled_table([
             t["contacts.col.name"],
@@ -560,6 +558,9 @@ class ContactsTab(QWidget):
         layout.setSpacing(12)
         layout.addWidget(self.error)
         layout.addLayout(toolbar)
+        # Once the toolbar is in the tab: a button shown before it has a parent opens as a window.
+        for button in (self.edit, self.make_main, self.unlink, self.add):
+            button.setVisible(can_edit)
         layout.addWidget(self.table, 1)
         layout.addWidget(self.empty)
         layout.addStretch(0)

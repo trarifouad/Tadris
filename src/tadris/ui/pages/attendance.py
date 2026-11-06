@@ -287,7 +287,6 @@ class SessionCard(QFrame):
         policy = self.more.sizePolicy()
         policy.setRetainSizeWhenHidden(True)
         self.more.setSizePolicy(policy)
-        self.more.setVisible(bool(self.actions_by_key))
 
         line = QHBoxLayout(self)
         line.setContentsMargins(14, 14, 14, 14)
@@ -300,6 +299,7 @@ class SessionCard(QFrame):
         main_box = fixed(self.main or QWidget(), 148, Qt.AlignmentFlag.AlignRight)
         line.addWidget(main_box)
         line.addWidget(self.more, 0, Qt.AlignmentFlag.AlignVCenter)
+        self.more.setVisible(bool(self.actions_by_key))  # once in the card: not a window
 
     def _main_button(self, today: str, manages: bool) -> QPushButton | None:
         """Faire l'appel (in colour when it is time), Voir l'appel, Voir la liste for a day to

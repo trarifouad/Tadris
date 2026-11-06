@@ -281,10 +281,11 @@ class ReportView(QWidget):
         self.report = report
         for widget, tile in zip(self.tiles, report.tiles, strict=False):
             widget.show_tile(tile)
-        for i, widget in enumerate(self.tiles):
-            widget.setVisible(i < len(report.tiles))
         charted = self._show_chart(report)
         self._place_tiles(charted)
+        # Once in the grid: a tile shown before it has a parent opens as a window.
+        for i, widget in enumerate(self.tiles):
+            widget.setVisible(i < len(report.tiles))
         self._show_table(report)
         self.note.setText(report.note)
         self.note.setVisible(bool(report.note))

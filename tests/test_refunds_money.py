@@ -133,7 +133,8 @@ def _recettes(conn, s) -> dict[str, tuple]:
 
 def test_recettes_by_month(conn, school):
     """September: attendu 7 000 (fee and month), payé 7 000, encaissé 7 000, remboursé
-    2 000, net 5 000; the teacher's 60 % of 6 000 and the school's part do not move."""
+    2 000, net 5 000; the teacher's 60 % of what the school keeps of the month (4 000), the
+    school the rest (5 000 kept less 2 400)."""
     paid_september(school)
     refund(school)
     report = reports.revenue(conn, school.boss, school.year, "month")
@@ -142,8 +143,8 @@ def test_recettes_by_month(conn, school):
                                                             "Net encaissé")
     assert {collected.kind, refunded.kind, net.kind} == {"money"}
     rows = {row[0]: row[1:] for row in report.rows}
-    assert rows["Septembre 2026"] == (7000, 7000, 0, 7000, 2000, 5000, 3600, 3400)
-    assert report.total == ("Total", 7000, 7000, 0, 7000, 2000, 5000, 3600, 3400)
+    assert rows["Septembre 2026"] == (7000, 7000, 0, 7000, 2000, 5000, 2400, 2600)
+    assert report.total == ("Total", 7000, 7000, 0, 7000, 2000, 5000, 2400, 2600)
     [_, received, _, _] = report.tiles
     assert (received.label, received.value) == ("Encaissé", 7000)
     assert received.note == t["reports.tile.collected_refunds"].format(
@@ -177,13 +178,17 @@ def test_a_refund_counts_in_the_month_the_money_went_back(conn, school):
     assert rows["Octobre 2026"][3:6] == (0, 2000, -2000)
 
 
-def test_refunds_never_change_what_teachers_earn(conn, school):
+def test_a_refund_lowers_what_the_teacher_earns(conn, school):
+    """The teacher's share is 60 % of what the school keeps of the month: 6 000, then 4 000
+    once 2 000 went back. The rest of the line does not move."""
     paid_september(school)
     gone(school)  # the leave changes who is in the group, not what the teacher earns
     before = reports.teacher_summary(conn, school.boss, school.year)
     refund(school)
     after = reports.teacher_summary(conn, school.boss, school.year)
-    assert (after.rows, after.total, after.tiles) == (before.rows, before.total, before.tiles)
+    [was], [now] = before.rows, after.rows
+    assert (was[5], now[5]) == (3600, 2400)
+    assert was[:5] + was[6:] == now[:5] + now[6:]
 
 
 def test_without_refunds_the_tile_says_what_it_said(conn, school):

@@ -1,17 +1,24 @@
 """SQL for teacher payouts: a payout (teacher, period, totals, status), its lines (one per
 group and rate) and the months (subscription charges) each line counts.
 
-A month is owed to the teacher of its group on its first day (accrual date), at the full
-price, whether the student paid or not, once it is over (its end date reached); it is
-counted in one payout only (unique index).
+A month is owed to the teacher of its group on its first day (accrual date), on its price
+less what refunds handed back of it, whether the student paid or not, once it is over (its
+end date reached) and no refund request on it is still open; it is counted in one payout
+only (unique index).
 Approved and paid payouts never change (triggers).
 """
 
+from tadris.repositories.charge_money import handed_back_on
+
+# What the school keeps of the month's price: the teacher's basis (0025).
+_KEPT = f"c.amount - {handed_back_on()}"
+
 # A month owed to a teacher: an open subscription charge, in no payout yet, of a group the
 # teacher taught on the month's first day, over by :until (decided 2026-11-06: a teacher is
-# paid for a month once it is done, no longer once it has started).
-_OWED = """
-    SELECT c.id AS charge_id, c.amount, c.accrual_date, c.description,
+# paid for a month once it is done, no longer once it has started). A month with a refund
+# request pending or approved waits for its decision; one refunded in full is owed nothing.
+_OWED = f"""
+    SELECT c.id AS charge_id, {_KEPT} AS amount, c.accrual_date, c.description,
            e.group_id, g.name AS group_name, sb.name AS subject, l.name AS level,
            e.student_id, st.student_number, st.last_name, st.first_name, gt.teacher_id
       FROM charges c
@@ -27,6 +34,9 @@ _OWED = """
      WHERE c.status = 'open'
        AND NOT EXISTS (SELECT 1 FROM payout_line_charges plc WHERE plc.charge_id = c.id)
        AND s.end_date <= :until
+       AND NOT EXISTS (SELECT 1 FROM refunds r WHERE r.charge_id = c.id
+                                                 AND r.status IN ('pending', 'approved'))
+       AND {_KEPT} > 0
 """
 
 
@@ -221,13 +231,19 @@ def draft_holding(conn, charge_id: int):
     ).fetchone()
 
 
+def kept_on(conn, charge_id: int) -> int:
+    """What the school keeps of the month's price now: the teacher's basis."""
+    return conn.execute(f"SELECT {_KEPT} FROM charges c WHERE c.id = ?",
+                        (charge_id,)).fetchone()[0]
+
+
 def delete_month(conn, line_id: int, charge_id: int) -> None:
     conn.execute("DELETE FROM payout_line_charges WHERE payout_line_id = ? AND charge_id = ?",
                  (line_id, charge_id))
 
 
 def line_revenue(conn, line_id: int) -> int:
-    """The full prices of the months a line still counts."""
+    """The basis (price less refunds) of the months a line still counts."""
     return conn.execute("SELECT COALESCE(SUM(amount), 0) FROM payout_line_charges "
                         "WHERE payout_line_id = ?", (line_id,)).fetchone()[0]
 

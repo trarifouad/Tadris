@@ -283,7 +283,6 @@ class PaymentsPage(QWidget):
         title.setObjectName("pageTitle")
         self.receive = primary_button(t["payments_tab.receive"])
         self.receive.setDefault(False)
-        self.receive.setVisible(allowed(ctx, "payment.record"))
         self.receive.clicked.connect(
             lambda: self._after(pick_and_collect(self, self._conn, self._ctx)))
         head = QHBoxLayout()
@@ -311,6 +310,8 @@ class PaymentsPage(QWidget):
         layout.setContentsMargins(24, 20, 24, 24)
         layout.setSpacing(12)
         layout.addLayout(head)
+        # Once the header is in the page: a button shown before it has a parent opens as a window.
+        self.receive.setVisible(allowed(ctx, "payment.record"))
         layout.addWidget(intro)
         layout.addWidget(self.tabs, 1)
         self.refresh()

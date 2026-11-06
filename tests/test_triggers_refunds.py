@@ -522,7 +522,7 @@ def test_a_database_already_at_23_gains_never_started():
                         f"PRAGMA user_version = {version};\nCOMMIT;")
     cols = {row[1] for row in c.execute("PRAGMA table_info(enrollments)")}
     assert "never_started" not in cols
-    assert migrate(c) == 24
+    assert migrate(c) == 25
     cols = {row[1] for row in c.execute("PRAGMA table_info(enrollments)")}
     assert "never_started" in cols
     att = c.execute("SELECT sql FROM sqlite_master WHERE name='trg_attendance_ins'").fetchone()[0]
@@ -583,7 +583,7 @@ def test_places_a_closure_ended_before_their_entry_are_marked_never_started():
       VALUES(1,1,1,'2026-10-01','left','2026-10-01',1),
             (2,1,2,'2026-09-01','left','2026-09-20',1);
     """)
-    assert migrate(c) == 24
+    assert migrate(c) == 25
     assert [tuple(r) for r in c.execute(
         "SELECT student_id, never_started FROM enrollments ORDER BY id")] == [(1, 1), (2, 0)]
 

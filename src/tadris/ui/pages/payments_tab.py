@@ -47,7 +47,6 @@ class PaymentsTab(QWidget):
         self.receive = primary_button(t["payments_tab.receive"])
         self.receive.setDefault(False)
         self.receive.clicked.connect(lambda: self._receive(self.dues.ticked_ids() or None))
-        self.receive.setVisible(allowed(ctx, "payment.record"))
         self.head = QHBoxLayout()
         self.head.setSpacing(12)
         self.head.addStretch()
@@ -79,6 +78,8 @@ class PaymentsTab(QWidget):
         layout.setContentsMargins(0, 16, 0, 0)
         layout.setSpacing(16)
         layout.addLayout(self.head)
+        # Once the header is in the tab: a button shown before it has a parent opens as a window.
+        self.receive.setVisible(allowed(ctx, "payment.record"))
         layout.addWidget(self.dues)
         layout.addWidget(self.history, 1)
         self.refresh()

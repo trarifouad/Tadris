@@ -843,8 +843,8 @@ class DashboardPage(QWidget):
                                (self.collect_payment, "payment.record")):
             button.setIconSize(QSize(22, 16))  # 16 px drawn, 6 px before the label
             button.setCursor(Qt.CursorShape.PointingHandCursor)
-            button.setVisible(allowed(self._ctx, action))
             line.addWidget(button)
+            button.setVisible(allowed(self._ctx, action))
         return bar
 
     def resizeEvent(self, event) -> None:

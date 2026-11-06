@@ -646,11 +646,12 @@ def test_void_of_an_unknown_payment(conn, director):
 
 @pytest.mark.parametrize("payout_status", ["draft", "approved", "paid"])
 def test_void_after_a_teacher_payout_counted_the_month(conn, director, school, amine,
-                                                       payout_status):
+                                                       payout_status, monkeypatch):
     """A payment voided after a payout counted its month: the payout pays the month's full
     price whether it was paid or not, so it does not change; the month is owed again."""
     payment_id = payments.record(conn, director, amine, 4000, "cash")
-    payout_id = payouts.build_draft(conn, director, school.teacher, TODAY)
+    move_to(monkeypatch, date(2026, 11, 18))  # the month 18/10 -> 18/11 is over
+    payout_id = payouts.build_draft(conn, director, school.teacher, date(2026, 11, 18))
     if payout_status != "draft":
         payouts.approve(conn, director, payout_id)
     if payout_status == "paid":
@@ -847,6 +848,9 @@ def test_history_and_lines(conn, director, amine):
 
 # ----- receipts -----
 
+GROUP = "M1 · Maths 4AM"  # the receipt names a month by its group
+
+
 def receipt_of(conn, ctx, payment_id) -> int:
     return payments.get(conn, ctx, payment_id).receipt_id
 
@@ -861,14 +865,16 @@ def test_receipt_content(conn, director, receptionist, amine):
                                                                   payment_id))
     assert (doc.school.name, doc.number, doc.copy_mark, doc.stamp) == (
         "École Ennour", "R2026-00001", "", "PAYÉ")
+    assert doc.paid_at.startswith("Le 18/10/2026 à ")
     assert [label for label, _value in doc.details] == [
-        "Date", "Élève", "Payé par", "Mode de paiement", "Reçu par"]
-    assert doc.details[1][1] == "Benali Amine (N° 2026-0001)"
-    assert doc.details[3][1] == "Espèces"
-    assert doc.lines == [("Frais d'inscription 2026-2027", "1 000 DA"),
-                         ("Abonnement M1 du 18/10/2026 au 18/11/2026", "1 500 DA")]
-    assert doc.totals == [("Total payé", "2 500 DA"),
-                          ("Reste à payer au 18/10/2026", "1 500 DA")]
+        "Élève", "Payé par", "Paiement", "Reçu par"]
+    assert doc.details[0][1] == "Benali Amine (N° 2026-0001)"
+    assert doc.details[2][1] == "Espèces"
+    # A month: its group, its dates under it; a fee: its description.
+    assert doc.lines == [("Frais d'inscription 2026-2027", "", "1 000 DA"),
+                         (GROUP, "Du 18/10/2026 au 18/11/2026", "1 500 DA")]
+    assert doc.total == ("Total payé", "2 500 DA")
+    assert doc.balance == [("Reste à payer", "1 500 DA")]  # printed the day it was paid
     assert doc.voided_note == ""
     assert (doc.school.header, doc.note) == ("", "")  # nothing set: nothing printed
 
@@ -889,11 +895,11 @@ def test_receipt_of_months_paid_ahead(conn, director, amine):
     enrollment_id = enrollment_of(conn, director, amine)
     payment_id = payments.record(conn, director, amine, 10000, "cash", ahead={enrollment_id: 2})
     doc = printing.receipt_content(conn, director, receipt_of(conn, director, payment_id))
-    assert doc.lines == [("Frais d'inscription 2026-2027", "1 000 DA"),
-                         ("Abonnement M1 du 18/10/2026 au 18/11/2026", "3 000 DA"),
-                         ("Abonnement M1 du 18/11/2026 au 18/12/2026", "3 000 DA"),
-                         ("Abonnement M1 du 18/12/2026 au 18/01/2027", "3 000 DA")]
-    assert doc.totals == [("Total payé", "10 000 DA"), ("Reste à payer au 18/10/2026", "0 DA")]
+    assert doc.lines == [("Frais d'inscription 2026-2027", "", "1 000 DA"),
+                         (GROUP, "Du 18/10/2026 au 18/11/2026", "3 000 DA"),
+                         (GROUP, "Du 18/11/2026 au 18/12/2026", "3 000 DA"),
+                         (GROUP, "Du 18/12/2026 au 18/01/2027", "3 000 DA")]
+    assert (doc.total, doc.balance) == (("Total payé", "10 000 DA"), [("Reste à payer", "0 DA")])
 
 
 def test_receipt_printed_again_lists_the_same_lines(conn, director, amine, monkeypatch):
@@ -901,9 +907,10 @@ def test_receipt_printed_again_lists_the_same_lines(conn, director, amine, monke
     move_to(monkeypatch, date(2026, 10, 25))
     payments.record(conn, director, amine, 1500, "cash")
     doc = printing.receipt_content(conn, director, receipt_of(conn, director, first))
-    assert doc.lines == [("Frais d'inscription 2026-2027", "1 000 DA"),
-                         ("Abonnement M1 du 18/10/2026 au 18/11/2026", "1 500 DA")]
-    assert doc.totals == [("Total payé", "2 500 DA"), ("Reste à payer au 25/10/2026", "0 DA")]
+    assert doc.lines == [("Frais d'inscription 2026-2027", "", "1 000 DA"),
+                         (GROUP, "Du 18/10/2026 au 18/11/2026", "1 500 DA")]
+    assert doc.total == ("Total payé", "2 500 DA")
+    assert doc.balance == [("Reste à payer au 25/10/2026", "0 DA")]  # printed a later day
 
 
 def test_receipt_lines_of_a_payment_from_before_0016(conn, director, amine):
@@ -923,8 +930,7 @@ def test_receipt_puts_the_months_to_come_apart(conn, director, amine):
     subscriptions.renew(conn, director, october.id)  # 18/11 -> 18/12, not due yet
     payment_id = payments.record(conn, director, amine, 4000, "cash")
     doc = printing.receipt_content(conn, director, receipt_of(conn, director, payment_id))
-    assert doc.totals == [("Total payé", "4 000 DA"), ("Reste à payer au 18/10/2026", "0 DA"),
-                          ("À venir (pas encore dû)", "3 000 DA")]
+    assert doc.balance == [("Reste à payer", "0 DA"), ("À venir (pas encore dû)", "3 000 DA")]
 
 
 def test_voided_receipt(conn, director, amine):

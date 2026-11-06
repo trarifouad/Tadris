@@ -22,9 +22,10 @@ from tadris.services import audit, counters
 # A teacher is paid a percentage of the full price of each month (subscription charge) of
 # the groups they taught on the month's first day, whether the student paid or not (section
 # 1 of the plan; there are no discounts). A payout takes every month not paid to the
-# teacher yet up to a date, today at most: a month is paid once it has started (one
-# renewed ahead waits), and a month renewed late, starting in a period already paid, goes
-# into the next payout instead of being lost. One line per group and rate, each at the
+# teacher yet and over by a date, today at most: a month is paid once it is done (its end
+# date reached; one still running, or renewed ahead, waits for the payout after it ends),
+# and a month renewed late, in a period already paid, goes into the next payout instead of
+# being lost. One line per group and rate, each at the
 # teacher's rate on the months' first day (snapshot), its share rounded down once.
 #
 # Director only. A draft can be built again (it is replaced) or deleted until approved;
@@ -122,8 +123,8 @@ def for_teacher(conn, ctx: UserContext, teacher_id: int) -> list[Payout]:
 # ----- building a draft -----
 
 def _check_until(until: date) -> str:
-    """A payout counts the months started by the day it is built: up to today at most. A
-    month to come (renewed ahead) goes into the payout after it starts, nothing is lost."""
+    """A payout counts the months over by the day it is built: up to today at most. A month
+    still running (or renewed ahead) goes into the payout after it ends, nothing is lost."""
     today = dates.today()
     if until > today:
         raise ValidationError(t["payout.until_too_late"].format(
@@ -200,8 +201,8 @@ def _build(conn, ctx: UserContext, teacher_id: int, until: str) -> int:
 
 
 def build_draft(conn, ctx: UserContext, teacher_id: int, until: date) -> int:
-    """The teacher's draft for every month not paid yet up to `until` (today at most: only
-    months already started). Their previous draft, if any, is replaced."""
+    """The teacher's draft for every month not paid yet and over by `until` (today at most:
+    only months already done). Their previous draft, if any, is replaced."""
     require(ctx, "payout.manage")
     end = _check_until(until)
     with atomic(conn):
@@ -267,7 +268,7 @@ def refresh_draft(conn, ctx: UserContext, teacher_id: int, since: str) -> int | 
     month counts at the rate now set; a draft that can no longer be built goes. Returns the
     draft's id (None without one). Approved and paid payouts never change."""
     draft = repo.draft_of(conn, teacher_id)
-    if draft is None or draft["period_end"] < since:
+    if draft is None or not repo.holds_month_since(conn, draft["id"], since):
         return None if draft is None else draft["id"]
     try:
         return _build(conn, ctx, teacher_id, draft["period_end"])

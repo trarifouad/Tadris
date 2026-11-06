@@ -26,6 +26,7 @@ _TRIGGER_MESSAGES = (
     ("registration is cancelled", "db.registration_cancelled"),
     ("registration school year differs from group", "db.year_mismatch"),
     ("registration level differs from group level", "db.level_mismatch"),
+    ("open level has students of other levels", "db.level_open_in_use"),
     ("group is closed", "db.group_closed"),
     ("group already started", "db.group_started"),  # dropped in 0009
     ("switched enrollment belongs to another student", "db.switch_other_student"),

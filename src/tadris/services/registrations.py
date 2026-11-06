@@ -18,7 +18,8 @@ from tadris.services import audit, catalog, settings
 # it. Registrations happen in the open year only. The fee is a snapshot: the default from
 # settings or an amount typed at the desk; a fee above 0 creates the registration charge.
 # There is one registration per student and year: a cancelled one is made again in place,
-# with a new fee charge.
+# with a new fee charge. The level changes while the student is in no group of a level that
+# is not open: the groups of an open level (« Tous niveaux ») take any level and stay.
 
 
 def _to_registration(row) -> Registration:
@@ -27,7 +28,7 @@ def _to_registration(row) -> Registration:
         year_label=row["year_label"], level_id=row["level_id"], level=row["level"],
         fee_amount=row["fee_amount"], status=row["status"], registered_at=row["registered_at"],
         live_enrollments=row["live_enrollments"], fee_charge_id=row["fee_charge_id"],
-        fee_paid=row["fee_paid"],
+        fee_paid=row["fee_paid"], level_enrollments=row["level_enrollments"],
     )
 
 
@@ -108,24 +109,26 @@ def register(conn, ctx: UserContext, student_id: int, level_id: int,
         return registration_id
 
 
-def _require_changeable(conn, registration_id: int):
-    """The row of an active registration in the open year, with no live enrollment."""
+def _require_changeable(conn, registration_id: int, blocking: str = "live_enrollments"):
+    """The row of an active registration in the open year, with no live enrollment (blocking:
+    "level_enrollments" counts only the groups of a level that is not open)."""
     row = _require_row(conn, registration_id)
     if row["status"] != "active":
         raise BusinessRuleError(t["registration.already_cancelled"])
     if row["year_status"] != "open":
         raise BusinessRuleError(t["registration.year_closed"].format(label=row["year_label"]))
-    if row["live_enrollments"]:
+    if row[blocking]:
         raise BusinessRuleError(t["registration.has_live_enrollments"].format(
-            count=row["live_enrollments"]))
+            count=row[blocking]))
     return row
 
 
 def change_level(conn, ctx: UserContext, registration_id: int, level_id: int) -> None:
-    """Correct the level while the student is in no group of the year."""
+    """Correct the level while the student is in no group of the year, the groups of an open
+    level apart (they take any level)."""
     require(ctx, "registration.create")
     with atomic(conn):
-        row = _require_changeable(conn, registration_id)
+        row = _require_changeable(conn, registration_id, "level_enrollments")
         if row["level_id"] == level_id:
             raise ValidationError(t["registration.same_level"])
         catalog.require_active(conn, "level", level_id)

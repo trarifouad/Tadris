@@ -1,6 +1,7 @@
 """Small input widgets and the readers that turn their text into domain values."""
 
 from PySide6.QtCore import QPoint, QSize, Qt
+from PySide6.QtGui import QIntValidator
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -13,6 +14,7 @@ from PySide6.QtWidgets import (
 )
 
 from tadris.core.dates import parse_time
+from tadris.core.errors import ValidationError
 from tadris.core.money import format_dzd, parse_dzd
 from tadris.core.percent import format_percent, parse_percent
 from tadris.i18n.fr import t
@@ -47,6 +49,24 @@ def percent_edit(bp: int | None = None) -> QLineEdit:
 
 def read_percent(edit: QLineEdit) -> int:
     return parse_percent(edit.text())
+
+
+def count_edit(value: int | None = None, placeholder: int = 12,
+               maximum: int = 500) -> QLineEdit:
+    """A count typed (places): empty, `placeholder` shows as a hint until one is typed."""
+    edit = QLineEdit("" if value is None else str(value))
+    edit.setValidator(QIntValidator(1, maximum, edit))
+    edit.setPlaceholderText(str(placeholder))
+    return edit
+
+
+def read_count(edit: QLineEdit) -> int:
+    """The count typed; refused when empty or outside the field's range."""
+    if not edit.hasAcceptableInput():
+        validator = edit.validator()
+        raise ValidationError(t["count.invalid"].format(low=validator.bottom(),
+                                                        high=validator.top()))
+    return int(edit.text())
 
 
 def count_spin(value: int = 12, maximum: int = 500) -> QSpinBox:

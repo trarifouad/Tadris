@@ -78,8 +78,9 @@ t = {
     ),
     "enrollment.level_mismatch": (
         "Le groupe {group} est de niveau {group_level}, l'élève est inscrit en {level}. Un élève "
-        "ne suit que des groupes de son niveau. Pour changer de niveau, retirez-le de ses groupes "
-        "puis utilisez « Changer le niveau » (fiche de l'élève, partie Inscription)."
+        "ne suit que des groupes de son niveau, et ceux d'un niveau ouvert à tous (Paramètres → "
+        "Structure → Niveaux). Pour changer de niveau, retirez-le de ses groupes puis utilisez "
+        "« Changer le niveau » (fiche de l'élève, partie Inscription)."
     ),
     "enrollment.time_clash": (
         "Conflit d'horaire : {group} a cours le {day} de {start} à {end}, et l'élève est déjà en "
@@ -167,7 +168,7 @@ t = {
     "payout_slip.title": "Paiement enseignant",
     "payout_slip.teacher": "Enseignant",
     "payout_slip.period": "Période",
-    "payout_slip.period_value": "Mois commencés du {start} au {end}",
+    "payout_slip.period_value": "du {start} au {end}",
     "payout_slip.status": "Statut",
     "payout_slip.approved": "Approuvé",
     "payout_slip.by_on": "par {user} le {date}",
@@ -198,14 +199,14 @@ t = {
     "payout.not_found": "Paiement enseignant introuvable.",
     "payouts.caption": (
         "Chaque enseignant reçoit son taux du prix complet de chaque mois de ses groupes, payé "
-        "ou non par l'élève. Un paiement prend tous les mois pas encore payés jusqu'à la date "
-        "choisie, même un mois renouvelé en retard."
+        "ou non par l'élève, une fois le mois terminé. Un paiement prend tous les mois terminés "
+        "et pas encore payés à la date choisie, même un mois renouvelé en retard."
     ),
     "payouts.until": "Payer jusqu'au",
     "payouts.run": "Préparer les brouillons",
     "payouts.run_done": "{count} brouillon(s) préparé(s)",
     "payouts.due_title": "À préparer",
-    "payouts.due_empty": "Aucun mois à payer jusqu'à cette date.",
+    "payouts.due_empty": "Aucun mois terminé à payer à cette date.",
     "payouts.has_draft": "Brouillon à refaire",
     "payouts.prepare": "Préparer le brouillon",
     "payouts.prepared": "Brouillon préparé pour {teacher}",
@@ -240,7 +241,7 @@ t = {
     "payouts.title": "Paiements enseignants",
     "payouts.back": "← Paiements enseignants",
     "payouts.detail_title": "{teacher} · {amount}",
-    "payouts.detail_period": "Mois commencés {period} · {months} mois · recettes {revenue}",
+    "payouts.detail_period": "Mois {period} · {months} mois · recettes {revenue}",
     "payouts.tab.groups": "Groupes",
     "payouts.tab.months": "Détail par élève",
     "payouts.col.teacher": "Enseignant",
@@ -263,14 +264,16 @@ t = {
     "pay_payout.submit": "Verser {amount}",
     "pay_payout.method": "Payé en",
     "pay_payout.caption": (
-        "Verser {amount} à {teacher} pour les mois commencés {period}. Le bon s'imprime pour "
-        "être signé par l'enseignant."
+        "Verser {amount} à {teacher} pour les mois {period}. Le bon s'imprime pour être signé "
+        "par l'enseignant."
     ),
     "payout.until_too_late": (
-        "Un paiement compte les mois déjà commencés : au plus tard jusqu'à aujourd'hui "
-        "({date}). Un mois à venir ira dans le paiement suivant."
+        "Un paiement compte les mois déjà terminés : au plus tard jusqu'à aujourd'hui "
+        "({date}). Un mois pas encore terminé ira dans un paiement suivant."
     ),
-    "payout.nothing": "Rien à payer à {teacher} jusqu'au {date} : aucun mois non payé.",
+    "payout.nothing": (
+        "Rien à payer à {teacher} au {date} : aucun mois terminé et pas encore payé."
+    ),
     "payout.no_rate": (
         "{teacher} n'a pas de taux le {date}. Dans la page Enseignants, « Modifier » : faites "
         "commencer son taux le {date} (ou plus tôt), puis recommencez."
@@ -346,21 +349,21 @@ t = {
     "receipt.not_found": "Reçu introuvable.",
     "receipt.title": "Reçu de paiement",
     "receipt.duplicate": "DUPLICATA",
-    "receipt.date": "Date",
+    "receipt.paid_at": "Le {date} à {time}",
     "receipt.student": "Élève",
     "receipt.student_value": "{name} (N° {number})",
     "receipt.payer": "Payé par",
-    "receipt.method": "Mode de paiement",
+    "receipt.method": "Paiement",
     "receipt.cashier": "Reçu par",
-    "receipt.col.item": "Désignation",
-    "receipt.col.amount": "Montant",
+    "receipt.month": "Du {start} au {end}",
     "receipt.total": "Total payé",
+    "receipt.left_now": "Reste à payer",
     "receipt.left": "Reste à payer au {date}",
     "receipt.upcoming": "À venir (pas encore dû)",
     "receipt.voided": "Reçu annulé le {date} : {reason}",
     "receipt.stamp_paid": "PAYÉ",
     "receipt.stamp_voided": "ANNULÉ",
-    "receipt.thanks": "Merci. Conservez ce reçu.",
+    "receipt.thanks": "Conservez ce reçu.",
     "receipt.signature": "Cachet et signature",
     "payment_method.cash": "Espèces",
     "payment_method.transfer": "Virement",
@@ -386,6 +389,10 @@ t = {
     "level.not_found": "Niveau introuvable.",
     "subject.not_found": "Matière introuvable.",
     "level.inactive": "Ce niveau est désactivé.",
+    "level.open_in_use": (
+        "{count} élève(s) d'autres niveaux sont dans les groupes de {level}. Retirez-les d'abord "
+        "de ces groupes pour réserver le niveau à ses élèves."
+    ),
     "subject.inactive": "Cette matière est désactivée.",
     "room.not_found": "Salle introuvable.",
     "room.capacity_invalid": "La capacité doit être au moins 1.",
@@ -422,6 +429,7 @@ t = {
     "group.name_taken": "Un groupe porte déjà ce nom cette année.",
     "group.price_invalid": "Le prix ne peut pas être négatif.",
     "group.capacity_invalid": "La capacité doit être au moins 1.",
+    "count.invalid": "Indiquez le nombre de places, entre {low} et {high}.",
     "group.start_outside_year": "La date de début doit être dans l'année {label}.",
     "group.closed": "Ce groupe est clôturé.",
     "group.already_closed": "Ce groupe est déjà clôturé.",
@@ -518,6 +526,9 @@ t = {
     "db.registration_cancelled": "L'inscription annuelle est annulée.",
     "db.year_mismatch": "L'année scolaire de l'inscription et du groupe diffèrent.",
     "db.level_mismatch": "Le niveau de l'inscription et du groupe diffèrent.",
+    "db.level_open_in_use": (
+        "Des élèves d'autres niveaux sont encore dans les groupes de ce niveau."
+    ),
     "db.group_closed": "Ce groupe est clôturé.",
     "db.group_started": "Le groupe a déjà commencé.",
     "db.switch_other_student": "Le changement de groupe concerne un autre élève.",
@@ -1683,10 +1694,29 @@ t = {
     "year_dialog.label": "Libellé",
     "year_dialog.start": "Premier jour",
     "year_dialog.end": "Dernier jour",
-    "levels.caption": "L'ordre des niveaux est celui des listes et des rapports.",
+    "levels.caption": (
+        "L'ordre des niveaux est celui des listes et des rapports. Les groupes d'un niveau ouvert "
+        "à tous (calligraphie, arts…) acceptent les élèves de tous les niveaux, en plus des "
+        "groupes de leur niveau."
+    ),
     "levels.new": "Nouveau niveau",
+    "levels.col.open": "Ouvert à tous",
+    "levels.open_yes": "Oui",
+    "levels.open": "Ouvrir à tous les niveaux",
+    "levels.restrict": "Réserver au niveau",
+    "levels.opened": "{name} : ouvert aux élèves de tous les niveaux",
+    "levels.restricted": "{name} : réservé aux élèves de ce niveau",
     "levels.empty": "Aucun niveau. Ajoutez-en un avec « Nouveau niveau » (par exemple 4AM).",
-    "subjects.caption": "Une matière désactivée n'est plus proposée pour les nouveaux groupes.",
+    "subjects.caption": (
+        "Une matière désactivée n'est plus proposée pour les nouveaux groupes. Un atelier "
+        "(calligraphie, arts…) n'est proposé que pour les groupes d'un niveau ouvert à tous, les "
+        "autres matières pour les autres niveaux."
+    ),
+    "subjects.col.workshop": "Atelier",
+    "subjects.workshop": "Marquer comme atelier",
+    "subjects.academic": "Marquer comme matière scolaire",
+    "subjects.marked_workshop": "{name} : atelier, proposé pour les niveaux ouverts à tous",
+    "subjects.marked_academic": "{name} : matière scolaire",
     "subjects.new": "Nouvelle matière",
     "subjects.empty": "Aucune matière. Ajoutez-en une avec « Nouvelle matière ».",
     "catalog.col.name": "Nom",
@@ -1807,20 +1837,35 @@ t = {
     "group_students.summary": (
         "{enrolled} / {seats} élèves · {free} place(s) libre(s) · {trials} en essai"
     ),
-    "group_students.show_past": "Afficher les anciens élèves ({count})",
+    "group_students.add": "Inscrire un élève",
+    "group_students.full": "Le groupe est complet.",
     "group_students.col.name": "Élève",
     "group_students.col.number": "N°",
     "group_students.col.status": "Statut",
     "group_students.col.entry": "Entrée",
-    "group_students.col.exit": "Sortie",
     "group_students.col.note": "Remarque",
     "group_students.note.switched_in": "Changement de groupe",
-    "group_students.empty": (
-        "Aucun élève dans ce groupe. Les élèves s'inscrivent depuis leur fiche, partie Groupes."
-    ),
+    "group_students.empty": "Aucun élève dans ce groupe. Ajoutez-en avec « Inscrire un élève ».",
     "group_students.hint": (
-        "Pour inscrire, changer de groupe ou faire sortir un élève, ouvrez sa fiche (Élèves → "
-        "partie Groupes)."
+        "Pour changer un élève de groupe ou le faire sortir, ouvrez sa fiche (Élèves → partie "
+        "Groupes)."
+    ),
+    "add_student.title": "Inscrire un élève",
+    "add_student.caption": "{group} · choisissez un élève :",
+    "add_student.search": "Rechercher par nom ou numéro",
+    "add_student.col.student": "Élève",
+    "add_student.col.level": "Niveau",
+    "add_student.who": "Élèves inscrits pour l'année en {level}, pas encore dans ce groupe.",
+    "add_student.who_open": (
+        "Élèves inscrits pour l'année, tous niveaux, pas encore dans ce groupe."
+    ),
+    "add_student.none": (
+        "Aucun élève à inscrire : aucun élève inscrit pour l'année en {level} n'est hors de ce "
+        "groupe. Inscrivez d'abord l'élève pour l'année (sa fiche, partie Inscription)."
+    ),
+    "add_student.none_open": (
+        "Aucun élève à inscrire : tous les élèves inscrits pour l'année sont déjà dans ce "
+        "groupe. Inscrivez d'abord l'élève pour l'année (sa fiche, partie Inscription)."
     ),
     "group_detail.confirm_close_title": "Clôturer le groupe",
     "group_detail.confirm_close": (
@@ -1855,6 +1900,13 @@ t = {
     "group_dialog.teacher": "Enseignant",
     "group_dialog.price_caption": "Un nouveau prix s'applique aux prochains abonnements seulement.",
     "group_dialog.no_teacher": "Ajoutez d'abord un enseignant dans la page Enseignants.",
+    "group_dialog.no_workshop": (
+        "Aucun atelier pour ce niveau ouvert à tous. Marquez une matière comme atelier dans "
+        "Paramètres → Structure → Matières."
+    ),
+    "group_dialog.no_subject": (
+        "Aucune matière scolaire active. Ajoutez-en une dans Paramètres → Structure → Matières."
+    ),
     "change_teacher.title": "Changer d'enseignant",
     "change_teacher.teacher": "Nouvel enseignant",
     "change_teacher.from": "À partir du",
@@ -2097,7 +2149,7 @@ t = {
         "brouillon fait aujourd'hui paierait."
     ),
     "reports.students.title": "Liste des élèves",
-    "reports.students.note": "En retard : ce qui reste à payer sur l'échu, après l'avoir.",
+    "reports.students.note": "En retard : ce qui reste à payer sur les mois et frais échus.",
     "reports.chart.revenue": "Facturé et encaissé par mois",
     "reports.chart.attendance": "Taux de présence par groupe",
     "reports.rates.hover": "Survolez une barre pour voir le groupe",
@@ -2156,14 +2208,6 @@ t = {
     "reports.tile.paid_note": "Paies des mois de {label}",
     "reports.tile.to_pay": "Reste à payer",
     "reports.tile.to_pay_note": "{waiting} en attente · {prepare} à préparer",
-    "reports.tile.active": "Élèves actifs",
-    "reports.tile.active_note": "Tous niveaux confondus",
-    "reports.tile.registered": "Inscrits cette année",
-    "reports.tile.registered_note": "Année {label}",
-    "reports.tile.trial": "En essai",
-    "reports.tile.trial_note": "Séance gratuite en cours",
-    "reports.tile.no_month": "Sans mois en cours",
-    "reports.tile.no_month_note": "À renouveler ou à commencer",
     "reports.filter.year": "Année",
     "reports.filter.period": "Période",
     "reports.filter.group": "Groupe",
@@ -2246,6 +2290,8 @@ t = {
     "audit.action.holiday.remove": "Vacances supprimées",
     "audit.action.holiday.update": "Vacances modifiées",
     "audit.action.level.create": "Niveau créé",
+    "audit.action.level.open": "Niveau ouvert à tous les niveaux",
+    "audit.action.level.restrict": "Niveau réservé à ses élèves",
     "audit.action.level.reorder": "Ordre des niveaux changé",
     "audit.action.payment.apply_credit": "Avoir utilisé",  # entries before 2026-11-05
     "audit.action.payment.record": "Paiement enregistré",
@@ -2281,7 +2327,9 @@ t = {
     "audit.action.student.deactivate": "Élève désactivé",
     "audit.action.student.reactivate": "Élève réactivé",
     "audit.action.student.update": "Élève modifié",
+    "audit.action.subject.academic": "Matière marquée comme matière scolaire",
     "audit.action.subject.create": "Matière créée",
+    "audit.action.subject.workshop": "Matière marquée comme atelier",
     "audit.action.subscription.cancel": "Mois annulé",
     "audit.action.subscription.create": "Mois créé",
     "audit.action.subscription.mark_ended": "Mois terminés",

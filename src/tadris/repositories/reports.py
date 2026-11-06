@@ -150,29 +150,3 @@ def students(conn, status: str | None, year_id: int | None, level_id: int | None
         """,
         {"status": status, "year": year_id, "level": level_id, "group": group_id},
     ).fetchall()
-
-
-def student_counts(conn, year_id: int | None, today: str) -> dict[str, int]:
-    """For the tiles: students active; registered in the year; in a trial now; in a group
-    where they pay, the group started, but with no month running today (to renew or
-    start)."""
-    row = conn.execute(
-        """
-        SELECT
-          (SELECT COUNT(*) FROM students WHERE status = 'active') AS active,
-          (SELECT COUNT(*) FROM registrations
-            WHERE school_year_id = :year AND status = 'active') AS registered,
-          (SELECT COUNT(DISTINCT student_id) FROM enrollments WHERE status = 'trial') AS trial,
-          (SELECT COUNT(DISTINCT e.student_id)
-             FROM enrollments e
-             JOIN class_groups g ON g.id = e.group_id
-            WHERE e.status = 'active' AND g.status <> 'closed'
-              AND e.enrolled_on <= :today AND g.start_date <= :today
-              AND NOT EXISTS (SELECT 1 FROM subscriptions s
-                               WHERE s.enrollment_id = e.id AND s.status <> 'cancelled'
-                                 AND s.start_date <= :today AND s.end_date > :today))
-            AS no_month
-        """,
-        {"year": year_id, "today": today},
-    ).fetchone()
-    return dict(row)

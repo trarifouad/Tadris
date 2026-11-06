@@ -60,6 +60,8 @@ def build_report_xlsx(report: Report, school: str, printed: str, path: Path) -> 
          Font(bold=True)),
     ]
     for row, (text, font) in enumerate(lines, start=1):
+        if not text:  # no filters, or no figures (the students' list)
+            continue
         cell = sheet.cell(row=row, column=1, value=text)
         cell.font = font
         _text(cell)

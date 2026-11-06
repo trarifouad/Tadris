@@ -150,11 +150,18 @@ def move_rate_start(conn, rate_id: int, valid_from: str) -> None:
 
 
 def has_locked_payout_since(conn, teacher_id: int, since: str) -> bool:
-    """An approved or paid payout covering a day on or after `since`."""
+    """An approved or paid payout of the teacher holds a month whose first day is on or
+    after `since`: a rate from `since` would change what was paid. The months themselves,
+    not the payout's period: a payout's period runs to the day it was made, after the first
+    day of the months it holds (they are paid once over), and months still running then are
+    not in it."""
     row = conn.execute(
         """
-        SELECT 1 FROM teacher_payouts
-         WHERE teacher_id = ? AND status <> 'draft' AND period_end >= ?
+        SELECT 1 FROM teacher_payouts p
+          JOIN payout_lines l ON l.payout_id = p.id
+          JOIN payout_line_charges plc ON plc.payout_line_id = l.id
+          JOIN charges c ON c.id = plc.charge_id
+         WHERE p.teacher_id = ? AND p.status <> 'draft' AND c.accrual_date >= ?
         """,
         (teacher_id, since),
     ).fetchone()

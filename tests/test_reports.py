@@ -262,10 +262,13 @@ def test_period_presets():
 
 # ----- Enseignants -----
 
-def test_teacher_summary(conn, director, school):
-    payout = payouts.build_draft(conn, director, school.karim, date(2026, 9, 30))
+def test_teacher_summary(conn, director, school, monkeypatch):
+    payout = payouts.build_draft(conn, director, school.karim, date(2026, 10, 1))
     payouts.approve(conn, director, payout)
     payouts.mark_paid(conn, director, payout, "cash")
+    on_18 = reports.teacher_summary(conn, director, school.year)
+    assert [row[8] for row in on_18.rows] == [0, 0]  # October's months still run: not yet
+    monkeypatch.setattr(dates, "today", lambda: date(2026, 11, 1))  # they are over
     report = reports.teacher_summary(conn, director, school.year)
     # Karim: A (2) and B (1); his months 30 000, 60 %: 18 000; September paid (14 400),
     # A's October not prepared yet (3 600). Samia: C, 4 000 at 50 %.
@@ -288,9 +291,7 @@ def test_student_list(conn, desk, school):
         ("Test Chems", "4AM", "B · Physique", "2026-10-18", 7000),
         ("Test Dalia", "4AM", "C · Arabe", "2026-10-18", 4000),
         ("Zerrouki Farid", "4AM", None, "2026-10-18", 1000)]
-    # Badis and Chems: their September is over and not renewed.
-    assert tiles(report) == [("Élèves actifs", 5), ("Inscrits cette année", 5),
-                             ("En essai", 0), ("Sans mois en cours", 2)]
+    assert report.tiles == ()  # a plain list: no figures above it
     assert report.total == ("5 élève(s)",) + (None,) * 6 + (18000,)
 
 

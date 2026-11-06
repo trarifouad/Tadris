@@ -14,6 +14,7 @@ from tadris.services import (
     catalog,
     enrollments,
     groups,
+    payouts,
     registrations,
     rooms,
     school_years,
@@ -243,6 +244,60 @@ def test_inactive_level_is_hidden_and_refused_for_new_groups(conn, director, sch
     assert exc.value.message == t["level.inactive"]
 
 
+def test_open_level_is_director_only_and_audited(conn, director, receptionist, school):
+    with pytest.raises(PermissionDenied):
+        catalog.set_open(conn, receptionist, school.level_3as, True)
+    catalog.set_open(conn, director, school.level_3as, True)
+    catalog.set_open(conn, director, school.level_3as, True)  # already open: no-op
+    listed = catalog.list_items(conn, director, "level")
+    assert [(i.name, i.is_open) for i in listed] == [("4AM", False), ("3AS", True)]
+    assert not any(i.is_open for i in catalog.list_items(conn, director, "subject"))
+    actions = [row["action"] for row in conn.execute(
+        "SELECT action FROM audit_log WHERE action LIKE 'level.%' ORDER BY id")]
+    assert actions.count("level.open") == 1
+    catalog.set_open(conn, director, school.level_3as, False)
+    row = conn.execute("SELECT new_value FROM audit_log ORDER BY id DESC").fetchone()
+    assert json.loads(row["new_value"]) == {"is_open": False}
+
+
+def test_workshop_subject_is_director_only_and_audited(conn, director, receptionist, school):
+    with pytest.raises(PermissionDenied):
+        catalog.set_workshop(conn, receptionist, school.physics, True)
+    catalog.set_workshop(conn, director, school.physics, True)
+    catalog.set_workshop(conn, director, school.physics, True)  # already one: no-op
+    listed = catalog.list_items(conn, director, "subject")
+    assert [(i.name, i.is_workshop) for i in listed] == [("Mathématiques", False),
+                                                         ("Physique", True)]
+    assert not any(i.is_workshop for i in catalog.list_items(conn, director, "level"))
+    assert conn.execute("SELECT COUNT(*) FROM audit_log WHERE action = 'subject.workshop'"
+                        ).fetchone()[0] == 1
+
+
+def test_0020_marks_the_subjects_taught_only_in_open_levels():
+    """A version 19 database: a subject only in groups of an open level becomes a workshop,
+    one also taught at a school level stays a school subject."""
+    from tadris.db.connection import connect
+    from tadris.db.migrate import _files, migrate
+
+    c = connect(":memory:")
+    for version, file in _files():
+        if version > 19:
+            break
+        c.executescript(f"BEGIN IMMEDIATE;\n{file.read_text(encoding='utf-8')}\n"
+                        f"PRAGMA user_version = {version};\nCOMMIT;")
+    c.executescript("""
+    INSERT INTO school_years(label,start_date,end_date) VALUES('2026-2027','2026-09-01','2027-06-30');
+    INSERT INTO levels(name, is_open) VALUES('3AS', 0), ('Niveau libre', 1);
+    INSERT INTO subjects(name) VALUES('Calligraphie'), ('Anglais'), ('Maths');
+    INSERT INTO class_groups(school_year_id,level_id,subject_id,name,price,capacity,start_date)
+      VALUES(1,2,1,'C1',1500,10,'2026-09-01'), (1,2,2,'A1',1500,10,'2026-09-01'),
+            (1,1,2,'A2',3000,10,'2026-09-01'), (1,1,3,'M1',3000,10,'2026-09-01');
+    """)
+    migrate(c)
+    assert [tuple(r) for r in c.execute("SELECT name, is_workshop FROM subjects ORDER BY id")
+            ] == [("Calligraphie", 1), ("Anglais", 0), ("Maths", 0)]
+
+
 # ----- rooms -----
 
 def test_room_validation(conn, director, school):
@@ -363,14 +418,25 @@ def test_a_rate_never_starts_before_the_arrival(conn, director, school):
     assert teachers.get(conn, director, dayda).hire_date == "2026-10-18"
 
 
-def test_starting_earlier_at_another_rate_keeps_approved_payouts(conn, director, school):
+def approved_month(conn, director, school, teacher_id: int, start: date, monkeypatch) -> None:
+    """One month of the teacher's from `start`, over and in an approved payout; today is
+    then the day it ended."""
+    group = groups.create(conn, director, group_input(school, name=f"Payé {start}", start=start),
+                          teacher_id)
+    student = students.create(conn, director, StudentInput("Payé", "Test"))
+    registrations.register(conn, director, student, school.level_4am, 0)
+    enrollments.enroll(conn, director, student, group, enrolled_on=start)
+    over = date(start.year + start.month // 12, start.month % 12 + 1, start.day)
+    monkeypatch.setattr(dates, "today", lambda: over)
+    payouts.approve(conn, director, payouts.build_draft(conn, director, teacher_id, over))
+
+
+def test_starting_earlier_at_another_rate_keeps_approved_payouts(conn, director, school,
+                                                                 monkeypatch):
     """Another percentage from an earlier day changes the months after it: refused once an
     approved payout used the rate; the same percentage is still allowed."""
     dayda = late_rate_teacher(conn, director)
-    conn.execute(
-        "INSERT INTO teacher_payouts(teacher_id, period_start, period_end, base_amount, "
-        "amount_due, status) VALUES (?, '2026-10-21', '2026-10-31', 100, 40, 'approved')",
-        (dayda,))
+    approved_month(conn, director, school, dayda, date(2026, 10, 21), monkeypatch)
     with pytest.raises(BusinessRuleError) as exc:
         teachers.set_rate(conn, director, dayda, 5000, date(2026, 10, 18))
     assert exc.value.message == t["rate.locked"]
@@ -378,13 +444,10 @@ def test_starting_earlier_at_another_rate_keeps_approved_payouts(conn, director,
     assert teachers.rate_on(conn, dayda, date(2026, 10, 18)) == 4000
 
 
-def test_same_day_rate_corrects_until_a_payout_used_it(conn, director, school):
+def test_same_day_rate_corrects_until_a_payout_used_it(conn, director, school, monkeypatch):
     teachers.set_rate(conn, director, school.karim, 6200, date(2026, 9, 1))
     assert [r.percentage_bp for r in teachers.rates(conn, director, school.karim)] == [6200]
-    conn.execute(
-        "INSERT INTO teacher_payouts(teacher_id, period_start, period_end, base_amount, "
-        "amount_due, status) VALUES (?, '2026-09-01', '2026-09-30', 100, 62, 'approved')",
-        (school.karim,))
+    approved_month(conn, director, school, school.karim, date(2026, 9, 15), monkeypatch)
     with pytest.raises(BusinessRuleError) as exc:
         teachers.set_rate(conn, director, school.karim, 6300, date(2026, 9, 1))
     assert exc.value.message == t["rate.locked"]

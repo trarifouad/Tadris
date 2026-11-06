@@ -81,7 +81,7 @@ def test_0018_keeps_every_allocation_and_its_id():
     """A version 17 database: the rows, their ids and the next id are kept; the same payment
     can then pay its charge again."""
     from tadris.db.connection import connect
-    from tadris.db.migrate import _files, migrate
+    from tadris.db.migrate import _files, latest_version, migrate
 
     c = connect(":memory:")
     for version, file in _files():
@@ -105,7 +105,7 @@ def test_0018_keeps_every_allocation_and_its_id():
     INSERT INTO payment_allocations(payment_id,charge_id,amount) VALUES(1,2,500);  -- before 0016
     """)
     before = [tuple(r) for r in c.execute("SELECT * FROM payment_allocations ORDER BY id")]
-    assert migrate(c) == 18
+    assert migrate(c) == latest_version()
     assert [tuple(r) for r in c.execute("SELECT * FROM payment_allocations ORDER BY id")] == before
     c.execute("INSERT INTO payments(student_id,amount,method,paid_at,received_by) "
               "VALUES(1,100,'cash','2026-09-03T10:00:00',1)")

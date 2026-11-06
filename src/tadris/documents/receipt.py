@@ -42,10 +42,11 @@ class ReceiptDoc:
     title: str  # « Reçu de paiement »
     number: str  # R2026-00001
     copy_mark: str  # « DUPLICATA » on a reprint, else ""
-    details: list[tuple[str, str]]  # (label, value): date, student, payer, method, cashier
-    columns: tuple[str, str]  # Désignation, Montant
-    lines: list[tuple[str, str]]  # (description, amount)
-    totals: list[tuple[str, str]]  # Total payé, Reste à payer...
+    paid_at: str  # « Le 05/11/2026 à 20:49 »
+    details: list[tuple[str, str]]  # (label, value): student, payer, method, cashier
+    lines: list[tuple[str, str, str]]  # (what, its dates or "", amount)
+    total: tuple[str, str]  # (« Total payé », amount)
+    balance: list[tuple[str, str]]  # Reste à payer, À venir...
     stamp: str  # « PAYÉ » or « ANNULÉ »
     stamp_date: str  # dd/mm/yyyy
     voided_note: str  # « Reçu annulé le ... : motif », else ""
@@ -158,79 +159,133 @@ def signature_table(receipt, usable: float) -> Table:
 
 
 # ----- the 80 mm ticket -----
+# Top to bottom: the school; the title, number and date; who paid; what was paid, one line
+# each (a month's dates under its group); the total in a box, the largest thing printed;
+# what is left; the stamp beside the signature line; the school's note.
+
+LABEL_WIDTH = 17 * mm
+AMOUNT_WIDTH = 24 * mm
+_FLAT = [("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0)]
+
 
 def _rule(width: float = 0.6, dash=None) -> HRFlowable:
     return HRFlowable(width="100%", thickness=width, color=INK, dash=dash, spaceBefore=2 * mm,
                       spaceAfter=2 * mm)
 
 
-def _pairs(rows: list[tuple[str, str]], usable: float, size: float, bold: bool = False,
-           mono_right: bool = True) -> Table:
-    """Label on the left, value on the right (an amount: monospaced)."""
-    right = style(size, bold=bold, align=2)
-    if mono_right:
-        right.fontName = MONO
-    data = [[Paragraph(escape(left), style(size, bold=bold)), Paragraph(escape(value), right)]
-            for left, value in rows]
-    table = Table(data, colWidths=[usable - 26 * mm, 26 * mm])
-    table.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 0),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-        ("TOPPADDING", (0, 0), (-1, -1), 1.5),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5),
-    ]))
-    return table
+def _amount(text: str, size: float) -> Paragraph:
+    right = style(size, align=2)
+    right.fontName = MONO
+    return Paragraph(escape(text), right)
 
 
 def _details(receipt: ReceiptDoc, usable: float) -> Table:
-    rows = [[Paragraph(escape(label), style(7.5)), Paragraph(escape(value), style(8))]
+    rows = [[Paragraph(escape(label), style(7.5)), Paragraph(escape(value), style(8.5))]
             for label, value in receipt.details]
-    table = Table(rows, colWidths=[24 * mm, usable - 24 * mm])
-    table.setStyle(TableStyle([
+    table = Table(rows, colWidths=[LABEL_WIDTH, usable - LABEL_WIDTH])
+    table.setStyle(TableStyle(_FLAT + [
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 0),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
         ("TOPPADDING", (0, 0), (-1, -1), 1),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
     ]))
     return table
 
 
+def _lines(receipt: ReceiptDoc, usable: float) -> Table:
+    rows = []
+    for what, when, amount in receipt.lines:
+        cell = [Paragraph(escape(what), style(8.5, bold=True))]
+        if when:
+            cell.append(Paragraph(escape(when), style(7.5)))
+        rows.append([cell, _amount(amount, 8.5)])
+    table = Table(rows, colWidths=[usable - AMOUNT_WIDTH, AMOUNT_WIDTH])
+    table.setStyle(TableStyle(_FLAT + [
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("TOPPADDING", (0, 0), (-1, -1), 2),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+    ]))
+    return table
+
+
+def _total(receipt: ReceiptDoc, usable: float) -> Table:
+    label, amount = receipt.total
+    big = style(12, bold=True, align=2)
+    big.fontName = MONO
+    box = Table([[Paragraph(escape(label.upper()), style(10, bold=True)),
+                  Paragraph(escape(amount), big)]],
+                colWidths=[usable - 32 * mm, 32 * mm])
+    box.setStyle(TableStyle([
+        ("BOX", (0, 0), (-1, -1), 1.2, INK),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 5),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+    ]))
+    return box
+
+
+def _balance(receipt: ReceiptDoc, usable: float) -> Table:
+    rows = [[Paragraph(escape(label), style(8.5)), _amount(value, 8.5)]
+            for label, value in receipt.balance]
+    table = Table(rows, colWidths=[usable - AMOUNT_WIDTH, AMOUNT_WIDTH])
+    table.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 5),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+        ("TOPPADDING", (0, 0), (-1, -1), 1.5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5),
+    ]))
+    return table
+
+
+def _stamp_and_signature(receipt: ReceiptDoc, usable: float) -> Table:
+    """The stamp on the left; a line to sign on at the right, its label under it."""
+    size = 22 * mm
+    sign = Table([[Paragraph(escape(receipt.signature), style(7.5, align=1))]],
+                 colWidths=[usable - size - 6 * mm])
+    sign.setStyle(TableStyle(_FLAT + [("LINEABOVE", (0, 0), (-1, 0), 0.6, INK),
+                                      ("TOPPADDING", (0, 0), (-1, -1), 3)]))
+    table = Table([[Stamp(receipt.stamp, receipt.stamp_date, size=size, color=INK), sign]],
+                  colWidths=[size + 6 * mm, usable - size - 6 * mm])
+    table.setStyle(TableStyle(_FLAT + [("VALIGN", (0, 0), (-1, -1), "BOTTOM")]))
+    return table
+
+
+def _voided(receipt: ReceiptDoc, usable: float) -> Table:
+    box = Table([[Paragraph(escape(receipt.voided_note), style(8.5, bold=True, align=1))]],
+                colWidths=[usable])
+    box.setStyle(TableStyle([("BOX", (0, 0), (-1, -1), 1.2, INK),
+                             ("TOPPADDING", (0, 0), (-1, -1), 4),
+                             ("BOTTOMPADDING", (0, 0), (-1, -1), 5)]))
+    return box
+
+
 def ticket_story(receipt: ReceiptDoc, usable: float) -> list:
     center = 1
     school = receipt.school
-    story = [Paragraph(escape(school.name), style(11, bold=True, align=center))]
+    story = [Paragraph(escape(school.name), style(12, bold=True, align=center))]
     for line in (" · ".join(part for part in (school.address, school.phone) if part),
                  school.header):
         if line:
             story.append(Paragraph(escape(line), style(7.5, align=center)))
-    number = style(10, align=center)
+    number = style(9.5, align=center)
     number.fontName = MONO
-    story += [_rule(), Paragraph(escape(receipt.title), style(10, bold=True, align=center)),
-              Paragraph(escape(receipt.number), number)]
+    story += [_rule(0.8),
+              Paragraph(escape(receipt.title.upper()), style(10.5, bold=True, align=center)),
+              Paragraph(escape(receipt.number), number),
+              Paragraph(escape(receipt.paid_at), style(8, align=center))]
     if receipt.copy_mark:
-        story.append(Paragraph(escape(receipt.copy_mark), style(8, bold=True, align=center)))
-    story += [_rule(), _details(receipt, usable)]
+        story.append(Paragraph(escape(receipt.copy_mark), style(9, bold=True, align=center)))
     if receipt.voided_note:
-        story += [Spacer(1, 2 * mm), Paragraph(escape(receipt.voided_note), style(8.5, bold=True))]
-    story += [_rule(0.4, dash=(2, 2)),
-              _pairs([receipt.columns], usable, 7.5, bold=True, mono_right=False),
-              _pairs(receipt.lines, usable, 8.5), _rule(0.8),
-              _pairs(receipt.totals, usable, 9, bold=True), Spacer(1, 4 * mm)]
-    stamp = Table([[Stamp(receipt.stamp, receipt.stamp_date, size=26 * mm, color=INK)]],
-                  colWidths=[usable])
-    stamp.setStyle(TableStyle([("ALIGN", (0, 0), (-1, -1), "CENTER"),
-                               ("LEFTPADDING", (0, 0), (-1, -1), 0),
-                               ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
-    sign = Table([[Paragraph(escape(receipt.signature), style(7.5, align=center))]],
-                 colWidths=[50 * mm])
-    sign.setStyle(TableStyle([("LINEABOVE", (0, 0), (-1, 0), 0.6, INK),
-                              ("TOPPADDING", (0, 0), (-1, -1), 3)]))
-    story += [stamp, Spacer(1, 10 * mm), sign, Spacer(1, 4 * mm),
+        story += [Spacer(1, 2 * mm), _voided(receipt, usable)]
+    story += [_rule(0.4), _details(receipt, usable), _rule(0.4, dash=(2, 2)),
+              _lines(receipt, usable), Spacer(1, 3 * mm), _total(receipt, usable),
+              Spacer(1, 1.5 * mm), _balance(receipt, usable), Spacer(1, 6 * mm),
+              _stamp_and_signature(receipt, usable), Spacer(1, 4 * mm),
               Paragraph(escape(receipt.thanks), style(8, align=center))]
     if receipt.note:
-        story += [Spacer(1, 1.5 * mm), Paragraph(escape(receipt.note), style(7.5, align=center))]
+        story += [Spacer(1, 1 * mm), Paragraph(escape(receipt.note), style(8, align=center))]
     story += [Spacer(1, 3 * mm), Paragraph(escape(receipt.footer.printed),
                                            style(6.5, align=center))]
     return story

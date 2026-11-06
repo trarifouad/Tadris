@@ -2,12 +2,14 @@
 group and rate) and the months (subscription charges) each line counts.
 
 A month is owed to the teacher of its group on its first day (accrual date), at the full
-price, whether the student paid or not; it is counted in one payout only (unique index).
+price, whether the student paid or not, once it is over (its end date reached); it is
+counted in one payout only (unique index).
 Approved and paid payouts never change (triggers).
 """
 
 # A month owed to a teacher: an open subscription charge, in no payout yet, of a group the
-# teacher taught on the month's first day.
+# teacher taught on the month's first day, over by :until (decided 2026-11-06: a teacher is
+# paid for a month once it is done, no longer once it has started).
 _OWED = """
     SELECT c.id AS charge_id, c.amount, c.accrual_date, c.description,
            e.group_id, g.name AS group_name, sb.name AS subject, l.name AS level,
@@ -24,13 +26,13 @@ _OWED = """
                             AND (gt.valid_to IS NULL OR gt.valid_to > c.accrual_date)
      WHERE c.status = 'open'
        AND NOT EXISTS (SELECT 1 FROM payout_line_charges plc WHERE plc.charge_id = c.id)
-       AND c.accrual_date <= :until
+       AND s.end_date <= :until
 """
 
 
 def owed(conn, teacher_id: int, until: str) -> list:
-    """The teacher's months not paid yet with a first day on or before `until`, oldest
-    first."""
+    """The teacher's months not paid yet and over by `until` (end date on or before it),
+    oldest first."""
     return conn.execute(
         f"{_OWED} AND gt.teacher_id = :teacher ORDER BY c.accrual_date, c.id",
         {"until": until, "teacher": teacher_id},
@@ -98,6 +100,20 @@ def listing(conn, statuses: tuple[str, ...], teacher_id: int | None = None) -> l
 def draft_of(conn, teacher_id: int):
     return conn.execute(f"SELECT {_COLUMNS} {_FROM} WHERE p.teacher_id = ? "
                         "AND p.status = 'draft'", (teacher_id,)).fetchone()
+
+
+def holds_month_since(conn, payout_id: int, since: str) -> bool:
+    """The payout counts a month whose first day is on or after `since`."""
+    row = conn.execute(
+        """
+        SELECT 1 FROM payout_lines l
+          JOIN payout_line_charges plc ON plc.payout_line_id = l.id
+          JOIN charges c ON c.id = plc.charge_id
+         WHERE l.payout_id = ? AND c.accrual_date >= ?
+        """,
+        (payout_id, since),
+    ).fetchone()
+    return row is not None
 
 
 def same_period(conn, teacher_id: int, start: str, end: str):

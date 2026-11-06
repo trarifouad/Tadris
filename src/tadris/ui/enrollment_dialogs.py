@@ -1,4 +1,5 @@
-"""Dialogs of the student's Groupes tab: enroll in a group, switch group, leave a group."""
+"""Dialogs of the student's Groupes tab: enroll in a group, switch group, leave a group; and
+of the group's page: add a student to the group."""
 
 from PySide6.QtWidgets import QCheckBox, QLineEdit, QVBoxLayout, QWidget
 
@@ -7,7 +8,15 @@ from tadris.core.context import UserContext
 from tadris.core.errors import ValidationError
 from tadris.core.money import format_dzd
 from tadris.core.permissions import allowed
-from tadris.domain.models import Enrollment, GroupOption, Student, Subscription
+from tadris.core.text import fold
+from tadris.domain.models import (
+    Enrollment,
+    Group,
+    GroupCandidate,
+    GroupOption,
+    Student,
+    Subscription,
+)
 from tadris.i18n.fr import t
 from tadris.services import enrollments, subscriptions
 from tadris.ui.payment_dialogs import debt_banner
@@ -55,7 +64,8 @@ def months_after_note(conn, ctx: UserContext, enrollment: Enrollment,
 
 def offered(conn, ctx: UserContext, student_id: int,
             exclude_group: int | None = None) -> tuple[list[GroupOption], int]:
-    """The groups the user may pick for the student (their level only), and how many full
+    """The groups the user may pick for the student (their level, and the open levels such as
+    « Tous niveaux »), and how many full
     ones were left out. A group of a subject the student already has is offered to the
     director only (it needs the override). exclude_group: the group a switch leaves."""
     can_override = allowed(ctx, "enrollment.override")
@@ -229,6 +239,113 @@ class SwitchDialog(_PickGroupDialog):
     def chosen_title(self) -> str:
         option = self.picker.selected()
         return "" if option is None else option.group.title
+
+
+class AddStudentDialog(FormDialog):
+    """From the group's page: pick one of the students who may join it (searched by name or
+    number), the entry date, the free trial. A student already in another group of its
+    subject is offered to the director only, with a reason (the override)."""
+
+    def __init__(self, conn, ctx: UserContext, group: Group, parent=None):
+        super().__init__(t["add_student.title"], t["enroll_dialog.submit"], width=640,
+                         parent=parent)
+        self._conn, self._ctx, self._group = conn, ctx, group
+        self.enrollment_id: int | None = None
+        can_override = allowed(ctx, "enrollment.override")
+        self._candidates = {c.student_id: c
+                            for c in enrollments.candidates(conn, ctx, group.id)
+                            if can_override or not c.same_subject}
+        self.search = QLineEdit()
+        self.search.setPlaceholderText(t["add_student.search"])
+        self.search.setClearButtonEnabled(True)
+        self.search.textChanged.connect(lambda _text: self._find())
+        self.table = ruled_table([t["students.col.number"], t["add_student.col.student"],
+                                  t["add_student.col.level"], t["enroll_dialog.col.note"]])
+        header = self.table.horizontalHeader().height() or ROW_HEIGHT
+        self.table.setFixedHeight(header + ROW_HEIGHT * VISIBLE_ROWS + 2)
+        self.table.itemSelectionChanged.connect(self._picked)
+        self.found = caption()
+        self.found.setWordWrap(True)
+        self.date = DateLineEdit()
+        self.date.set_value(enrollments.default_date(group.start_date))
+        self.trial = QCheckBox(t["enroll_dialog.trial"])
+        self.trial_used = caption(t["enroll_dialog.trial_used"])
+        self.reason = QLineEdit()
+        self.reason.setPlaceholderText(t["enroll_dialog.reason_placeholder"])
+        self.reason_box = labeled(t["enroll_dialog.reason"], self.reason, required=True)
+
+        intro = caption(t["add_student.caption"].format(group=group.title))
+        intro.setWordWrap(True)
+        self.add(intro)
+        if self._candidates:
+            self.add(self.search)
+            self.add(self.table)
+            self.add(self.found)
+            self.add(row(labeled(t["enroll_dialog.date"], self.date, required=True),
+                         self.trial))
+            self.add(self.trial_used)
+            self.add(self.reason_box)
+            self.trial_used.hide()
+            self.reason_box.hide()
+            self._find()
+        else:
+            for widget in (self.search, self.table, self.found):
+                widget.hide()
+            empty = caption(t["add_student.none_open" if group.level_open
+                              else "add_student.none"].format(level=group.level))
+            empty.setWordWrap(True)
+            self.add(empty)
+            self.submit.setEnabled(False)
+        self.finish(self.search)
+
+    def _find(self) -> None:
+        query = fold(self.search.text().strip()) or ""
+        shown = [c for c in self._candidates.values()
+                 if query in fold(c.student_name) or query in c.student_number]
+        fill(self.table, [self._cells(c) for c in shown])
+        fit_columns(self.table, stretch=(1,))
+        if shown:
+            self.table.selectRow(0)
+        who = (t["add_student.who_open"] if self._group.level_open
+               else t["add_student.who"].format(level=self._group.level))
+        self.found.setText(who if shown else t["picker.none_found"].format(
+            query=self.search.text().strip()))
+        self._picked()
+
+    @staticmethod
+    def _cells(c: GroupCandidate) -> list:
+        note = item(t["enroll_dialog.same_subject"], kind="warning") if c.same_subject \
+            else item("")
+        return [item(c.student_number, item_id=c.student_id, mono=True), item(c.student_name),
+                item(c.level), note]
+
+    def selected(self) -> GroupCandidate | None:
+        student_id = selected_id(self.table)
+        return None if student_id is None else self._candidates.get(student_id)
+
+    def _picked(self) -> None:
+        c = self.selected()
+        self.submit.setEnabled(c is not None)
+        can_trial = c is not None and c.can_trial
+        self.trial.setEnabled(can_trial)
+        if not can_trial:
+            self.trial.setChecked(False)
+        self.trial_used.setVisible(c is not None and not c.can_trial)
+        self.reason_box.setVisible(c is not None and c.same_subject)
+        fit_to_content(self)
+
+    def save(self) -> None:
+        c = self.selected()
+        if c is None:
+            raise ValidationError(t["picker.choose"])
+        self.enrollment_id = enrollments.enroll(
+            self._conn, self._ctx, c.student_id, self._group.id,
+            trial=self.trial.isChecked(), enrolled_on=required_date(self.date),
+            override_reason=self.reason.text() if c.same_subject else None)
+
+    def chosen_name(self) -> str:
+        c = self.selected()
+        return "" if c is None else c.student_name
 
 
 class LeaveDialog(FormDialog):

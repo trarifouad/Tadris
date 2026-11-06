@@ -16,6 +16,10 @@ _COLUMNS = f"""
     r.level_id, l.name AS level, r.fee_amount, r.status, r.registered_at,
     (SELECT COUNT(*) FROM enrollments e
       WHERE e.registration_id = r.id AND e.status IN ('trial', 'active')) AS live_enrollments,
+    (SELECT COUNT(*) FROM enrollments e
+       JOIN class_groups g ON g.id = e.group_id JOIN levels gl ON gl.id = g.level_id
+      WHERE e.registration_id = r.id AND e.status IN ('trial', 'active')
+        AND gl.is_open = 0) AS level_enrollments,
     ({_FEE_CHARGE}) AS fee_charge_id,
     (SELECT c.status FROM charges c WHERE c.id = ({_FEE_CHARGE})) AS fee_charge_status,
     COALESCE((SELECT SUM(pa.amount) FROM payment_allocations pa

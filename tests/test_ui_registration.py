@@ -210,6 +210,21 @@ def test_change_and_cancel_hidden_while_in_a_group(qtbot, conn, director, year, 
     assert not shown(tab.change_level) and not shown(tab.cancel)
 
 
+def test_an_open_level_group_leaves_the_level_free_to_change(qtbot, conn, director, year,
+                                                              levels, amine):
+    registrations.register(conn, director, amine, levels[0], 0)
+    open_level = catalog.create(conn, director, "level", "Tous niveaux")
+    catalog.set_open(conn, director, open_level, True)
+    teacher = teachers.create(conn, director, TeacherInput("Prof"), 6000, date(2026, 9, 1))
+    subject = catalog.create(conn, director, "subject", "Calligraphie")
+    group = groups.create(conn, director, GroupInput(year, open_level, subject, "C1", 1500, 10,
+                                                     date(2026, 9, 1)), teacher)
+    enrollments.enroll(conn, director, amine, group)
+    tab = make_tab(qtbot, conn, director, amine)
+    assert tab.groups.text() == "1"
+    assert shown(tab.change_level) and not shown(tab.cancel)
+
+
 def test_director_cancels_with_a_reason(qtbot, conn, director, year, levels, amine,
                                         monkeypatch):
     registrations.register(conn, director, amine, levels[0], 2000)

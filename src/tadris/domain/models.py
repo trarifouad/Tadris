@@ -115,6 +115,10 @@ class NamedItem:
     is_active: bool
     order_index: int = 0
     group_count: int = 0
+    # Levels only: its groups take students of every level (« Tous niveaux »).
+    is_open: bool = False
+    # Subjects only: a workshop (calligraphie, arts…), offered for the open levels' groups.
+    is_workshop: bool = False
 
 
 @dataclass(frozen=True)
@@ -186,6 +190,8 @@ class Group:
     # Smallest room among the running or future slots; it caps the seats while used.
     room_limit: int | None = None
     limiting_room: str | None = None
+    # Its level is open (« Tous niveaux »): students of every level may join.
+    level_open: bool = False
 
     @property
     def title(self) -> str:
@@ -257,6 +263,8 @@ class Registration:
     live_enrollments: int  # groups the student is in (trial or active)
     fee_charge_id: int | None  # None when the fee was 0
     fee_paid: int  # by payments not voided
+    # Of the live ones, those in groups of a level that is not open: they hold the level.
+    level_enrollments: int = 0
 
     @property
     def fee_due(self) -> int:
@@ -283,6 +291,8 @@ class Enrollment:
     enrolled_on: str
     left_on: str | None
     switched_from_id: int | None
+    # The group's level is open (« Tous niveaux »): any registration level belongs there.
+    group_level_open: bool = False
 
     @property
     def group_title(self) -> str:
@@ -295,8 +305,21 @@ class Enrollment:
     @property
     def other_level(self) -> bool:
         """In a group of another level: only enrollments made before migration 0010, when the
-        director could override the level, can be."""
-        return self.group_level != self.registration_level
+        director could override the level, can be. A group of an open level is never one."""
+        return not self.group_level_open and self.group_level != self.registration_level
+
+
+@dataclass(frozen=True)
+class GroupCandidate:
+    """A student who may join a group, as offered from the group's page."""
+
+    student_id: int
+    student_number: str
+    student_name: str  # "Last First"
+    level: str  # their registration's
+    can_trial: bool  # never had their free trial
+    # Already in another group of this subject: needs the director override.
+    same_subject: bool = False
 
 
 @dataclass(frozen=True)
@@ -592,6 +615,10 @@ class PaymentLine:
     description: str
     due_date: str
     amount: int
+    # A month's charge: its group (« G2 · math 2AS ») and its dates; None for a fee.
+    group_title: str | None = None
+    month_start: str | None = None
+    month_end: str | None = None
 
 
 @dataclass(frozen=True)

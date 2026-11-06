@@ -125,20 +125,24 @@ class YearsTab(SetupTab):
 
 
 class CatalogTab(SetupTab):
-    """Levels (with Monter / Descendre) or subjects."""
+    """Levels (with Monter / Descendre, and open to every level or not) or subjects (a
+    workshop or not)."""
 
     def __init__(self, conn, ctx: UserContext, kind: str):
         plural = "levels" if kind == "level" else "subjects"
-        super().__init__(conn, ctx, t[f"{plural}.caption"], [
-            t["catalog.col.name"], t["catalog.col.status"], t["catalog.col.groups"],
-        ], t[f"{plural}.empty"])
+        headers = [t["catalog.col.name"], t["catalog.col.status"], t["catalog.col.groups"]]
+        headers.append(t["levels.col.open" if kind == "level" else "subjects.col.workshop"])
+        super().__init__(conn, ctx, t[f"{plural}.caption"], headers, t[f"{plural}.empty"])
         self.kind = kind
         self._items = {}
         self.rename = self.button(t["action.rename"], self._rename)
-        self.move_up = self.move_down = None
+        self.move_up = self.move_down = self.open = self.workshop = None
         if kind == "level":
             self.move_up = self.button(t["action.move_up"], lambda: self._move(-1))
             self.move_down = self.button(t["action.move_down"], lambda: self._move(1))
+            self.open = self.button(t["levels.open"], self._toggle_open)
+        else:
+            self.workshop = self.button(t["subjects.workshop"], self._toggle_workshop)
         self.toggle = self.button(t["action.deactivate"], self._toggle)
         self.new = self.main_button(t[f"{plural}.new"], self._new)
         self.refresh()
@@ -151,6 +155,7 @@ class CatalogTab(SetupTab):
             item(t["active.yes" if i.is_active else "active.no"],
                  kind=kind_for("flag", "yes" if i.is_active else "no")),
             item(str(i.group_count), i.group_count, align=CENTER),
+            item(t["levels.open_yes"] if i.is_open or i.is_workshop else ""),
         ] for i in listed])
 
     def selected(self):
@@ -167,6 +172,14 @@ class CatalogTab(SetupTab):
             position = ids.index(current.id) if current is not None else -1
             self.move_up.setEnabled(position > 0)
             self.move_down.setEnabled(0 <= position < len(ids) - 1)
+        if self.open is not None:
+            self.open.setEnabled(current is not None)
+            self.open.setText(t["levels.restrict" if current is not None and current.is_open
+                                else "levels.open"])
+        if self.workshop is not None:
+            self.workshop.setEnabled(current is not None)
+            self.workshop.setText(t["subjects.academic" if current is not None
+                                    and current.is_workshop else "subjects.workshop"])
 
     def _new(self) -> None:
         dialog = NameDialog(self._conn, self._ctx, self.kind, parent=self)
@@ -186,6 +199,20 @@ class CatalogTab(SetupTab):
         if current is not None and self.list.run(catalog.set_active, self._conn, self._ctx,
                                                  self.kind, current.id, not current.is_active):
             self._done(t["catalog.saved"].format(name=current.name), current.id)
+
+    def _toggle_open(self) -> None:
+        current = self.selected()
+        if current is not None and self.list.run(catalog.set_open, self._conn, self._ctx,
+                                                 current.id, not current.is_open):
+            self._done(t["levels.opened" if not current.is_open else "levels.restricted"].format(
+                name=current.name), current.id)
+
+    def _toggle_workshop(self) -> None:
+        current = self.selected()
+        if current is not None and self.list.run(catalog.set_workshop, self._conn, self._ctx,
+                                                 current.id, not current.is_workshop):
+            self._done(t["subjects.marked_workshop" if not current.is_workshop
+                         else "subjects.marked_academic"].format(name=current.name), current.id)
 
     def _move(self, offset: int) -> None:
         current = self.selected()

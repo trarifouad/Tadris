@@ -87,10 +87,10 @@ class School:
             [month] = subscriptions.for_student(conn, ctx, student)
             subscriptions.renew(conn, ctx, month.id)
         move_to(monkeypatch, date(2026, 10, 2))
-        paid = payouts.build_draft(conn, ctx, self.karim, date(2026, 9, 30))
+        paid = payouts.build_draft(conn, ctx, self.karim, date(2026, 10, 1))
         payouts.approve(conn, ctx, paid)
         payouts.mark_paid(conn, ctx, paid, "cash")
-        payouts.build_draft(conn, ctx, self.samia, date(2026, 9, 30))
+        payouts.build_draft(conn, ctx, self.samia, date(2026, 10, 1))
         move_to(monkeypatch, date(2026, 10, 3))
         payments.record(conn, ctx, self.amine, 6000, "cash")
 

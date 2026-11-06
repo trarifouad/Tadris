@@ -173,30 +173,38 @@ def receipt(conn, ctx: UserContext, receipt_id: int, out_dir: Path | None = None
     return path
 
 
+def _receipt_line(line) -> tuple[str, str, str]:
+    """A month: its group, and its dates under it; a fee: its description."""
+    if line.group_title is None:
+        return line.description, "", format_dzd(line.amount)
+    return line.group_title, t["receipt.month"].format(
+        start=dates.display_date(line.month_start),
+        end=dates.display_date(line.month_end)), format_dzd(line.amount)
+
+
 def receipt_content(conn, ctx: UserContext, receipt_id: int) -> ReceiptDoc:
     """What the payment paid, line by line (the same on a duplicate), then what the student
-    owes on the day it is printed (a duplicate shows its own day): what is due, the months
-    to come apart."""
+    owes on the day it is printed (a duplicate printed on a later day says which): what is
+    due, the months to come apart."""
     row = payments_repo.receipt(conn, receipt_id)
     if row is None:
         raise NotFound(t["receipt.not_found"])
     p = payments.get(conn, ctx, row["payment_id"])
     paid_on = dates.display_date(p.paid_at)
-    details = [(t["receipt.date"], f"{paid_on} {p.paid_at[11:16]}"),
-               (t["receipt.student"], t["receipt.student_value"].format(
-                   name=p.student_name, number=p.student_number))]
+    details = [(t["receipt.student"], t["receipt.student_value"].format(
+        name=p.student_name, number=p.student_number))]
     if p.payer_name:
         details.append((t["receipt.payer"], p.payer_name))
     details += [(t["receipt.method"], t[f"payment_method.{p.method}"]),
                 (t["receipt.cashier"], p.cashier)]
-    lines = [(line.description, format_dzd(line.amount))
-             for line in payments.lines(conn, ctx, p.id)]
+    lines = [_receipt_line(line) for line in payments.lines(conn, ctx, p.id)]
     owed = debt.for_student(conn, ctx, p.student_id)
     today = dates.display_date(dates.iso(dates.today()))
-    totals = [(t["receipt.total"], format_dzd(p.amount)),
-              (t["receipt.left"].format(date=today), format_dzd(owed.overdue))]
+    left = (t["receipt.left_now"] if today == paid_on
+            else t["receipt.left"].format(date=today))
+    balance = [(left, format_dzd(owed.overdue))]
     if owed.due > owed.overdue:
-        totals.append((t["receipt.upcoming"], format_dzd(owed.due - owed.overdue)))
+        balance.append((t["receipt.upcoming"], format_dzd(owed.due - owed.overdue)))
     voided_note = ""
     if p.voided:
         voided_note = t["receipt.voided"].format(date=dates.display_date(p.voided_at),
@@ -204,8 +212,9 @@ def receipt_content(conn, ctx: UserContext, receipt_id: int) -> ReceiptDoc:
     return ReceiptDoc(
         school=school_of(conn), title=t["receipt.title"], number=row["number"],
         copy_mark=t["receipt.duplicate"] if print_log.count(conn, RECEIPT, receipt_id) else "",
-        details=details, columns=(t["receipt.col.item"], t["receipt.col.amount"]),
-        lines=lines, totals=totals,
+        paid_at=t["receipt.paid_at"].format(date=paid_on, time=p.paid_at[11:16]),
+        details=details, lines=lines, total=(t["receipt.total"], format_dzd(p.amount)),
+        balance=balance,
         stamp=t["receipt.stamp_voided"] if p.voided else t["receipt.stamp_paid"],
         stamp_date=paid_on, voided_note=voided_note, thanks=t["receipt.thanks"],
         signature=t["receipt.signature"], footer=footer_for(ctx), note=_receipt_note(conn))

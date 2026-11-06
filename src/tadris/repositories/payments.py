@@ -160,13 +160,21 @@ def voided_on(conn, day: str) -> list:
 
 def allocations(conn, payment_id: int) -> list:
     """What a payment paid, charge by charge, in the order of the charges' due dates (a charge
-    paid in two rows before 2026-11-05, 0018, is one line with the sum)."""
+    paid in two rows before 2026-11-05, 0018, is one line with the sum). A month's charge
+    comes with its group and its dates (NULL for a registration fee)."""
     return conn.execute(
         """
         SELECT pa.charge_id, SUM(pa.amount) AS amount, c.description, c.due_date,
-               c.amount AS charge_amount
+               c.amount AS charge_amount, s.start_date AS month_start,
+               s.end_date AS month_end, g.name AS group_name, sb.name AS subject,
+               l.name AS level
           FROM payment_allocations pa
           JOIN charges c ON c.id = pa.charge_id
+          LEFT JOIN subscriptions s ON s.id = c.subscription_id
+          LEFT JOIN enrollments e ON e.id = s.enrollment_id
+          LEFT JOIN class_groups g ON g.id = e.group_id
+          LEFT JOIN subjects sb ON sb.id = g.subject_id
+          LEFT JOIN levels l ON l.id = g.level_id
          WHERE pa.payment_id = ?
          GROUP BY pa.charge_id
          ORDER BY c.due_date, c.id

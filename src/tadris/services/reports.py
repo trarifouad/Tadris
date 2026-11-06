@@ -456,31 +456,11 @@ STUDENT_STATUSES = ("active", "inactive", None)
 STUDENT_LIST_KEY = "liste-eleves"  # names its files
 
 
-def student_tiles(conn, ctx: UserContext) -> tuple[ReportTile, ...]:
-    """The school's students in four figures (the Élèves page, the list's PDF): active;
-    registered in the open year; in a trial now; in a group but with no month running."""
-    require(ctx, "student.view")
-    year = years_repo.open_year(conn)
-    counts = repo.student_counts(conn, None if year is None else year["id"],
-                                 dates.iso(dates.today()))
-    return (
-        ReportTile(t["reports.tile.active"], counts["active"], "number",
-                   t["reports.tile.active_note"]),
-        ReportTile(t["reports.tile.registered"], counts["registered"], "number",
-                   t["reports.tile.registered_note"].format(
-                       label=year["label"] if year else "—")),
-        ReportTile(t["reports.tile.trial"], counts["trial"], "number",
-                   t["reports.tile.trial_note"]),
-        ReportTile(t["reports.tile.no_month"], counts["no_month"], "number",
-                   t["reports.tile.no_month_note"]),
-    )
-
-
 def student_list(conn, ctx: UserContext, status: str | None = "active",
                  level_id: int | None = None, group_id: int | None = None,
                  query: str = "") -> Report:
     """The students the filters match, in name order, with what is late for each (as the
-    Paiements page shows it)."""
+    Paiements page shows it): a plain list, no figures above it."""
     require(ctx, "student.view")
     if status not in STUDENT_STATUSES:
         raise ValidationError(t["validation.generic"])
@@ -500,7 +480,6 @@ def student_list(conn, ctx: UserContext, status: str | None = "active",
                      row["registered_at"][:10] if row["registered_at"] else None,
                      owing.get(row["id"], 0)))
         ids.append(row["id"])
-    tiles = student_tiles(conn, ctx)
     columns = (ReportColumn(t["reports.col.number"]), ReportColumn(t["reports.col.student"]),
                ReportColumn(t["reports.col.level"]), ReportColumn(t["reports.col.groups_now"]),
                ReportColumn(t["reports.col.contact"]), ReportColumn(t["reports.col.phone"]),
@@ -522,7 +501,7 @@ def student_list(conn, ctx: UserContext, status: str | None = "active",
     on = dates.display_date(dates.iso(dates.today()))
     return Report(key=STUDENT_LIST_KEY, title=t["reports.students.title"],
                   period=t["reports.on"].format(date=on), columns=columns, rows=tuple(rows),
-                  total=total, tiles=tiles, filters=filters, note=t["reports.students.note"],
+                  total=total, filters=filters, note=t["reports.students.note"],
                   row_ids=tuple(ids), opens="students")
 
 

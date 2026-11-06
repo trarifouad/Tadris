@@ -102,7 +102,10 @@ def lines(conn, ctx: UserContext, payment_id: int) -> list[PaymentLine]:
     require(ctx, "student.view")
     _require_row(conn, payment_id)
     return [PaymentLine(charge_id=row["charge_id"], description=row["description"],
-                        due_date=row["due_date"], amount=row["amount"])
+                        due_date=row["due_date"], amount=row["amount"],
+                        group_title=None if row["group_name"] is None else
+                        f"{row['group_name']} · {row['subject']} {row['level']}",
+                        month_start=row["month_start"], month_end=row["month_end"])
             for row in repo.allocations(conn, payment_id)]
 
 

@@ -50,6 +50,7 @@ def _to_group(row) -> Group:
         capacity=row["capacity"], start_date=row["start_date"], status=row["status"],
         state=state_of(row), teacher_id=row["teacher_id"], teacher=row["teacher"],
         enrolled=row["enrolled"], room_limit=row["room_limit"], limiting_room=row["limiting_room"],
+        level_open=bool(row["level_open"]),
     )
 
 

@@ -18,7 +18,12 @@ from tadris.services import (
     subscriptions,
     teachers,
 )
-from tadris.ui.enrollment_dialogs import EnrollDialog, LeaveDialog, SwitchDialog
+from tadris.ui.enrollment_dialogs import (
+    AddStudentDialog,
+    EnrollDialog,
+    LeaveDialog,
+    SwitchDialog,
+)
 from tadris.ui.pages.student_detail import StudentDetailView
 from tadris.ui.pages.student_groups_tab import StudentGroupsTab
 from tadris.ui.theme import apply_theme, load_fonts
@@ -321,24 +326,89 @@ def test_group_page_opens_on_its_students(qtbot, conn, receptionist, school, ami
     assert not view.students.isHidden()  # beside the slots and teachers, no tabs
     assert view.students.summary.text() == "2 / 10 élèves · 8 place(s) libre(s) · 1 en essai"
     assert student_rows(view) == [
-        ["Benali Amine", "2026-0002", "Actif", "18/10/2026", "", ""],
-        ["Haddad Yanis", "2026-0003", "Essai", "18/10/2026", "", ""],
+        ["Benali Amine", "2026-0002", "Actif", "18/10/2026", ""],
+        ["Haddad Yanis", "2026-0003", "Essai", "18/10/2026", ""],
     ]
 
 
-def test_past_students_are_shown_on_demand(qtbot, conn, receptionist, school, amine):
+def test_the_list_shows_the_students_in_the_group_now(qtbot, conn, receptionist, school,
+                                                     amine):
     first = enrollments.enroll(conn, receptionist, amine, school.maths)
     enrollments.switch(conn, receptionist, first, school.physics)
     maths = group_view(qtbot, conn, receptionist, school.maths)
-    assert student_rows(maths) == []
+    assert student_rows(maths) == []  # who left is not listed
     assert shown(maths.students.list.empty)
-    assert maths.students.show_past.text() == t["group_students.show_past"].format(count=1)
-    maths.students.show_past.setChecked(True)
-    assert student_rows(maths) == [
-        ["Benali Amine", "2026-0002", "Changé de groupe", "18/10/2026", "18/10/2026", ""]]
     physics = group_view(qtbot, conn, receptionist, school.physics)
-    assert student_rows(physics)[0][5] == t["group_students.note.switched_in"]
-    assert not physics.students.show_past.isEnabled()  # nobody left P1
+    assert student_rows(physics)[0][4] == t["group_students.note.switched_in"]
+
+
+def test_add_a_student_from_the_group_page(qtbot, conn, receptionist, school, amine,
+                                           monkeypatch):
+    view = group_view(qtbot, conn, receptionist, school.maths)
+    assert shown(view.students.add_student) and view.students.add_student.isEnabled()
+
+    def fill(dialog):
+        dialog.search.setText("benali")
+        dialog.submit.click()
+    auto_exec(monkeypatch, AddStudentDialog, fill)
+    click(qtbot, view.students.add_student)
+    assert student_rows(view) == [["Benali Amine", "2026-0002", "Actif", "18/10/2026", ""]]
+    assert view.students.summary.text() == "1 / 10 élèves · 9 place(s) libre(s) · 0 en essai"
+    assert groups.get(conn, receptionist, school.maths).enrolled == 1
+
+
+def test_add_student_dialog_lists_who_may_join(qtbot, conn, receptionist, school, amine):
+    yanis = students.create(conn, receptionist, StudentInput("Yanis", "Haddad"))
+    registrations.register(conn, receptionist, yanis, school.l3am, 0)  # another level
+    dialog = AddStudentDialog(conn, receptionist, groups.get(conn, receptionist, school.maths))
+    qtbot.addWidget(dialog)
+    names = lambda: [dialog.table.item(r, 1).text() for r in range(dialog.table.rowCount())]
+    assert names() == ["Benali Amine", "Groupe Plein"]
+    assert dialog.found.text() == t["add_student.who"].format(level="4AM")
+    dialog.search.setText("plein")
+    assert names() == ["Groupe Plein"]
+    dialog.search.setText("2026-0002")
+    assert names() == ["Benali Amine"]
+    dialog.search.setText("zzz")
+    assert names() == [] and not dialog.submit.isEnabled()
+
+
+def test_add_student_dialog_trial_and_a_subject_already_taken(qtbot, conn, director,
+                                                              receptionist, school, amine):
+    teacher = teachers.create(conn, director, TeacherInput("Prof M2"), 6000, date(2026, 9, 1))
+    m2 = groups.create(conn, director, GroupInput(
+        school.year, school.l4am, groups.get(conn, director, school.maths).subject_id, "M2",
+        3000, 10, date(2026, 9, 1)), teacher)
+    enrollments.enroll(conn, receptionist, amine, school.maths, trial=True)
+    group = groups.get(conn, director, m2)
+    desk = AddStudentDialog(conn, receptionist, group)
+    qtbot.addWidget(desk)
+    assert desk.table.rowCount() == 1  # Amine has maths already: the director's call
+    boss = AddStudentDialog(conn, director, group)
+    qtbot.addWidget(boss)
+    boss.search.setText("benali")
+    assert boss.table.item(0, 3).text() == t["enroll_dialog.same_subject"]
+    assert shown(boss.reason_box) and shown(boss.trial_used) and not boss.trial.isEnabled()
+    boss.submit.click()
+    assert boss.banner.text() == t["enrollment.override_reason_required"]
+    boss.reason.setText("Rattrapage")
+    boss.submit.click()
+    assert enrollments.get(conn, director, boss.enrollment_id).group_id == m2
+
+
+def test_add_student_button_on_a_full_or_closed_group(qtbot, conn, director, school):
+    full = group_view(qtbot, conn, director, school.full)
+    assert shown(full.students.add_student) and not full.students.add_student.isEnabled()
+    assert full.students.add_student.toolTip() == t["group_students.full"]
+    groups.close(conn, director, school.physics)
+    closed = group_view(qtbot, conn, director, school.physics)
+    assert not shown(closed.students.add_student)
+
+
+def test_add_student_dialog_without_anyone_to_add(qtbot, conn, director, school):
+    dialog = AddStudentDialog(conn, director, groups.get(conn, director, school.maths_3am))
+    qtbot.addWidget(dialog)
+    assert not dialog.submit.isEnabled()
 
 
 def test_group_seats_follow_a_small_room(qtbot, conn, director, school, amine):
@@ -367,8 +437,7 @@ def test_closing_from_the_group_page_empties_the_list(qtbot, conn, director, sch
     view.close_group.trigger()
     assert "Ses 1 élève(s) en sortiront aujourd'hui" in seen["text"]
     assert student_rows(view) == []
-    view.students.show_past.setChecked(True)
-    assert student_rows(view)[0][2] == "Sorti"
+    assert not shown(view.students.add_student)  # a closed group takes nobody
 
 
 def test_dialog_and_a_subject_already_taken(qtbot, conn, director, receptionist, school, amine):

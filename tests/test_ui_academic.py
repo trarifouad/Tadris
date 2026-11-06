@@ -216,6 +216,58 @@ def test_levels_tab_add_move_and_deactivate(qtbot, conn, director, school, monke
     assert tab.toggle.text() == t["action.activate"]
 
 
+def test_levels_tab_opens_a_level_to_every_level(qtbot, conn, director, school):
+    tab = keep(qtbot, setup_tabs.CatalogTab(conn, director, "level"))
+    tab.list.select_id(school["3as"])
+    assert tab.open.isEnabled() and tab.open.text() == t["levels.open"]
+    click(qtbot, tab.open)
+    assert [r[3] for r in rows(tab.list.table)] == ["", t["levels.open_yes"]]
+    assert tab.open.text() == t["levels.restrict"]
+    click(qtbot, tab.open)
+    assert [r[3] for r in rows(tab.list.table)] == ["", ""]
+
+
+def test_subjects_tab_marks_a_workshop(qtbot, conn, director, school):
+    tab = keep(qtbot, setup_tabs.CatalogTab(conn, director, "subject"))
+    assert tab.open is None and tab.move_up is None
+    tab.list.select_id(school["physics"])
+    assert tab.workshop.isEnabled() and tab.workshop.text() == t["subjects.workshop"]
+    click(qtbot, tab.workshop)
+    assert [r[3] for r in rows(tab.list.table)] == ["", t["levels.open_yes"]]
+    assert tab.workshop.text() == t["subjects.academic"]
+    click(qtbot, tab.workshop)
+    assert [r[3] for r in rows(tab.list.table)] == ["", ""]
+
+
+def names_in(combo) -> list[str]:
+    return [combo.itemText(i) for i in range(combo.count())]
+
+
+def test_group_dialog_offers_the_workshops_for_an_open_level(qtbot, conn, director, school):
+    free = catalog.create(conn, director, "level", "Niveau libre")
+    catalog.set_open(conn, director, free, True)
+    dialog = keep(qtbot, GroupDialog(conn, director))
+    dialog.level.setCurrentIndex(dialog.level.findData(free))
+    assert names_in(dialog.subject) == []  # no workshop yet
+    assert visible(dialog.no_subject) and dialog.no_subject.text() == t[
+        "group_dialog.no_workshop"]
+    calligraphy = catalog.create(conn, director, "subject", "Calligraphie")
+    catalog.set_workshop(conn, director, calligraphy, True)
+    dialog = keep(qtbot, GroupDialog(conn, director))
+    assert names_in(dialog.subject) == ["Mathématiques", "Physique"]  # 4AM: school subjects
+    dialog.level.setCurrentIndex(dialog.level.findData(free))
+    assert names_in(dialog.subject) == ["Calligraphie"] and not visible(dialog.no_subject)
+    dialog.level.setCurrentIndex(dialog.level.findData(school["3as"]))
+    assert names_in(dialog.subject) == ["Mathématiques", "Physique"]
+
+
+def test_group_dialog_keeps_the_groups_own_subject(qtbot, conn, director, school):
+    catalog.set_workshop(conn, director, school["maths"], True)
+    existing = groups.get(conn, director, school["g1"])
+    dialog = keep(qtbot, GroupDialog(conn, director, group=existing))
+    assert dialog.subject.currentData() == school["maths"]
+
+
 def test_name_dialog_refuses_duplicates(qtbot, conn, director, school):
     dialog = keep(qtbot, NameDialog(conn, director, "subject"))
     dialog.name.setText("mathematiques")
@@ -236,9 +288,22 @@ def test_room_dialog_cannot_shrink_below_its_students(qtbot, conn, director, sch
     """)
     room = next(r for r in rooms.list_rooms(conn, director) if r.id == school["room_a"])
     dialog = keep(qtbot, RoomDialog(conn, director, room))
-    dialog.capacity.setValue(1)
+    assert dialog.capacity.text() == str(room.capacity)  # its own places
+    dialog.capacity.setText("1")
     click(qtbot, dialog.submit)
     assert dialog.banner.text() == t["db.room_below_group"]
+
+
+def test_room_dialog_places_start_empty_with_a_hint(qtbot, conn, director, school):
+    dialog = keep(qtbot, RoomDialog(conn, director))
+    assert (dialog.capacity.text(), dialog.capacity.placeholderText()) == ("", "20")
+    dialog.name.setText("Salle C")
+    click(qtbot, dialog.submit)
+    assert dialog.banner.text() == t["count.invalid"].format(low=1, high=500)
+    dialog.capacity.setText("15")
+    click(qtbot, dialog.submit)
+    assert next(r for r in rooms.list_rooms(conn, director)
+                if r.id == dialog.room_id).capacity == 15
 
 
 # ----- Enseignants -----
@@ -372,7 +437,7 @@ def test_group_dialog_creates_group(qtbot, conn, director, school):
     dialog.subject.setCurrentIndex(dialog.subject.findData(school["physics"]))
     dialog.name.setText("Physique 3AS")
     dialog.price.setText("3 500")
-    dialog.capacity.setValue(10)
+    dialog.capacity.setText("10")
     dialog.teacher.setCurrentIndex(dialog.teacher.findData(school["samia"]))
     click(qtbot, dialog.submit)
     group = groups.get(conn, director, dialog.group_id)
@@ -385,6 +450,9 @@ def test_group_dialog_errors(qtbot, conn, director, school):
     dialog.name.setText("maths 4am g1")
     dialog.price.setText("3000")
     click(qtbot, dialog.submit)
+    assert dialog.banner.text() == t["count.invalid"].format(low=1, high=500)  # no places
+    dialog.capacity.setText("12")
+    click(qtbot, dialog.submit)
     assert dialog.banner.text() == t["group.name_taken"]
     dialog.price.setText("trois mille")
     click(qtbot, dialog.submit)
@@ -395,6 +463,14 @@ def test_group_dialog_needs_a_teacher(qtbot, conn, director):
     school_years.create(conn, director, "2026-2027", date(2026, 9, 1), date(2027, 6, 30))
     dialog = keep(qtbot, GroupDialog(conn, director))
     assert not dialog.submit.isEnabled()
+
+
+def test_group_dialog_places_start_empty_with_a_hint(qtbot, conn, director, school):
+    dialog = keep(qtbot, GroupDialog(conn, director))
+    assert (dialog.capacity.text(), dialog.capacity.placeholderText()) == ("", "12")
+    existing = groups.search(conn, director)[0]
+    edit = keep(qtbot, GroupDialog(conn, director, group=existing))
+    assert edit.capacity.text() == str(existing.capacity)  # its own places
 
 
 def test_group_dialog_starts_with_the_default_price(qtbot, conn, director, school):

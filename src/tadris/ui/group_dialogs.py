@@ -15,9 +15,11 @@ from tadris.ui.widgets.forms import FormDialog, caption, row
 from tadris.ui.widgets.inputs import (
     STEP_MINUTES,
     WEEK_ORDER,
-    count_spin,
+    count_edit,
+    fill_combo,
     id_combo,
     money_edit,
+    read_count,
     read_money,
     read_time,
     time_combo,
@@ -67,21 +69,29 @@ class GroupDialog(FormDialog):
             self._years = {}
             self.year = id_combo([(group.year_label, group.school_year_id)])
             self.year.setEnabled(False)
-        self.level = id_combo(self._named("level", None if creating else group.level_id),
-                              None if creating else group.level_id)
-        self.subject = id_combo(self._named("subject", None if creating else group.subject_id),
-                                None if creating else group.subject_id)
+        self._levels = {i.id: i for i in catalog.list_items(conn, ctx, "level")}
+        self._subjects = catalog.list_items(conn, ctx, "subject")
+        # Active levels, plus the group's own even if it was deactivated.
+        own_level = None if creating else group.level_id
+        self.level = id_combo([(i.name, i.id) for i in self._levels.values()
+                               if i.is_active or i.id == own_level], own_level)
+        self.subject = id_combo([])
+        self.no_subject = caption()
+        self.no_subject.setWordWrap(True)
         self.name = QLineEdit("" if creating else group.name)
         self.name.setPlaceholderText(t["group_dialog.name_placeholder"])
         self.price = money_edit((groups.default_price(conn) or None) if creating
                                 else group.price)
-        self.capacity = count_spin(12 if creating else group.capacity)
+        self.capacity = count_edit(None if creating else group.capacity)
         self.start = DateLineEdit()
         self.teacher = id_combo([(x.full_name, x.id) for x in teachers.search(conn, ctx)])
 
         self.add(labeled(t["group_dialog.year"], self.year, required=True))
         self.add(row(labeled(t["group_dialog.level"], self.level, required=True),
                      labeled(t["group_dialog.subject"], self.subject, required=True)))
+        self.add(self.no_subject)
+        self.level.currentIndexChanged.connect(self._fill_subjects)
+        self._fill_subjects()
         self.add(labeled(t["group_dialog.name"], self.name, required=True))
         self.add(row(labeled(t["group_dialog.price"], self.price, required=True),
                      labeled(t["group_dialog.capacity"], self.capacity, required=True),
@@ -100,10 +110,18 @@ class GroupDialog(FormDialog):
             self.add(note)
         self.finish(self.level if creating else self.name)
 
-    def _named(self, kind: str, keep_id: int | None) -> list[tuple[str, int]]:
-        """Active items, plus the group's current one even if it was deactivated."""
-        return [(i.name, i.id) for i in catalog.list_items(self._conn, self._ctx, kind)
-                if i.is_active or i.id == keep_id]
+    def _fill_subjects(self) -> None:
+        """The subjects for the level picked: the workshops for an open level, the others
+        otherwise; an edited group keeps its own whatever it is."""
+        level = self._levels.get(self.level.currentData())
+        workshop = level is not None and level.is_open
+        keep = None if self._group is None else self._group.subject_id
+        items = [(i.name, i.id) for i in self._subjects
+                 if i.id == keep or (i.is_active and i.is_workshop == workshop)]
+        fill_combo(self.subject, items, self.subject.currentData() or keep)
+        self.no_subject.setText(t["group_dialog.no_workshop" if workshop
+                                  else "group_dialog.no_subject"])
+        self.no_subject.setVisible(not items)
 
     def _default_start(self) -> None:
         """Start on the year's first day, or today if the year already started."""
@@ -116,7 +134,7 @@ class GroupDialog(FormDialog):
         return GroupInput(
             school_year_id=required_id(self.year), level_id=required_id(self.level),
             subject_id=required_id(self.subject), name=self.name.text(),
-            price=read_money(self.price), capacity=self.capacity.value(),
+            price=read_money(self.price), capacity=read_count(self.capacity),
             start_date=required_date(self.start),
         )
 

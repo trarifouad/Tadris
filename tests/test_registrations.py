@@ -251,6 +251,23 @@ def test_change_level_refused_while_in_a_group(conn, director, year, level, othe
     assert exc.value.message == t["registration.has_live_enrollments"].format(count=1)
 
 
+def test_change_level_while_only_in_an_open_level_group(conn, director, year, level,
+                                                        other_level, amine):
+    """Calligraphie « Tous niveaux » takes any level: it lets the level change, not the
+    registration be cancelled."""
+    open_level = catalog.create(conn, director, "level", "Tous niveaux")
+    catalog.set_open(conn, director, open_level, True)
+    reg_id = registrations.register(conn, director, amine, level)
+    enroll_by_hand(conn, director, reg_id, amine, open_level, year)
+    reg = registrations.get(conn, director, reg_id)
+    assert (reg.live_enrollments, reg.level_enrollments) == (1, 0)
+    registrations.change_level(conn, director, reg_id, other_level)
+    assert registrations.get(conn, director, reg_id).level == "3AS"
+    with pytest.raises(BusinessRuleError) as exc:
+        registrations.cancel(conn, director, reg_id, "Erreur")
+    assert exc.value.message == t["registration.has_live_enrollments"].format(count=1)
+
+
 # ----- cancel -----
 
 def test_cancel_cancels_the_fee_charge_and_is_audited(conn, director, year, level, amine):

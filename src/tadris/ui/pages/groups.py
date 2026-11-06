@@ -242,7 +242,8 @@ class GroupDetailView(QWidget):
             t["history.col.teacher"], t["history.col.from"], t["history.col.to"],
         ], "")
         self.students = GroupStudentsTab(conn, ctx, group_id)
-        hide_empty_columns(self.students.list.table, (4, 5))  # exit, remark
+        self.students.changed.connect(self.refresh)
+        hide_empty_columns(self.students.list.table, (4,))  # remark
 
         students_card = section_card()
         students_card.layout().addWidget(self.students)

@@ -14,7 +14,7 @@ from tadris.services import catalog, holidays, rooms, school_years
 from tadris.ui.widgets.common import labeled
 from tadris.ui.widgets.date_edit import DateLineEdit
 from tadris.ui.widgets.forms import FormDialog, caption, row
-from tadris.ui.widgets.inputs import count_spin
+from tadris.ui.widgets.inputs import count_edit, read_count
 
 
 def required_date(field: DateLineEdit) -> date:
@@ -88,7 +88,7 @@ class RoomDialog(FormDialog):
         self._conn, self._ctx, self._room = conn, ctx, room
         self.room_id: int | None = None if room is None else room.id
         self.name = QLineEdit("" if room is None else room.name)
-        self.capacity = count_spin(20 if room is None else room.capacity)
+        self.capacity = count_edit(None if room is None else room.capacity, placeholder=20)
         self.add(row(labeled(t["room_dialog.name"], self.name, required=True),
                      labeled(t["room_dialog.capacity"], self.capacity, required=True)))
         self.finish(self.name)
@@ -96,10 +96,10 @@ class RoomDialog(FormDialog):
     def save(self) -> None:
         if self._room is None:
             self.room_id = rooms.create(self._conn, self._ctx, self.name.text(),
-                                        self.capacity.value())
+                                        read_count(self.capacity))
         else:
             rooms.update(self._conn, self._ctx, self._room.id, self.name.text(),
-                         self.capacity.value())
+                         read_count(self.capacity))
 
 
 class HolidayDialog(FormDialog):

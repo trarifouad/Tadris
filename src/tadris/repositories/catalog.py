@@ -14,10 +14,11 @@ def _table(kind: str) -> str:
 
 def list_all(conn, kind: str) -> list:
     order = "order_index, name" if kind == "level" else "name"
-    order_col = "order_index" if kind == "level" else "0 AS order_index"
+    level_cols = ("order_index, is_open, 0 AS is_workshop" if kind == "level"
+                  else "0 AS order_index, 0 AS is_open, is_workshop")
     return conn.execute(
         f"""
-        SELECT t.id, t.name, t.is_active, {order_col},
+        SELECT t.id, t.name, t.is_active, {level_cols},
                (SELECT COUNT(*) FROM class_groups g
                  WHERE g.{_GROUP_COLUMN[kind]} = t.id AND g.status <> 'closed') AS group_count
           FROM {_table(kind)} t
@@ -48,6 +49,30 @@ def rename(conn, kind: str, item_id: int, name: str) -> None:
 
 def set_active(conn, kind: str, item_id: int, active: bool) -> None:
     conn.execute(f"UPDATE {_table(kind)} SET is_active = ? WHERE id = ?", (int(active), item_id))
+
+
+def set_open(conn, level_id: int, is_open: bool) -> None:
+    """Levels only: open the level's groups to students of every level, or not."""
+    conn.execute("UPDATE levels SET is_open = ? WHERE id = ?", (int(is_open), level_id))
+
+
+def set_workshop(conn, subject_id: int, is_workshop: bool) -> None:
+    """Subjects only: a workshop is offered for the groups of an open level."""
+    conn.execute("UPDATE subjects SET is_workshop = ? WHERE id = ?",
+                 (int(is_workshop), subject_id))
+
+
+def other_level_students(conn, level_id: int) -> int:
+    """Levels only: students of another level live in the level's groups (an open level)."""
+    return conn.execute(
+        """
+        SELECT COUNT(DISTINCT e.student_id) FROM enrollments e
+          JOIN class_groups g ON g.id = e.group_id
+          JOIN registrations r ON r.id = e.registration_id
+         WHERE g.level_id = ? AND r.level_id <> g.level_id AND e.status IN ('trial', 'active')
+        """,
+        (level_id,),
+    ).fetchone()[0]
 
 
 def set_order(conn, ordered_ids: list[int]) -> None:

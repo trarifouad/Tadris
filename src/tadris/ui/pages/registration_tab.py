@@ -147,9 +147,12 @@ class RegistrationTab(QWidget):
             self.summary.setText(t["registration_tab.summary"].format(
                 level=reg.level, date=display_date(reg.registered_at)))
         can_register = allowed(self._ctx, "registration.create")
-        in_year = reg is not None and reg.live_enrollments == 0
-        self.change_level.setVisible(in_year and can_register)
-        self.cancel.setVisible(in_year and allowed(self._ctx, "registration.cancel"))
+        # The groups of an open level (« Tous niveaux ») take any level: they leave the level
+        # free to change, not the registration to be cancelled.
+        self.change_level.setVisible(reg is not None and reg.level_enrollments == 0
+                                     and can_register)
+        self.cancel.setVisible(reg is not None and reg.live_enrollments == 0
+                               and allowed(self._ctx, "registration.cancel"))
 
         if self.year is None:
             message = t["registration.no_open_year"]

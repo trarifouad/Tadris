@@ -118,10 +118,11 @@ def make_list(qtbot, conn, ctx) -> PayoutListView:
 
 def test_what_is_owed_up_to_the_date(qtbot, conn, director, school):
     view = make_list(qtbot, conn, director)
-    assert view.until.text() == "30/09/2026"  # the end of last month
+    assert view.until.text() == "18/10/2026"  # today: every month over by now
     assert rows(view.due.table) == [["Karim Haddad", "2", "6 000 DA", "—"]]
-    view.until.setText("31/08/2026")
+    view.until.setText("30/09/2026")  # September's months end on 01/10: not over yet
     assert view.due.table.isHidden() and shown(view.due.empty)
+    assert view.due.empty.text() == t["payouts.due_empty"]
 
 
 def test_the_monthly_run(qtbot, conn, director, school):
@@ -138,20 +139,20 @@ def test_the_monthly_run(qtbot, conn, director, school):
     enrollments.enroll(conn, director, student, a1, enrolled_on=date(2026, 9, 1))
     view = make_list(qtbot, conn, director)
     click(qtbot, view.run)
-    assert rows(view.list.table) == [["Karim Haddad", "du 01/09/2026 au 30/09/2026", "2",
+    assert rows(view.list.table) == [["Karim Haddad", "du 01/09/2026 au 18/10/2026", "2",
                                       "6 000 DA", "3 600 DA", "Brouillon", "—"]]
     assert view.error.text() == t["payout.no_rate"].format(teacher="Nadia Kaci",
                                                            date="01/09/2026")
     # Karim's months are in his draft now; Nadia's are still owed (no rate yet).
     assert rows(view.due.table) == [["Nadia Kaci", "1", "2 000 DA", "—"]]
-    school["pupil"]("Yanis", date(2026, 9, 20))  # entered after Karim's draft
+    school["pupil"]("Yanis")  # entered after Karim's draft, from 01/09: over too
     view.refresh()
     assert rows(view.due.table)[0] == ["Karim Haddad", "1", "3 000 DA", t["payouts.has_draft"]]
 
 
 def test_approve_asks_then_locks(qtbot, conn, director, school, answers):
     asked, given = answers
-    payout_id = payouts.build_draft(conn, director, school["karim"], date(2026, 9, 30))
+    payout_id = payouts.build_draft(conn, director, school["karim"], date(2026, 10, 1))
     view = make_list(qtbot, conn, director)
     view.list.select_id(payout_id)
     assert view.approve.isEnabled() and not view.pay.isEnabled()
@@ -161,15 +162,15 @@ def test_approve_asks_then_locks(qtbot, conn, director, school, answers):
     click(qtbot, view.approve)
     assert payouts.get(conn, director, payout_id).status == "approved"
     assert asked[0][1] == t["payouts.confirm_approve"].format(
-        amount="3 600 DA", teacher="Karim Haddad", period="du 01/09/2026 au 30/09/2026")
+        amount="3 600 DA", teacher="Karim Haddad", period="du 01/09/2026 au 01/10/2026")
     view.list.select_id(payout_id)
     assert not view.rebuild.isEnabled() and not view.delete.isEnabled() and view.pay.isEnabled()
 
 
 def test_approve_warns_about_months_entered_since(qtbot, conn, director, school, answers):
     asked, _given = answers
-    payout_id = payouts.build_draft(conn, director, school["karim"], date(2026, 9, 30))
-    school["pupil"]("Yanis", date(2026, 9, 20))
+    payout_id = payouts.build_draft(conn, director, school["karim"], date(2026, 10, 1))
+    school["pupil"]("Yanis")  # from 01/09, over by the draft's date
     view = make_list(qtbot, conn, director)
     view.list.select_id(payout_id)
     click(qtbot, view.approve)
@@ -177,7 +178,7 @@ def test_approve_warns_about_months_entered_since(qtbot, conn, director, school,
 
 
 def test_pay_prints_the_slip(qtbot, conn, director, school, documents, monkeypatch):
-    payout_id = payouts.build_draft(conn, director, school["karim"], date(2026, 9, 30))
+    payout_id = payouts.build_draft(conn, director, school["karim"], date(2026, 10, 1))
     payouts.approve(conn, director, payout_id)
 
     def fill(dialog):
@@ -188,13 +189,13 @@ def test_pay_prints_the_slip(qtbot, conn, director, school, documents, monkeypat
     view = make_list(qtbot, conn, director)
     view.list.select_id(payout_id)
     click(qtbot, view.pay)
-    assert [p.name for p in documents] == ["paiement-enseignant_karim-haddad_2026-09-30.pdf"]
+    assert [p.name for p in documents] == ["paiement-enseignant_karim-haddad_2026-10-01.pdf"]
     view.filter.setCurrentIndex(view.filter.findData("paid"))
     assert rows(view.list.table)[0][5:] == ["Payé", "PE2026-00001"]
 
 
 def test_delete_a_draft_from_the_list(qtbot, conn, director, school, answers):
-    payout_id = payouts.build_draft(conn, director, school["karim"], date(2026, 9, 30))
+    payout_id = payouts.build_draft(conn, director, school["karim"], date(2026, 10, 1))
     view = make_list(qtbot, conn, director)
     view.list.select_id(payout_id)
     click(qtbot, view.delete)
@@ -205,7 +206,7 @@ def test_delete_a_draft_from_the_list(qtbot, conn, director, school, answers):
 # ----- the detail -----
 
 def test_detail_groups_and_students(qtbot, conn, director, school):
-    payout_id = payouts.build_draft(conn, director, school["karim"], date(2026, 9, 30))
+    payout_id = payouts.build_draft(conn, director, school["karim"], date(2026, 10, 1))
     view = PayoutDetailView(conn, director, payout_id)
     qtbot.addWidget(view)
     assert view.header.title.text() == "Karim Haddad · 3 600 DA"
@@ -217,8 +218,8 @@ def test_detail_groups_and_students(qtbot, conn, director, school):
 
 
 def test_detail_rebuild_after_new_months(qtbot, conn, director, school):
-    payout_id = payouts.build_draft(conn, director, school["karim"], date(2026, 9, 30))
-    school["pupil"]("Yanis", date(2026, 9, 20))
+    payout_id = payouts.build_draft(conn, director, school["karim"], date(2026, 10, 1))
+    school["pupil"]("Yanis")  # from 01/09, over by the draft's date
     view = PayoutDetailView(conn, director, payout_id)
     qtbot.addWidget(view)
     assert shown(view.stale) and view.stale.text() == t["payouts.stale"].format(count=1)
@@ -229,7 +230,7 @@ def test_detail_rebuild_after_new_months(qtbot, conn, director, school):
 
 
 def test_detail_delete_goes_back(qtbot, conn, director, school, answers):
-    payout_id = payouts.build_draft(conn, director, school["karim"], date(2026, 9, 30))
+    payout_id = payouts.build_draft(conn, director, school["karim"], date(2026, 10, 1))
     view = PayoutDetailView(conn, director, payout_id)
     qtbot.addWidget(view)
     went_back = []
@@ -239,7 +240,7 @@ def test_detail_delete_goes_back(qtbot, conn, director, school, answers):
 
 
 def test_the_page_opens_a_payout(qtbot, conn, director, school):
-    payout_id = payouts.build_draft(conn, director, school["karim"], date(2026, 9, 30))
+    payout_id = payouts.build_draft(conn, director, school["karim"], date(2026, 10, 1))
     page = PayoutsPage(conn, director)
     qtbot.addWidget(page)
     page.list.list.activated.emit(payout_id)
@@ -249,12 +250,12 @@ def test_the_page_opens_a_payout(qtbot, conn, director, school):
 # ----- elsewhere -----
 
 def test_the_teachers_payout_history(qtbot, conn, director, desk, school):
-    payout_id = payouts.build_draft(conn, director, school["karim"], date(2026, 9, 30))
+    payout_id = payouts.build_draft(conn, director, school["karim"], date(2026, 10, 1))
     view = TeacherDetailView(conn, director, school["karim"])
     qtbot.addWidget(view)
     titles = [view.tabs.tabText(i) for i in range(view.tabs.count())]
     assert titles[-1] == t["teacher_detail.tab.payouts"]
-    assert rows(view.payouts.table) == [["du 01/09/2026 au 30/09/2026", "2", "3 600 DA",
+    assert rows(view.payouts.table) == [["du 01/09/2026 au 01/10/2026", "2", "3 600 DA",
                                          "Brouillon", "—"]]
     assert view.payouts.table.item(0, 0).data(Qt.ItemDataRole.UserRole + 1) == payout_id
     desk_view = TeacherDetailView(conn, desk, school["karim"])
@@ -264,7 +265,7 @@ def test_the_teachers_payout_history(qtbot, conn, director, desk, school):
 
 
 def test_cash_shows_teachers_paid_to_the_director(qtbot, conn, director, desk, school):
-    payout_id = payouts.build_draft(conn, director, school["karim"], date(2026, 9, 30))
+    payout_id = payouts.build_draft(conn, director, school["karim"], date(2026, 10, 1))
     payouts.approve(conn, director, payout_id)
     payouts.mark_paid(conn, director, payout_id, "cash")
     page = PaymentsPage(conn, director)

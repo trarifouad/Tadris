@@ -495,13 +495,13 @@ def test_leaving_keeps_a_month_ahead_already_paid(conn, director, receptionist, 
     assert audit_new(conn, "enrollment.leave")["months_kept"] == [ahead]
 
 
-def started_and_counted(conn, director, receptionist, school, in_maths, monkeypatch,
-                        approve: bool) -> tuple[int, int]:
-    """The month from 18/11 started: a payout of 20/11 counts it (a payout counts only
-    months started). Returns (that month, the payout)."""
+def over_and_counted(conn, director, receptionist, school, in_maths, monkeypatch,
+                     approve: bool) -> tuple[int, int]:
+    """The month from 18/11 is over: a payout of 18/12 counts it with the one before (a
+    payout counts only months over). Returns (that month, the payout)."""
     ahead = renewed_ahead(conn, receptionist, in_maths, monkeypatch)
-    monkeypatch.setattr(dates, "today", lambda: date(2026, 11, 20))
-    payout = payouts.build_draft(conn, director, school.teacher, date(2026, 11, 20))
+    monkeypatch.setattr(dates, "today", lambda: date(2026, 12, 18))
+    payout = payouts.build_draft(conn, director, school.teacher, date(2026, 12, 18))
     assert payouts.get(conn, director, payout).months == 2
     if approve:
         payouts.approve(conn, director, payout)
@@ -510,10 +510,10 @@ def started_and_counted(conn, director, receptionist, school, in_maths, monkeypa
 
 def test_leaving_takes_a_month_out_of_the_teachers_draft(conn, director, receptionist,
                                                          school, in_maths, monkeypatch):
-    """The leaving recorded on 20/11 from 17/11: the month of 18/11 goes, and leaves the
+    """The leaving recorded on 18/12 from 17/11: the month of 18/11 goes, and leaves the
     draft."""
-    _ahead, draft = started_and_counted(conn, director, receptionist, school, in_maths,
-                                        monkeypatch, approve=False)
+    _ahead, draft = over_and_counted(conn, director, receptionist, school, in_maths,
+                                     monkeypatch, approve=False)
     enrollments.leave(conn, receptionist, in_maths, date(2026, 11, 17))
     p = payouts.get(conn, director, draft)
     assert (p.months, p.base_amount, p.amount_due) == (1, 3000, 1800)
@@ -521,8 +521,8 @@ def test_leaving_takes_a_month_out_of_the_teachers_draft(conn, director, recepti
 
 def test_leaving_keeps_a_month_a_teacher_was_paid_for(conn, director, receptionist,
                                                       school, in_maths, monkeypatch):
-    ahead, _payout = started_and_counted(conn, director, receptionist, school, in_maths,
-                                         monkeypatch, approve=True)
+    ahead, _payout = over_and_counted(conn, director, receptionist, school, in_maths,
+                                      monkeypatch, approve=True)
     enrollments.leave(conn, receptionist, in_maths, date(2026, 11, 17))
     assert audit_new(conn, "enrollment.leave")["months_kept"] == [ahead]
 

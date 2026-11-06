@@ -1,8 +1,6 @@
 """Paiements enseignants (director only): what each teacher is owed up to a date, the drafts,
 approved and paid payouts; a payout's groups and its months student by student."""
 
-from datetime import timedelta
-
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QComboBox,
@@ -42,11 +40,6 @@ FILTERS = (("open", ("draft", "approved")), ("paid", ("paid",)),
            ("all", ("draft", "approved", "paid")))
 
 
-def last_month_end():
-    """The default date to pay up to: the last day of the previous month."""
-    return dates.today().replace(day=1) - timedelta(days=1)
-
-
 def payout_cells(p: Payout) -> list:
     return [
         item(p.teacher, p.teacher.casefold(), item_id=p.id),
@@ -74,8 +67,9 @@ class PayoutListView(QWidget):
         title.setObjectName("pageTitle")
         intro = caption(t["payouts.caption"])
         intro.setWordWrap(True)
-        self.until = DateLineEdit(maximum=dates.today())  # months already started only
-        self.until.set_value(last_month_end())
+        # Today by default: every month over by today. Never later (months still running).
+        self.until = DateLineEdit(maximum=dates.today())
+        self.until.set_value(dates.today())
         self.until.textChanged.connect(lambda _text: self._load_due())
         self.run = primary_button(t["payouts.run"])
         self.run.setDefault(False)

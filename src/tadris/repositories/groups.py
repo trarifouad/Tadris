@@ -16,7 +16,7 @@ _LIVE_ROOMS = """
 _COLUMNS = f"""
     g.id, g.school_year_id, y.label AS year_label, y.status AS year_status,
     y.start_date AS year_start, y.end_date AS year_end,
-    g.level_id, l.name AS level, g.subject_id, s.name AS subject,
+    g.level_id, l.name AS level, l.is_open AS level_open, g.subject_id, s.name AS subject,
     g.name, g.price, g.capacity, g.start_date, g.status,
     gt.teacher_id, t.full_name AS teacher,
     (SELECT COUNT(*) FROM enrollments e

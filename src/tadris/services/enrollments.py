@@ -6,7 +6,7 @@ from tadris.core.errors import BusinessRuleError, NotFound, ValidationError
 from tadris.core.permissions import require
 from tadris.core.text import clean
 from tadris.db.errors import atomic
-from tadris.domain.models import Enrollment, GroupOption
+from tadris.domain.models import Enrollment, GroupCandidate, GroupOption
 from tadris.i18n.fr import t
 from tadris.repositories import enrollments as repo
 from tadris.repositories import groups as groups_repo
@@ -21,8 +21,9 @@ from tadris.services import audit, groups, subscriptions
 # several groups under one registration, never twice at once in the same group. Joining a
 # running group is normal; the entry date lies between the group's start and the end of the
 # year. One free trial per student, ever. A student follows the groups of one level, that of
-# their registration, and cannot attend two groups at the same time: both refused for
-# everyone. A second group of the same subject needs the director with an audited reason.
+# their registration, plus the groups of an open level (« Tous niveaux »), and cannot attend
+# two groups at the same time: both refused for everyone. A second group of the same subject
+# needs the director with an audited reason.
 # The first month (subscription) is created here, in the same transaction: from the entry
 # date when enrolled as active, from the confirmation when a trial is confirmed, and after a
 # switch from the end of the month running in the old group. Leaving a group (a switch, a
@@ -45,6 +46,7 @@ def _to_enrollment(row) -> Enrollment:
         status=row["status"], started_as_trial=bool(row["started_as_trial"]),
         enrolled_on=row["enrolled_on"], left_on=row["left_on"],
         switched_from_id=row["switched_from_id"],
+        group_level_open=bool(row["group_level_open"]),
     )
 
 
@@ -83,7 +85,8 @@ def default_date(group_start: str, today: date | None = None) -> date:
 
 def options(conn, ctx: UserContext, student_id: int,
             leaving_group_id: int | None = None) -> list[GroupOption]:
-    """The open groups of the open year at the level of the student's registration.
+    """The open groups of the open year at the level of the student's registration, and those
+    of an open level (« Tous niveaux »), in the order of the levels.
     leaving_group_id: the group a switch leaves, which no longer counts as one of theirs."""
     require(ctx, "enrollment.create")
     year = years_repo.open_year(conn)
@@ -92,9 +95,9 @@ def options(conn, ctx: UserContext, student_id: int,
     registration = registrations_repo.for_student_year(conn, student_id, year["id"])
     if registration is None or registration["status"] != "active":
         return []
-    year_groups = [g for g in groups.search(conn, ctx, year_id=year["id"],
-                                            level_id=registration["level_id"])
-                   if g.status != "closed"]
+    year_groups = [g for g in groups.search(conn, ctx, year_id=year["id"])
+                   if g.status != "closed"
+                   and (g.level_id == registration["level_id"] or g.level_open)]
     live = {row["group_id"] for row in repo.for_student(conn, student_id)
             if row["status"] in LIVE} - {leaving_group_id}
     taken = {(g.subject_id, g.level_id) for g in year_groups if g.id in live}
@@ -103,6 +106,24 @@ def options(conn, ctx: UserContext, student_id: int,
                     same_subject=g.id not in live and (g.subject_id, g.level_id) in taken)
         for g in year_groups
     ]
+
+
+def candidates(conn, ctx: UserContext, group_id: int) -> list[GroupCandidate]:
+    """Who may join the group from its page: the active students registered in the open
+    year at its level (any level for an open level) and not in it now. None for a closed
+    group or one of another year."""
+    require(ctx, "enrollment.create")
+    group = groups_repo.get(conn, group_id, _today())
+    if group is None:
+        raise NotFound(t["group.not_found"])
+    year = years_repo.open_year(conn)
+    if group["status"] == "closed" or year is None or group["school_year_id"] != year["id"]:
+        return []
+    return [GroupCandidate(student_id=row["student_id"], student_number=row["student_number"],
+                           student_name=f"{row['last_name']} {row['first_name']}",
+                           level=row["level"], can_trial=not row["had_trial"],
+                           same_subject=bool(row["same_subject"]))
+            for row in repo.candidates(conn, group_id)]
 
 
 def enroll(conn, ctx: UserContext, student_id: int, group_id: int, trial: bool = False,
@@ -152,7 +173,7 @@ def _place(conn, ctx: UserContext, student_id: int, group_id: int, enrolled_on: 
     registration = registrations_repo.for_student_year(conn, student_id, year["id"])
     if registration is None or registration["status"] != "active":
         raise BusinessRuleError(t["enrollment.not_registered"].format(label=year["label"]))
-    if group["level_id"] != registration["level_id"]:
+    if group["level_id"] != registration["level_id"] and not group["level_open"]:
         raise BusinessRuleError(t["enrollment.level_mismatch"].format(
             group=title, group_level=group["level"], level=registration["level"]))
     if repo.live_in_group(conn, student_id, group_id) is not None:

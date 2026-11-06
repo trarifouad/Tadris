@@ -294,6 +294,94 @@ def test_reason_is_ignored_when_levels_match(conn, director, school, amine):
     assert "overrides" not in last_audit(conn, "enrollment.create")
 
 
+# ----- an open level (« Tous niveaux »: calligraphie, arts, …) -----
+
+@pytest.fixture
+def workshop(conn, director, school):
+    """Calligraphie, a group of « Tous niveaux »: a level open to every level."""
+    level = catalog.create(conn, director, "level", "Tous niveaux")
+    catalog.set_open(conn, director, level, True)
+    subject = catalog.create(conn, director, "subject", "Calligraphie")
+    teacher = teachers.create(conn, director, TeacherInput("Prof Calligraphie"), 6000,
+                              date(2026, 9, 1))
+    return groups.create(conn, director, GroupInput(school.year, level, subject, "C1", 1500, 10,
+                                                    date(2026, 9, 1)), teacher)
+
+
+def test_open_level_group_takes_every_level_next_to_their_own(conn, receptionist, school,
+                                                              amine, workshop):
+    """A 4AM student follows maths 4AM and calligraphie; a 3AM student the same workshop."""
+    enrollments.enroll(conn, receptionist, amine, school.maths)
+    in_workshop = enrollments.enroll(conn, receptionist, amine, workshop)
+    yanis = new_student(conn, receptionist, school, "Yanis", school.l3am)
+    enrollments.enroll(conn, receptionist, yanis, school.maths_3am)
+    enrollments.enroll(conn, receptionist, yanis, workshop)
+    e = enrollments.get(conn, receptionist, in_workshop)
+    assert (e.group_level, e.registration_level, e.other_level) == ("Tous niveaux", "4AM", False)
+    assert [s.student_name for s in enrollments.for_group(conn, receptionist, workshop)] == [
+        "Benali Amine", "Haddad Yanis"]
+    assert groups.get(conn, receptionist, workshop).level_open
+
+
+def test_options_add_the_open_level_groups(conn, receptionist, school, amine, workshop):
+    found = [o.group.id for o in enrollments.options(conn, receptionist, amine)]
+    assert workshop in found and school.maths in found
+    assert school.maths_3am not in found  # another level that is not open: never offered
+
+
+def test_a_student_registered_at_the_open_level_follows_its_groups_only(conn, receptionist,
+                                                                        school, workshop):
+    """An adult who only takes the workshop."""
+    level = groups.get(conn, receptionist, workshop).level_id
+    nadia = new_student(conn, receptionist, school, "Nadia", level)
+    enrollments.enroll(conn, receptionist, nadia, workshop)
+    assert [o.group.id for o in enrollments.options(conn, receptionist, nadia)] == [workshop]
+    with pytest.raises(BusinessRuleError):
+        enrollments.enroll(conn, receptionist, nadia, school.maths)
+
+
+def test_database_takes_any_level_in_an_open_level_group(conn, director, school, amine,
+                                                         workshop):
+    registration = registrations.current(conn, director, amine).id
+    conn.execute("INSERT INTO enrollments(student_id, group_id, registration_id, enrolled_on) "
+                 "VALUES (?, ?, ?, '2026-10-18')", (amine, workshop, registration))
+    assert groups.get(conn, director, workshop).enrolled == 1
+
+
+def test_candidates_are_the_registered_students_not_in_the_group(conn, director, receptionist,
+                                                                  school, amine, workshop):
+    new_student(conn, receptionist, school, "Yanis", school.l3am)
+    enrollments.enroll(conn, receptionist, amine, school.maths, trial=True)
+    names = lambda group: [c.student_name for c in enrollments.candidates(conn, receptionist,
+                                                                          group)]
+    assert names(school.maths) == []  # Amine is in it; Yanis is 3AM
+    assert names(school.physics) == ["Benali Amine"]
+    assert names(workshop) == ["Benali Amine", "Haddad Yanis"]  # an open level: every level
+    [amine_c, yanis_c] = enrollments.candidates(conn, receptionist, workshop)
+    assert (amine_c.level, amine_c.can_trial, yanis_c.level, yanis_c.can_trial) == (
+        "4AM", False, "3AM", True)
+    groups.close(conn, director, school.physics)
+    assert names(school.physics) == []  # closed: nobody
+
+
+def test_a_level_keeps_to_its_own_students_once_the_others_left(conn, director, receptionist,
+                                                                school, amine, workshop):
+    level = groups.get(conn, director, workshop).level_id
+    in_workshop = enrollments.enroll(conn, receptionist, amine, workshop)
+    with pytest.raises(BusinessRuleError) as exc:
+        catalog.set_open(conn, director, level, False)
+    assert exc.value.message == t["level.open_in_use"].format(level="Tous niveaux", count=1)
+    with pytest.raises(Exception, match="other levels"):
+        conn.execute("UPDATE levels SET is_open = 0 WHERE id = ?", (level,))
+    enrollments.leave(conn, receptionist, in_workshop)
+    catalog.set_open(conn, director, level, False)
+    assert not groups.get(conn, director, workshop).level_open
+    with pytest.raises(BusinessRuleError) as exc:
+        enrollments.enroll(conn, receptionist, amine, workshop)
+    assert exc.value.message == t["enrollment.level_mismatch"].format(
+        group="C1 · Calligraphie Tous niveaux", group_level="Tous niveaux", level="4AM")
+
+
 # ----- options for the dialog -----
 
 def test_options_list_the_open_groups_of_the_students_level(conn, director, receptionist,

@@ -1,0 +1,40 @@
+# Builds the Windows app and its installer on a Windows machine of GitHub's (PyInstaller
+# cannot build a Windows exe from Linux). Runs only when asked: « Run workflow » on the
+# Actions tab, or a tag v1.0.0 pushed. The installer is in the run's artifacts.
+name: Windows build
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install --no-deps -e .
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Build the app and the installer
+        run: python packaging/build.py
+
+      - name: Start the built app on an empty database
+        run: python packaging/smoke_test.py
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Tadris-windows
+          path: dist/Tadris-*-setup.exe
+          if-no-files-found: error

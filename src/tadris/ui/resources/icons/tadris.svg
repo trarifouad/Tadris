@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <!-- Tadris's own icon: a T in chalk on the violet ink, with the two dots of « ت ». -->
+  <rect x="8" y="8" width="240" height="240" rx="56" fill="#5A3E9E"/>
+  <circle cx="102" cy="62" r="15" fill="#ECE8F5"/>
+  <circle cx="154" cy="62" r="15" fill="#ECE8F5"/>
+  <rect x="56" y="96" width="144" height="34" rx="8" fill="#ECE8F5"/>
+  <rect x="111" y="96" width="34" height="114" rx="8" fill="#ECE8F5"/>
+</svg>

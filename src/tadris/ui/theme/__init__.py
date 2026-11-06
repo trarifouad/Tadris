@@ -63,6 +63,20 @@ def nav_icon(name: str, size: int = 40, gap: int = 0) -> QIcon:
     return result
 
 
+APP_ICON_SIZES = (16, 24, 32, 48, 64, 128, 256)
+
+
+def app_icon() -> QIcon:
+    """Tadris's own icon, for the title bars and the taskbar. Set on the app by hand: on
+    Windows Qt would otherwise show the generic icon, not the one in the exe. The installer
+    and the exe carry the same picture (packaging/tadris.ico, made from this file)."""
+    svg = (ICONS_DIR / "tadris.svg").read_text(encoding="utf-8")
+    result = QIcon()
+    for size in APP_ICON_SIZES:
+        result.addPixmap(_render_svg(svg, "", size))
+    return result
+
+
 def load_fonts() -> set[str]:
     """Register the bundled fonts. Call once, before building any widget."""
     families: set[str] = set()

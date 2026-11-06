@@ -24,7 +24,7 @@ from tadris.services import auth, backup, clock, documents, sessions, subscripti
 from tadris.ui.first_run import FirstRunDialog
 from tadris.ui.login_dialog import LoginDialog
 from tadris.ui.main_window import MainWindow
-from tadris.ui.theme import apply_theme, load_fonts
+from tadris.ui.theme import app_icon, apply_theme, load_fonts
 from tadris.ui.user_dialog import show_new_recovery_code
 
 log = logging.getLogger("tadris")
@@ -221,6 +221,7 @@ def main() -> int:
     _choose_scale()
     app = QApplication(sys.argv)
     app.setApplicationName(t["app.name"])
+    app.setWindowIcon(app_icon())
     load_fonts()
     apply_theme(app)
 

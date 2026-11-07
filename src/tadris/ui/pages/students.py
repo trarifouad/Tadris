@@ -17,7 +17,6 @@ from PySide6.QtWidgets import (
 )
 
 from tadris.core.context import UserContext
-from tadris.core.dates import display_date
 from tadris.core.permissions import allowed
 from tadris.core.text import fold
 from tadris.domain.models import STANDINGS_BY_URGENCY, StudentListItem
@@ -33,7 +32,6 @@ from tadris.ui.widgets.common import PageBanner, ask, primary_button, toast
 from tadris.ui.widgets.forms import ListDetailPage
 from tadris.ui.widgets.inputs import FilterButton, fill_combo
 from tadris.ui.widgets.tables import (
-    CENTER,
     ID_ROLE,
     PAGE_SIZE,
     MoreOnScroll,
@@ -45,8 +43,7 @@ from tadris.ui.widgets.tables import (
 
 SEARCH_DELAY_MS = 250
 # The database order behind each column of the list (repositories/students.ORDERS).
-COLUMN_ORDERS = ("number", "last_name", "first_name", "birth_date", "groups", "standing",
-                 "status")
+COLUMN_ORDERS = ("number", "last_name", "first_name", "groups", "standing", "status")
 STATUS_FILTERS = (("students.filter.active", "active"),
                   ("students.filter.inactive", "inactive"),
                   ("students.filter.all", None))
@@ -130,7 +127,6 @@ class StudentListView(QWidget):
             t["students.col.number"],
             t["students.col.last_name"],
             t["students.col.first_name"],
-            t["students.col.birth_date"],
             t["students.col.groups"],
             t["students.col.subscription"],
             t["students.col.status"],
@@ -228,8 +224,6 @@ class StudentListView(QWidget):
             item(s.student_number, s.student_number, mono=True, item_id=s.id),
             item(s.last_name, (fold(s.last_name), fold(s.first_name))),
             item(s.first_name, (fold(s.first_name), fold(s.last_name))),
-            item(display_date(s.birth_date) if s.birth_date else "", s.birth_date or "",
-                 align=CENTER),
             item(s.groups or "—", fold(s.groups or "")),
             item(t[f"subscription_line.{s.standing}"], STANDINGS_BY_URGENCY.index(s.standing),
                  kind=kind_for("standing", s.standing)) if s.standing

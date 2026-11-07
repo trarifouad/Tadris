@@ -878,7 +878,6 @@ t = {
     "students.col.number": "N°",
     "students.col.last_name": "Nom",
     "students.col.first_name": "Prénom",
-    "students.col.birth_date": "Naissance",
     "students.col.groups": "Groupes",
     "students.col.subscription": "Abonnement",
     "students.col.phone": "Téléphone",
